@@ -65,7 +65,6 @@
 	];
 
 	const algorithmOptions = [
-		{ value: AlgorithmMode.Classic, label: 'Classic' },
 		{ value: AlgorithmMode.TopologicalKNN, label: 'Topological k-NN' },
 		{ value: AlgorithmMode.SmoothMetric, label: 'Smooth Metric' },
 		{ value: AlgorithmMode.HashFree, label: 'Hash-Free' },

@@ -53,7 +53,7 @@ export function createSimulation(
 	};
 
 	let buffers: SimulationBuffers = createBuffers(device, bufferConfig);
-	let blockSumsBuffer = createBlockSumsBuffer(device, gridInfo.gridWidth * gridInfo.gridHeight);
+	let blockSumsBuffer = createBlockSumsBuffer(device, canvasWidth, canvasHeight);
 
 	// Initialize boid positions and velocities
 	initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
@@ -212,7 +212,7 @@ export function createSimulation(
 		};
 
 		buffers = createBuffers(device, bufferConfig);
-		blockSumsBuffer = createBlockSumsBuffer(device, gridInfo.gridWidth * gridInfo.gridHeight);
+		blockSumsBuffer = createBlockSumsBuffer(device, canvasWidth, canvasHeight);
 
 		// Reinitialize boids
 		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);

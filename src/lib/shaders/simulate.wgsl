@@ -47,12 +47,11 @@ const KLEIN_Y: u32 = 7u;
 const PROJECTIVE_PLANE: u32 = 8u;
 
 // Algorithm modes
-const ALG_CLASSIC: u32 = 0u;
-const ALG_TOPOLOGICAL_KNN: u32 = 1u;
-const ALG_SMOOTH_METRIC: u32 = 2u;
-const ALG_HASH_FREE: u32 = 3u;
-const ALG_STOCHASTIC: u32 = 4u;
-const ALG_DENSITY_ADAPTIVE: u32 = 5u;
+const ALG_TOPOLOGICAL_KNN: u32 = 0u;
+const ALG_SMOOTH_METRIC: u32 = 1u;
+const ALG_HASH_FREE: u32 = 2u;
+const ALG_STOCHASTIC: u32 = 3u;
+const ALG_DENSITY_ADAPTIVE: u32 = 4u;
 
 const K_NEIGHBORS: u32 = 12u;
 const MAX_CANDIDATES: u32 = 128u;
@@ -239,88 +238,7 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
 }
 
 // ============================================================================
-// ALGORITHM 0: CLASSIC
-// ============================================================================
-
-fn algorithmClassic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
-    let wrap = getWrapFlags();
-    let myCellX = i32(myPos.x / uniforms.cellSize);
-    let myCellY = i32(myPos.y / uniforms.cellSize);
-    
-    var alignmentSum = vec2<f32>(0.0);
-    var cohesionSum = vec2<f32>(0.0);
-    var separationSum = vec2<f32>(0.0);
-    var neighborCount = 0u;
-    var closeCount = 0u;
-    
-    let perceptionSq = uniforms.perception * uniforms.perception;
-    let separationDist = uniforms.perception * 0.5;
-    let separationDistSq = separationDist * separationDist;
-    
-    for (var dy = -1i; dy <= 1i; dy++) {
-        for (var dx = -1i; dx <= 1i; dx++) {
-            let cx = myCellX + dx;
-            let cy = myCellY + dy;
-            
-            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
-            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
-            
-            let cellIdx = getCellIndex(cx, cy);
-            let cellStart = prefixSums[cellIdx];
-            let cellCount = cellCounts[cellIdx];
-            
-            for (var i = 0u; i < cellCount && neighborCount < 64u; i++) {
-                let otherIdx = sortedIndices[cellStart + i];
-                if (otherIdx == boidIndex) { continue; }
-                
-                let otherPos = positionsIn[otherIdx];
-                let otherVel = velocitiesIn[otherIdx];
-                let delta = getNeighborDelta(myPos, otherPos);
-                let distSq = dot(delta, delta);
-                
-                if (distSq < 0.01) {
-                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 5.0;
-                    closeCount++;
-                    continue;
-                }
-                
-                if (distSq < perceptionSq) {
-                    let dist = sqrt(distSq);
-                    alignmentSum += otherVel;
-                    cohesionSum += delta;
-                    neighborCount++;
-                    
-                    if (distSq < separationDistSq) {
-                        let weight = (1.0 - dist / separationDist);
-                        separationSum -= delta * (weight * weight / dist);
-                        closeCount++;
-                    }
-                }
-            }
-        }
-    }
-    
-    var acceleration = vec2<f32>(0.0);
-    
-    if (neighborCount > 0u) {
-        let nf = f32(neighborCount);
-        if (uniforms.alignment > 0.0) {
-            acceleration += limitMagnitude(alignmentSum / nf - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
-        }
-        if (uniforms.cohesion > 0.0) {
-            acceleration += limitMagnitude(cohesionSum / nf, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
-        }
-    }
-    
-    if (closeCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 3.0) * uniforms.separation;
-    }
-    
-    return acceleration;
-}
-
-// ============================================================================
-// ALGORITHM 1: TOPOLOGICAL K-NN
+// ALGORITHM 0: TOPOLOGICAL K-NN
 // ============================================================================
 
 fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
@@ -421,7 +339,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
 }
 
 // ============================================================================
-// ALGORITHM 2: SMOOTH METRIC
+// ALGORITHM 1: SMOOTH METRIC
 // ============================================================================
 
 fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
@@ -503,7 +421,7 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
 }
 
 // ============================================================================
-// ALGORITHM 3: HASH-FREE (Per-boid randomized grid - no global seams)
+// ALGORITHM 2: HASH-FREE (Per-boid randomized grid - no global seams)
 // Each boid has its own random offset to the grid, so cell boundaries
 // are different for every boid - eliminating coherent grid artifacts
 // Now with density-adaptive force scaling for stable high-density behavior
@@ -623,7 +541,7 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
 }
 
 // ============================================================================
-// ALGORITHM 4: STOCHASTIC SAMPLING
+// ALGORITHM 3: STOCHASTIC SAMPLING
 // Randomly sample cells around the boid with distance-weighted probability
 // No fixed cell boundaries - samples from random positions around the boid
 // ============================================================================
@@ -768,7 +686,7 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
 }
 
 // ============================================================================
-// ALGORITHM 5: DENSITY ADAPTIVE
+// ALGORITHM 4: DENSITY ADAPTIVE
 // Combines hash-free approach with sophisticated density-based force adaptation
 // Uses pressure-like model: higher local density = reduced cohesion, maintained separation
 // ============================================================================
@@ -920,13 +838,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Select algorithm
     var acceleration: vec2<f32>;
     switch (uniforms.algorithmMode) {
-        case ALG_CLASSIC: { acceleration = algorithmClassic(boidIndex, myPos, myVel, rebelFactor); }
         case ALG_TOPOLOGICAL_KNN: { acceleration = algorithmTopologicalKNN(boidIndex, myPos, myVel, rebelFactor); }
         case ALG_SMOOTH_METRIC: { acceleration = algorithmSmoothMetric(boidIndex, myPos, myVel, rebelFactor); }
         case ALG_HASH_FREE: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
         case ALG_STOCHASTIC: { acceleration = algorithmStochastic(boidIndex, myPos, myVel, rebelFactor); }
         case ALG_DENSITY_ADAPTIVE: { acceleration = algorithmDensityAdaptive(boidIndex, myPos, myVel, rebelFactor); }
-        default: { acceleration = algorithmClassic(boidIndex, myPos, myVel, rebelFactor); }
+        default: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
     }
     
     // Cursor interaction

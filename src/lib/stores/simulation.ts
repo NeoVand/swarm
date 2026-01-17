@@ -75,6 +75,7 @@ export function setSeparation(value: number): void {
 
 export function setPerception(value: number): void {
 	params.update((p) => ({ ...p, perception: value }));
+	// Grid buffers are pre-allocated for max size, so no reallocation needed
 }
 
 export function setMaxSpeed(value: number): void {
