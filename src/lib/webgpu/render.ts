@@ -113,15 +113,15 @@ export function createRenderPipelines(
 				{
 					format,
 					blend: {
-						// Additive blending for trails
+						// Standard alpha blending for seamless connection with boids
 						color: {
 							srcFactor: 'src-alpha',
-							dstFactor: 'one',
+							dstFactor: 'one-minus-src-alpha',
 							operation: 'add'
 						},
 						alpha: {
 							srcFactor: 'one',
-							dstFactor: 'one',
+							dstFactor: 'one-minus-src-alpha',
 							operation: 'add'
 						}
 					}

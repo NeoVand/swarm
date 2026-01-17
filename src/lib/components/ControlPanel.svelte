@@ -34,33 +34,27 @@
 		isPanelOpen.update((v) => !v);
 	}
 
-	const boundaryModes = [
-		{ value: BoundaryMode.Plane, label: 'Plane' },
-		{ value: BoundaryMode.CylinderX, label: 'Cylinder X' },
-		{ value: BoundaryMode.CylinderY, label: 'Cylinder Y' },
+	const boundaryOptions = [
 		{ value: BoundaryMode.Torus, label: 'Torus' },
-		{ value: BoundaryMode.MobiusX, label: 'Möbius X' },
-		{ value: BoundaryMode.MobiusY, label: 'Möbius Y' },
-		{ value: BoundaryMode.KleinX, label: 'Klein X' },
-		{ value: BoundaryMode.KleinY, label: 'Klein Y' },
-		{ value: BoundaryMode.ProjectivePlane, label: 'Projective' }
+		{ value: BoundaryMode.Plane, label: 'Plane' },
+		{ value: BoundaryMode.CylinderX, label: 'Cyl-X' },
+		{ value: BoundaryMode.CylinderY, label: 'Cyl-Y' },
+		{ value: BoundaryMode.MobiusX, label: 'Möb-X' },
+		{ value: BoundaryMode.MobiusY, label: 'Möb-Y' },
+		{ value: BoundaryMode.KleinX, label: 'Klein-X' },
+		{ value: BoundaryMode.KleinY, label: 'Klein-Y' },
+		{ value: BoundaryMode.ProjectivePlane, label: 'Proj' }
 	];
 
-	const cursorModes = [
-		{ value: CursorMode.Off, label: 'Off' },
-		{ value: CursorMode.Attract, label: 'Attract' },
-		{ value: CursorMode.Repel, label: 'Repel' }
+	const colorOptions = [
+		{ value: ColorMode.Orientation, label: 'Dir' },
+		{ value: ColorMode.Speed, label: 'Spd' },
+		{ value: ColorMode.Neighbors, label: 'Nbr' },
+		{ value: ColorMode.Acceleration, label: 'Acc' },
+		{ value: ColorMode.Turning, label: 'Turn' }
 	];
 
-	const colorModes = [
-		{ value: ColorMode.Speed, label: 'Speed' },
-		{ value: ColorMode.Orientation, label: 'Orientation' },
-		{ value: ColorMode.Neighbors, label: 'Neighbors' },
-		{ value: ColorMode.Acceleration, label: 'Acceleration' },
-		{ value: ColorMode.Turning, label: 'Turning' }
-	];
-
-	const colorSpectrums = [
+	const spectrumOptions = [
 		{ value: ColorSpectrum.Chrome, label: 'Chrome' },
 		{ value: ColorSpectrum.Cool, label: 'Cool' },
 		{ value: ColorSpectrum.Warm, label: 'Warm' },
@@ -69,402 +63,232 @@
 	];
 </script>
 
-<!-- Gear icon button -->
+<!-- Gear icon -->
 <button
 	onclick={togglePanel}
-	class="fixed right-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-800/30 text-zinc-400 backdrop-blur-sm transition-all hover:bg-zinc-800/50 hover:text-zinc-200"
-	aria-label="Toggle settings"
+	class="fixed right-3 top-3 z-50 flex h-8 w-8 items-center justify-center rounded-md transition-all hover:bg-zinc-800/50 hover:text-zinc-300 {isOpen ? 'bg-zinc-800/50 text-zinc-300' : 'text-zinc-500'}"
+	aria-label="Settings"
 >
-	<svg
-		xmlns="http://www.w3.org/2000/svg"
-		viewBox="0 0 24 24"
-		fill="none"
-		stroke="currentColor"
-		stroke-width="1.5"
-		stroke-linecap="round"
-		stroke-linejoin="round"
-		class="h-5 w-5 transition-transform duration-300"
-		class:rotate-90={isOpen}
-	>
-		<circle cx="12" cy="12" r="3" />
-		<path
-			d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
-		/>
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+		<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
 	</svg>
 </button>
 
-<!-- Sliding panel -->
+<!-- Panel -->
 <div
-	class="fixed right-0 top-0 z-40 h-full w-80 transform overflow-y-auto bg-zinc-900/70 p-6 pt-16 backdrop-blur-xl transition-transform duration-300 ease-out"
+	class="fixed right-0 top-0 z-40 flex h-full w-56 transform flex-col bg-black/80 backdrop-blur-md transition-transform duration-200"
 	class:translate-x-0={isOpen}
 	class:translate-x-full={!isOpen}
 >
-	<!-- FPS counter -->
-	<div class="mb-6 flex items-center justify-between text-xs">
-		<span class="text-zinc-500">Performance</span>
-		<span class="font-mono text-zinc-300">{currentFps} FPS</span>
+	<!-- Header -->
+	<div class="flex items-center justify-between px-3 pb-2 pt-3">
+		<span class="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Controls</span>
+		<span class="font-mono text-[10px] text-cyan-400">{currentFps} fps</span>
 	</div>
 
-	<!-- Flocking Rules -->
-	<div class="mb-6 space-y-4">
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Alignment</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.alignment.toFixed(2)}</span>
+	<!-- Scrollable content -->
+	<div class="flex-1 overflow-y-auto px-3 pb-4">
+		<!-- Flocking -->
+		<div class="mb-3">
+			<div class="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-zinc-600">Flocking</div>
+			<div class="grid grid-cols-2 gap-x-2 gap-y-1.5">
+				<div class="col-span-2">
+					<div class="flex items-center gap-1.5">
+						<span class="w-12 text-[10px] text-zinc-500">Align</span>
+						<input type="range" min="0" max="3" step="0.1" value={currentParams.alignment}
+							oninput={(e) => setAlignment(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Alignment" />
+						<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.alignment.toFixed(1)}</span>
+					</div>
+				</div>
+				<div class="col-span-2">
+					<div class="flex items-center gap-1.5">
+						<span class="w-12 text-[10px] text-zinc-500">Cohesion</span>
+						<input type="range" min="0" max="3" step="0.1" value={currentParams.cohesion}
+							oninput={(e) => setCohesion(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Cohesion" />
+						<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.cohesion.toFixed(1)}</span>
+					</div>
+				</div>
+				<div class="col-span-2">
+					<div class="flex items-center gap-1.5">
+						<span class="w-12 text-[10px] text-zinc-500">Separate</span>
+						<input type="range" min="0" max="4" step="0.1" value={currentParams.separation}
+							oninput={(e) => setSeparation(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Separation" />
+						<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.separation.toFixed(1)}</span>
+					</div>
+				</div>
+				<div class="col-span-2">
+					<div class="flex items-center gap-1.5">
+						<span class="w-12 text-[10px] text-zinc-500">Range</span>
+						<input type="range" min="20" max="150" step="5" value={currentParams.perception}
+							oninput={(e) => setPerception(parseInt(e.currentTarget.value))} class="slider flex-1" aria-label="Perception" />
+						<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.perception}</span>
+					</div>
+				</div>
 			</div>
-			<input
-				type="range"
-				min="0"
-				max="3"
-				step="0.05"
-				value={currentParams.alignment}
-				oninput={(e) => setAlignment(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Alignment"
-			/>
 		</div>
 
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Cohesion</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.cohesion.toFixed(2)}</span>
+		<!-- Dynamics -->
+		<div class="mb-3">
+			<div class="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-zinc-600">Dynamics</div>
+			<div class="space-y-1.5">
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Speed</span>
+					<input type="range" min="1" max="15" step="0.5" value={currentParams.maxSpeed}
+						oninput={(e) => setMaxSpeed(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Speed" />
+					<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.maxSpeed.toFixed(1)}</span>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Force</span>
+					<input type="range" min="0.01" max="0.5" step="0.01" value={currentParams.maxForce}
+						oninput={(e) => setMaxForce(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Force" />
+					<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.maxForce.toFixed(2)}</span>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Noise</span>
+					<input type="range" min="0" max="1" step="0.05" value={currentParams.noise}
+						oninput={(e) => setNoise(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Noise" />
+					<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.noise.toFixed(2)}</span>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Rebels</span>
+					<input type="range" min="0" max="0.2" step="0.01" value={currentParams.rebels}
+						oninput={(e) => setRebels(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Rebels" />
+					<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{(currentParams.rebels * 100).toFixed(0)}%</span>
+				</div>
 			</div>
-			<input
-				type="range"
-				min="0"
-				max="3"
-				step="0.05"
-				value={currentParams.cohesion}
-				oninput={(e) => setCohesion(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Cohesion"
-			/>
 		</div>
 
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Separation</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.separation.toFixed(2)}</span>
+		<!-- World -->
+		<div class="mb-3">
+			<div class="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-zinc-600">World</div>
+			<div class="space-y-1.5">
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Bounds</span>
+					<select value={currentParams.boundaryMode} onchange={(e) => setBoundaryMode(parseInt(e.currentTarget.value))}
+						class="sel flex-1" aria-label="Boundary">
+						{#each boundaryOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
+					</select>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Cursor</span>
+					<div class="flex flex-1 gap-0.5">
+						<button class="btn" class:active={currentParams.cursorMode === CursorMode.Off}
+							onclick={() => setCursorMode(CursorMode.Off)}>Off</button>
+						<button class="btn" class:active={currentParams.cursorMode === CursorMode.Attract}
+							onclick={() => setCursorMode(CursorMode.Attract)}>Pull</button>
+						<button class="btn" class:active={currentParams.cursorMode === CursorMode.Repel}
+							onclick={() => setCursorMode(CursorMode.Repel)}>Push</button>
+					</div>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Power</span>
+					<input type="range" min="0" max="1" step="0.05" value={currentParams.cursorForce}
+						oninput={(e) => setCursorForce(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Cursor Force" />
+					<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.cursorForce.toFixed(2)}</span>
+				</div>
 			</div>
-			<input
-				type="range"
-				min="0"
-				max="4"
-				step="0.05"
-				value={currentParams.separation}
-				oninput={(e) => setSeparation(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Separation"
-			/>
 		</div>
 
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Perception</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.perception}</span>
+		<!-- Visuals -->
+		<div class="mb-3">
+			<div class="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-zinc-600">Visuals</div>
+			<div class="space-y-1.5">
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Size</span>
+					<input type="range" min="0.2" max="3" step="0.1" value={currentParams.boidSize}
+						oninput={(e) => setBoidSize(parseFloat(e.currentTarget.value))} class="slider flex-1" aria-label="Size" />
+					<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.boidSize.toFixed(1)}</span>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Trail</span>
+					<input type="range" min="5" max="80" step="5" value={currentParams.trailLength}
+						oninput={(e) => setTrailLength(parseInt(e.currentTarget.value))} class="slider flex-1" aria-label="Trail" />
+					<span class="w-6 text-right font-mono text-[9px] text-zinc-600">{currentParams.trailLength}</span>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Color</span>
+					<select value={currentParams.colorMode} onchange={(e) => setColorMode(parseInt(e.currentTarget.value))}
+						class="sel flex-1" aria-label="Color Mode">
+						{#each colorOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
+					</select>
+				</div>
+				<div class="flex items-center gap-1.5">
+					<span class="w-12 text-[10px] text-zinc-500">Palette</span>
+					<select value={currentParams.colorSpectrum} onchange={(e) => setColorSpectrum(parseInt(e.currentTarget.value))}
+						class="sel flex-1" aria-label="Spectrum">
+						{#each spectrumOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
+					</select>
+				</div>
 			</div>
-			<input
-				type="range"
-				min="10"
-				max="200"
-				step="5"
-				value={currentParams.perception}
-				oninput={(e) => setPerception(parseInt(e.currentTarget.value))}
-				class="slider"
-				aria-label="Perception"
-			/>
 		</div>
-	</div>
 
-	<div class="mb-6 h-px bg-zinc-700/50"></div>
-
-	<!-- Movement -->
-	<div class="mb-6 space-y-4">
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Max Speed</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.maxSpeed.toFixed(1)}</span>
+		<!-- Population -->
+		<div>
+			<div class="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-zinc-600">Population</div>
+			<div class="flex items-center gap-1.5">
+				<input type="range" min="500" max="50000" step="500" value={currentParams.population}
+					oninput={(e) => setPopulation(parseInt(e.currentTarget.value))} class="slider flex-1" aria-label="Population" />
+				<span class="w-10 text-right font-mono text-[9px] text-zinc-600">{(currentParams.population / 1000).toFixed(1)}k</span>
 			</div>
-			<input
-				type="range"
-				min="0.5"
-				max="10"
-				step="0.5"
-				value={currentParams.maxSpeed}
-				oninput={(e) => setMaxSpeed(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Max Speed"
-			/>
-		</div>
-
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Max Force</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.maxForce.toFixed(2)}</span>
-			</div>
-			<input
-				type="range"
-				min="0.01"
-				max="1"
-				step="0.01"
-				value={currentParams.maxForce}
-				oninput={(e) => setMaxForce(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Max Force"
-			/>
-		</div>
-
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Noise</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.noise.toFixed(2)}</span>
-			</div>
-			<input
-				type="range"
-				min="0"
-				max="1"
-				step="0.05"
-				value={currentParams.noise}
-				oninput={(e) => setNoise(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Noise"
-			/>
-		</div>
-
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Rebels</span>
-				<span class="font-mono text-xs text-zinc-500"
-					>{(currentParams.rebels * 100).toFixed(0)}%</span
-				>
-			</div>
-			<input
-				type="range"
-				min="0"
-				max="0.3"
-				step="0.01"
-				value={currentParams.rebels}
-				oninput={(e) => setRebels(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Rebels"
-			/>
-		</div>
-	</div>
-
-	<div class="mb-6 h-px bg-zinc-700/50"></div>
-
-	<!-- Boundary & Cursor -->
-	<div class="mb-6 space-y-4">
-		<div class="space-y-2">
-			<span class="text-xs text-zinc-400">Boundary</span>
-			<select
-				value={currentParams.boundaryMode}
-				onchange={(e) => setBoundaryMode(parseInt(e.currentTarget.value))}
-				class="select"
-				aria-label="Boundary Mode"
-			>
-				{#each boundaryModes as mode}
-					<option value={mode.value}>{mode.label}</option>
-				{/each}
-			</select>
-		</div>
-
-		<div class="space-y-2">
-			<span class="text-xs text-zinc-400">Cursor Mode</span>
-			<select
-				value={currentParams.cursorMode}
-				onchange={(e) => setCursorMode(parseInt(e.currentTarget.value))}
-				class="select"
-				aria-label="Cursor Mode"
-			>
-				{#each cursorModes as mode}
-					<option value={mode.value}>{mode.label}</option>
-				{/each}
-			</select>
-		</div>
-
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Cursor Force</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.cursorForce.toFixed(2)}</span>
-			</div>
-			<input
-				type="range"
-				min="0"
-				max="1"
-				step="0.05"
-				value={currentParams.cursorForce}
-				oninput={(e) => setCursorForce(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Cursor Force"
-			/>
-		</div>
-	</div>
-
-	<div class="mb-6 h-px bg-zinc-700/50"></div>
-
-	<!-- Appearance -->
-	<div class="mb-6 space-y-4">
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Boid Size</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.boidSize.toFixed(2)}</span>
-			</div>
-			<input
-				type="range"
-				min="0.1"
-				max="1"
-				step="0.05"
-				value={currentParams.boidSize}
-				oninput={(e) => setBoidSize(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Boid Size"
-			/>
-		</div>
-
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Trail Length</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.trailLength}</span>
-			</div>
-			<input
-				type="range"
-				min="5"
-				max="100"
-				step="5"
-				value={currentParams.trailLength}
-				oninput={(e) => setTrailLength(parseInt(e.currentTarget.value))}
-				class="slider"
-				aria-label="Trail Length"
-			/>
-		</div>
-
-		<div class="space-y-2">
-			<span class="text-xs text-zinc-400">Color Mode</span>
-			<select
-				value={currentParams.colorMode}
-				onchange={(e) => setColorMode(parseInt(e.currentTarget.value))}
-				class="select"
-				aria-label="Color Mode"
-			>
-				{#each colorModes as mode}
-					<option value={mode.value}>{mode.label}</option>
-				{/each}
-			</select>
-		</div>
-
-		<div class="space-y-2">
-			<span class="text-xs text-zinc-400">Spectrum</span>
-			<select
-				value={currentParams.colorSpectrum}
-				onchange={(e) => setColorSpectrum(parseInt(e.currentTarget.value))}
-				class="select"
-				aria-label="Color Spectrum"
-			>
-				{#each colorSpectrums as spectrum}
-					<option value={spectrum.value}>{spectrum.label}</option>
-				{/each}
-			</select>
-		</div>
-
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Sensitivity</span>
-				<span class="font-mono text-xs text-zinc-500">{currentParams.sensitivity.toFixed(2)}</span>
-			</div>
-			<input
-				type="range"
-				min="0.5"
-				max="3"
-				step="0.1"
-				value={currentParams.sensitivity}
-				oninput={(e) => setSensitivity(parseFloat(e.currentTarget.value))}
-				class="slider"
-				aria-label="Sensitivity"
-			/>
-		</div>
-	</div>
-
-	<div class="mb-6 h-px bg-zinc-700/50"></div>
-
-	<!-- Population -->
-	<div class="space-y-4">
-		<div class="space-y-2">
-			<div class="flex items-center justify-between">
-				<span class="text-xs text-zinc-400">Population</span>
-				<span class="font-mono text-xs text-zinc-500"
-					>{currentParams.population.toLocaleString()}</span
-				>
-			</div>
-			<input
-				type="range"
-				min="100"
-				max="100000"
-				step="100"
-				value={currentParams.population}
-				oninput={(e) => setPopulation(parseInt(e.currentTarget.value))}
-				class="slider"
-				aria-label="Population"
-			/>
 		</div>
 	</div>
 </div>
 
 <style>
 	.slider {
-		height: 0.25rem;
-		width: 100%;
+		height: 3px;
 		cursor: pointer;
 		appearance: none;
-		border-radius: 9999px;
-		background-color: rgb(63 63 70);
+		border-radius: 2px;
+		background: linear-gradient(to right, rgb(6 182 212 / 0.3), rgb(6 182 212 / 0.15));
 	}
-
 	.slider::-webkit-slider-thumb {
-		height: 0.75rem;
-		width: 0.75rem;
+		width: 10px;
+		height: 10px;
 		cursor: pointer;
 		appearance: none;
-		border-radius: 9999px;
-		background-color: rgb(34 211 238);
-		transition: transform 150ms;
+		border-radius: 50%;
+		background: rgb(6 182 212);
+		box-shadow: 0 0 6px rgb(6 182 212 / 0.5);
 	}
-
-	.slider::-webkit-slider-thumb:hover {
-		transform: scale(1.25);
-	}
-
 	.slider::-moz-range-thumb {
-		height: 0.75rem;
-		width: 0.75rem;
+		width: 10px;
+		height: 10px;
 		cursor: pointer;
 		appearance: none;
-		border-radius: 9999px;
+		border-radius: 50%;
 		border: 0;
-		background-color: rgb(34 211 238);
-		transition: transform 150ms;
+		background: rgb(6 182 212);
+		box-shadow: 0 0 6px rgb(6 182 212 / 0.5);
 	}
-
-	.slider::-moz-range-thumb:hover {
-		transform: scale(1.25);
-	}
-
-	.select {
-		width: 100%;
+	.sel {
+		height: 22px;
 		cursor: pointer;
 		appearance: none;
-		border-radius: 0.375rem;
-		border: 1px solid rgb(63 63 70);
-		background-color: rgb(39 39 42 / 0.5);
-		padding: 0.5rem 0.75rem;
-		font-size: 0.75rem;
-		line-height: 1rem;
-		color: rgb(212 212 216);
+		border-radius: 4px;
+		border: 1px solid rgb(63 63 70 / 0.5);
+		background: rgb(24 24 27 / 0.8);
+		padding: 0 6px;
+		font-size: 10px;
+		color: rgb(161 161 170);
 		outline: none;
-		transition: border-color 150ms;
 	}
-
-	.select:focus {
-		border-color: rgb(6 182 212);
+	.sel:focus { border-color: rgb(6 182 212 / 0.5); }
+	.btn {
+		flex: 1;
+		height: 20px;
+		border-radius: 3px;
+		border: 1px solid rgb(63 63 70 / 0.5);
+		background: rgb(24 24 27 / 0.6);
+		font-size: 9px;
+		color: rgb(113 113 122);
+		cursor: pointer;
+		transition: all 100ms;
+	}
+	.btn:hover { background: rgb(39 39 42 / 0.8); color: rgb(161 161 170); }
+	.btn.active {
+		background: rgb(6 182 212 / 0.15);
+		border-color: rgb(6 182 212 / 0.4);
+		color: rgb(6 182 212);
 	}
 </style>

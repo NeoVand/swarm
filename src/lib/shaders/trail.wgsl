@@ -185,11 +185,12 @@ fn vs_main(
     let perp = vec2<f32>(-normDir.y, normDir.x);
     
     // Width tapers from head (thick) to tail (thin)
-    // Match boid width: boid uses size * 6.0 with 0.5 half-width = 3.0 * boidSize
+    // Match boid triangle base: vertices at (-0.7, ±0.5), scaled by boidSize * 6.0
+    // Half-width = 0.5 * 6.0 = 3.0, but trail connects at center so use slightly larger
     let ageRatio = f32(age) / f32(uniforms.trailLength - 1u);
-    let baseWidth = uniforms.boidSize * 3.0;
-    let width1 = baseWidth * (1.0 - ageRatio);
-    let width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)));
+    let baseWidth = uniforms.boidSize * 3.5; // Slightly larger to blend smoothly with boid body
+    let width1 = baseWidth * (1.0 - ageRatio * 0.95); // Don't fully taper to zero
+    let width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)) * 0.95);
     
     // Build quad vertices
     var worldPos: vec2<f32>;
@@ -225,12 +226,15 @@ fn vs_main(
     
     colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
     output.color = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
-    output.alpha = alpha * 0.6; // Trails are semi-transparent
+    // Full opacity at head (alpha=1.0), fading to transparent at tail
+    // This creates seamless connection with the boid
+    output.alpha = alpha;
     
     return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    // Premultiplied alpha for smooth additive blending
     return vec4<f32>(input.color * input.alpha, input.alpha);
 }

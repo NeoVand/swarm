@@ -294,6 +294,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let separationDist = uniforms.perception * 0.5;
     let separationDistSq = separationDist * separationDist;
     
+    // Max neighbors to process for performance (prevents slowdown in dense clusters)
+    let maxNeighbors = 64u;
+    
     // Iterate over 3x3 neighboring cells
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
@@ -329,7 +332,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let cellCount = cellCounts[cellIdx];
             
             // Iterate over boids in this cell
-            for (var i = 0u; i < cellCount; i++) {
+            for (var i = 0u; i < cellCount && neighborCount < maxNeighbors; i++) {
                 let otherBoidIndex = sortedIndices[cellStart + i];
                 
                 if (otherBoidIndex == boidIndex) {
@@ -342,7 +345,18 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
-                if (distSq < perceptionSq && distSq > 0.0001) {
+                // Handle boids that are extremely close (nearly overlapping)
+                // These need strong separation but can't use delta (it's near zero)
+                if (distSq < 0.01) {
+                    // Apply strong random separation force based on boid indices
+                    let seed = boidIndex * 31u + otherBoidIndex * 17u + uniforms.frameCount;
+                    let randomDir = normalize(random2(seed));
+                    separationSum += randomDir * 5.0; // Strong push in random direction
+                    closeCount++;
+                    continue;
+                }
+                
+                if (distSq < perceptionSq) {
                     let dist = sqrt(distSq);
                     
                     // Alignment: average velocity of neighbors
@@ -355,12 +369,22 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     
                     // Separation: avoid close neighbors
                     if (distSq < separationDistSq) {
-                        let weight = 1.0 - (dist / separationDist);
+                        // Stronger weight for closer boids (inverse square falloff)
+                        let normalizedDist = dist / separationDist;
+                        let weight = (1.0 - normalizedDist) * (1.0 - normalizedDist);
                         separationSum -= delta * (weight / dist);
                         closeCount++;
                     }
                 }
             }
+            
+            // Early exit if we've hit max neighbors
+            if (neighborCount >= maxNeighbors) {
+                break;
+            }
+        }
+        if (neighborCount >= maxNeighbors) {
+            break;
         }
     }
     
@@ -384,9 +408,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
     
-    // Separation force
+    // Separation force (higher force limit than other rules for collision avoidance)
     if (closeCount > 0u && uniforms.separation > 0.0) {
-        let sepForce = limitMagnitude(separationSum, uniforms.maxForce);
+        let sepForce = limitMagnitude(separationSum, uniforms.maxForce * 3.0);
         acceleration += sepForce * uniforms.separation;
     }
     
