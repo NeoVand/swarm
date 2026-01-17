@@ -1,0 +1,79 @@
+<script lang="ts">
+	import { ColorSpectrum } from '$lib/stores/simulation';
+
+	interface Props {
+		spectrum: ColorSpectrum;
+		size?: number;
+	}
+
+	let { spectrum, size = 16 }: Props = $props();
+
+	// Gradient stops for each spectrum (diagonal from top-left to bottom-right)
+	const gradients: Record<ColorSpectrum, { id: string; stops: Array<{ offset: string; color: string }> }> = {
+		[ColorSpectrum.Chrome]: {
+			id: 'chrome',
+			stops: [
+				{ offset: '0%', color: 'rgb(51, 102, 230)' },
+				{ offset: '25%', color: 'rgb(77, 204, 230)' },
+				{ offset: '50%', color: 'rgb(242, 242, 230)' },
+				{ offset: '75%', color: 'rgb(242, 153, 51)' },
+				{ offset: '100%', color: 'rgb(230, 51, 51)' }
+			]
+		},
+		[ColorSpectrum.Cool]: {
+			id: 'cool',
+			stops: [
+				{ offset: '0%', color: 'rgb(26, 26, 128)' },
+				{ offset: '50%', color: 'rgb(26, 102, 153)' },
+				{ offset: '100%', color: 'rgb(102, 230, 230)' }
+			]
+		},
+		[ColorSpectrum.Warm]: {
+			id: 'warm',
+			stops: [
+				{ offset: '0%', color: 'rgb(153, 26, 26)' },
+				{ offset: '50%', color: 'rgb(242, 102, 26)' },
+				{ offset: '100%', color: 'rgb(255, 230, 77)' }
+			]
+		},
+		[ColorSpectrum.Rainbow]: {
+			id: 'rainbow',
+			stops: [
+				{ offset: '0%', color: 'hsl(0, 85%, 60%)' },
+				{ offset: '17%', color: 'hsl(30, 85%, 60%)' },
+				{ offset: '33%', color: 'hsl(60, 85%, 60%)' },
+				{ offset: '50%', color: 'hsl(120, 85%, 50%)' },
+				{ offset: '67%', color: 'hsl(180, 85%, 55%)' },
+				{ offset: '83%', color: 'hsl(240, 85%, 60%)' },
+				{ offset: '100%', color: 'hsl(300, 85%, 60%)' }
+			]
+		},
+		[ColorSpectrum.Mono]: {
+			id: 'mono',
+			stops: [
+				{ offset: '0%', color: 'rgb(102, 97, 92)' },
+				{ offset: '50%', color: 'rgb(179, 170, 161)' },
+				{ offset: '100%', color: 'rgb(255, 242, 230)' }
+			]
+		}
+	};
+
+	const grad = $derived(gradients[spectrum]);
+</script>
+
+<svg width={size} height={size} viewBox="0 0 16 16" class="palette-icon">
+	<defs>
+		<linearGradient id="palette-{grad.id}" x1="0%" y1="0%" x2="100%" y2="100%">
+			{#each grad.stops as stop}
+				<stop offset={stop.offset} stop-color={stop.color} />
+			{/each}
+		</linearGradient>
+	</defs>
+	<rect x="1" y="1" width="14" height="14" rx="3" fill="url(#palette-{grad.id})" />
+</svg>
+
+<style>
+	.palette-icon {
+		flex-shrink: 0;
+	}
+</style>
