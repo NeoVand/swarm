@@ -1,0 +1,50 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+/* Base styles */
+html,
+body {
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	background-color: #0a0b0d;
+	font-family:
+		'Inter',
+		-apple-system,
+		BlinkMacSystemFont,
+		'Segoe UI',
+		Roboto,
+		sans-serif;
+}
+
+/* Custom scrollbar for control panel */
+::-webkit-scrollbar {
+	width: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(113, 113, 122, 0.4);
+	border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(113, 113, 122, 0.6);
+}
+
+/* Firefox scrollbar */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(113, 113, 122, 0.4) transparent;
+}
+
+/* Prevent text selection on UI elements */
+.no-select {
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+}
