@@ -20,7 +20,9 @@ struct Uniforms {
     rebels: f32,
     boundaryMode: u32,
     cursorMode: u32,
+    cursorShape: u32,
     cursorForce: f32,
+    cursorRadius: f32,
     cursorX: f32,
     cursorY: f32,
     cursorPressed: u32,
@@ -34,6 +36,12 @@ struct Uniforms {
     frameCount: u32,
     algorithmMode: u32,
 }
+
+// Cursor shapes
+const CURSOR_RING: u32 = 0u;
+const CURSOR_DISK: u32 = 1u;
+const CURSOR_DOT: u32 = 2u;
+const CURSOR_VORTEX: u32 = 3u;
 
 // Boundary modes
 const PLANE: u32 = 0u;
@@ -846,17 +854,111 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         default: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
     }
     
-    // Cursor interaction
+    // Cursor interaction - Multiple cursor shapes
     if (uniforms.cursorMode != 0u && uniforms.cursorActive != 0u) {
         let cursorPos = vec2<f32>(uniforms.cursorX, uniforms.cursorY);
         let toCursor = getNeighborDelta(myPos, cursorPos);
         let cursorDist = length(toCursor);
         
-        if (cursorDist > 1.0 && cursorDist < 200.0) {
-            let strength = select(0.3, 1.0, uniforms.cursorPressed != 0u);
-            let cursorWeight = smoothKernel(cursorDist, 200.0) * strength * 3.0;
-            var cursorForce = normalize(toCursor) * uniforms.cursorForce * cursorWeight;
-            if (uniforms.cursorMode == 2u) { cursorForce = -cursorForce; }
+        // Use cursorRadius from params (in CSS pixels, scale by DPR)
+        let dpr = 2.0;
+        let radius = uniforms.cursorRadius * dpr;
+        let influenceRange = radius * 2.0;
+        
+        let strength = select(0.5, 1.0, uniforms.cursorPressed != 0u);
+        var cursorForce = vec2<f32>(0.0);
+        
+        if (cursorDist > 0.5) {
+            let towardCenter = normalize(toCursor);
+            let awayFromCenter = -towardCenter;
+            
+            // Perpendicular vector for vortex (tangential) - clockwise rotation
+            let tangent = vec2<f32>(towardCenter.y, -towardCenter.x);
+            
+            switch (uniforms.cursorShape) {
+                case CURSOR_RING: {
+                    // Ring attractor: boids orbit the circumference
+                    if (cursorDist < radius + influenceRange) {
+                        let distFromRing = cursorDist - radius;
+                        
+                        if (uniforms.cursorMode == 1u) {
+                            if (distFromRing > 0.0) {
+                                // Outside: pull inward toward ring
+                                let pull = smoothKernel(distFromRing, influenceRange);
+                                cursorForce = towardCenter * pull * strength * uniforms.cursorForce * 2.5;
+                            } else {
+                                // Inside: push outward toward ring
+                                let push = smoothKernel(-distFromRing, radius);
+                                cursorForce = awayFromCenter * push * strength * uniforms.cursorForce * 3.0;
+                            }
+                        } else {
+                            // Repel: push away from entire area
+                            let repel = smoothKernel(cursorDist, radius + influenceRange);
+                            cursorForce = awayFromCenter * repel * strength * uniforms.cursorForce * 3.0;
+                        }
+                    }
+                }
+                case CURSOR_DISK: {
+                    // Disk: filled circle - point attractor with soft edge
+                    if (cursorDist < influenceRange) {
+                        let weight = smoothKernel(cursorDist, influenceRange);
+                        if (uniforms.cursorMode == 1u) {
+                            cursorForce = towardCenter * weight * strength * uniforms.cursorForce * 2.0;
+                        } else {
+                            cursorForce = awayFromCenter * weight * strength * uniforms.cursorForce * 2.5;
+                        }
+                    }
+                }
+                case CURSOR_DOT: {
+                    // Dot: small intense point attractor
+                    let dotRange = radius * 3.0;
+                    if (cursorDist < dotRange) {
+                        // Stronger falloff for more focused effect
+                        let weight = smoothKernel(cursorDist, dotRange);
+                        let intensity = weight * weight; // Squared for sharper falloff
+                        if (uniforms.cursorMode == 1u) {
+                            cursorForce = towardCenter * intensity * strength * uniforms.cursorForce * 4.0;
+                        } else {
+                            cursorForce = awayFromCenter * intensity * strength * uniforms.cursorForce * 4.0;
+                        }
+                    }
+                }
+                case CURSOR_VORTEX: {
+                    // Vortex: swirling force - boids rotate around cursor
+                    if (cursorDist < influenceRange) {
+                        let weight = smoothKernel(cursorDist, influenceRange);
+                        
+                        // Tangential force creates rotation
+                        let rotationForce = tangent * weight * strength * uniforms.cursorForce * 3.0;
+                        
+                        // Small radial component to maintain orbit distance
+                        var radialForce = vec2<f32>(0.0);
+                        let targetOrbit = radius;
+                        let orbitDiff = cursorDist - targetOrbit;
+                        
+                        if (uniforms.cursorMode == 1u) {
+                            // Attract mode: spiral inward (clockwise)
+                            if (orbitDiff > 0.0) {
+                                radialForce = towardCenter * smoothKernel(orbitDiff, influenceRange) * strength * uniforms.cursorForce;
+                            } else {
+                                radialForce = awayFromCenter * smoothKernel(-orbitDiff, targetOrbit) * strength * uniforms.cursorForce * 0.5;
+                            }
+                            cursorForce = rotationForce + radialForce;
+                        } else {
+                            // Repel mode: spiral outward (counter-clockwise)
+                            cursorForce = -rotationForce + awayFromCenter * weight * strength * uniforms.cursorForce;
+                        }
+                    }
+                }
+                default: {
+                    // Fallback to disk behavior
+                    if (cursorDist < influenceRange) {
+                        let weight = smoothKernel(cursorDist, influenceRange);
+                        cursorForce = towardCenter * weight * strength * uniforms.cursorForce * 2.0;
+                    }
+                }
+            }
+            
             acceleration += cursorForce;
         }
     }

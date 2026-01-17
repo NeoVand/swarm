@@ -34,6 +34,13 @@ export enum CursorMode {
 	Repel = 2
 }
 
+export enum CursorShape {
+	Ring = 0,        // Boids attracted to the circumference
+	Disk = 1,        // Filled circle - point attractor at center
+	Dot = 2,         // Small intense point attractor
+	Vortex = 3,      // Swirling force - boids orbit tangentially
+}
+
 export enum AlgorithmMode {
 	TopologicalKNN = 0,    // k-nearest neighbors with smooth kernels
 	SmoothMetric = 1,      // Metric neighbors with smooth kernels + jitter
@@ -53,7 +60,9 @@ export interface SimulationParams {
 	rebels: number;
 	boundaryMode: BoundaryMode;
 	cursorMode: CursorMode;
+	cursorShape: CursorShape;
 	cursorForce: number;
+	cursorRadius: number;
 	boidSize: number;
 	trailLength: number;
 	colorMode: ColorMode;
@@ -123,7 +132,9 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	rebels: 0.02,
 	boundaryMode: BoundaryMode.Torus,
 	cursorMode: CursorMode.Attract,
+	cursorShape: CursorShape.Ring,
 	cursorForce: 0.5,
+	cursorRadius: 50,
 	boidSize: 0.5,
 	trailLength: 30,
 	colorMode: ColorMode.Orientation,

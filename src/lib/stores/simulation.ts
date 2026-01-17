@@ -9,6 +9,7 @@ import {
 	ColorMode,
 	ColorSpectrum,
 	CursorMode,
+	CursorShape,
 	AlgorithmMode
 } from '$lib/webgpu/types';
 
@@ -107,6 +108,14 @@ export function setCursorForce(value: number): void {
 	params.update((p) => ({ ...p, cursorForce: value }));
 }
 
+export function setCursorShape(value: CursorShape): void {
+	params.update((p) => ({ ...p, cursorShape: value }));
+}
+
+export function setCursorRadius(value: number): void {
+	params.update((p) => ({ ...p, cursorRadius: value }));
+}
+
 export function setBoidSize(value: number): void {
 	params.update((p) => ({ ...p, boidSize: value }));
 }
@@ -138,4 +147,4 @@ export function setAlgorithmMode(value: AlgorithmMode): void {
 }
 
 // Export enums for use in components
-export { BoundaryMode, ColorMode, ColorSpectrum, CursorMode, AlgorithmMode };
+export { BoundaryMode, ColorMode, ColorSpectrum, CursorMode, CursorShape, AlgorithmMode };

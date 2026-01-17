@@ -207,7 +207,9 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	f32View[offset++] = data.params.rebels;
 	u32View[offset++] = data.params.boundaryMode;
 	u32View[offset++] = data.params.cursorMode;
+	u32View[offset++] = data.params.cursorShape;
 	f32View[offset++] = data.params.cursorForce;
+	f32View[offset++] = data.params.cursorRadius;
 	// When cursor is not active, place it far off-screen so it can't affect any boids
 	f32View[offset++] = data.cursor.isActive ? data.cursor.x : -99999;
 	f32View[offset++] = data.cursor.isActive ? data.cursor.y : -99999;
