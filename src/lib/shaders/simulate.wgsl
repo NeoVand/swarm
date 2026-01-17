@@ -271,8 +271,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let myCellCoords = getCellCoords(myPos);
     
     // Check if this boid is a rebel
-    let isRebel = hash(boidIndex + uniforms.frameCount * 7919u) < uniforms.rebels;
-    let rebelFactor = select(1.0, 0.3, isRebel);
+    // Rebels have consistent rebellious periods based on time
+    // Each boid has a unique phase offset, and rebels for ~60 frames when their phase aligns
+    let rebelPeriod = 180u; // ~3 seconds at 60fps between potential rebel phases
+    let rebelDuration = 60u; // ~1 second of rebellion
+    let boidPhase = u32(hash(boidIndex * 12345u) * f32(rebelPeriod));
+    let timeInCycle = (uniforms.frameCount + boidPhase) % rebelPeriod;
+    let inRebelWindow = timeInCycle < rebelDuration;
+    // Only some boids are prone to rebellion (determined by rebels parameter)
+    let isRebelProne = hash(boidIndex * 7919u) < uniforms.rebels * 5.0; // Scale up since it's now persistent
+    let isRebel = isRebelProne && inRebelWindow;
+    let rebelFactor = select(1.0, 0.2, isRebel);
     
     // Accumulate forces from neighbors
     var alignmentSum = vec2<f32>(0.0);

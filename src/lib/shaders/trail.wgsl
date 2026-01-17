@@ -185,9 +185,11 @@ fn vs_main(
     let perp = vec2<f32>(-normDir.y, normDir.x);
     
     // Width tapers from head (thick) to tail (thin)
+    // Match boid width: boid uses size * 6.0 with 0.5 half-width = 3.0 * boidSize
     let ageRatio = f32(age) / f32(uniforms.trailLength - 1u);
-    let width1 = uniforms.boidSize * 2.0 * (1.0 - ageRatio);
-    let width2 = uniforms.boidSize * 2.0 * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)));
+    let baseWidth = uniforms.boidSize * 3.0;
+    let width1 = baseWidth * (1.0 - ageRatio);
+    let width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)));
     
     // Build quad vertices
     var worldPos: vec2<f32>;

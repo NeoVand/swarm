@@ -120,13 +120,22 @@ fn addBlockSums(
     let totalCells = uniforms.gridWidth * uniforms.gridHeight;
     let idx = global_id.x;
     
-    if (idx >= totalCells || workgroup_id.x == 0u) {
+    if (idx >= totalCells) {
+        return;
+    }
+    
+    // Calculate which ORIGINAL block this element belongs to
+    // Each original block processed 512 elements (WORKGROUP_SIZE * 2)
+    let originalBlock = idx / (WORKGROUP_SIZE * 2u);
+    
+    // Skip elements in the first block - they don't need adjustment
+    if (originalBlock == 0u) {
         return;
     }
     
     // Add the sum of all previous blocks
     var blockSum = 0u;
-    for (var i = 0u; i < workgroup_id.x; i++) {
+    for (var i = 0u; i < originalBlock; i++) {
         blockSum += blockSums[i];
     }
     
