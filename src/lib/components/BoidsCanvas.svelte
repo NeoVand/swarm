@@ -199,7 +199,7 @@
 <div bind:this={container} class="fixed inset-0 overflow-hidden bg-[#0a0b0d] relative">
 	<canvas
 		bind:this={canvas}
-		class="block touch-none {currentParams?.cursorMode !== CursorMode.Off ? 'cursor-none' : ''}"
+		class="block touch-none select-none {currentParams?.cursorMode !== CursorMode.Off ? 'cursor-none' : ''}"
 		onmousemove={handleMouseMove}
 		onmousedown={handleMouseDown}
 		onmouseup={handleMouseUp}
@@ -208,6 +208,7 @@
 		ontouchmove={handleTouchMove}
 		ontouchend={handleTouchEnd}
 		ontouchcancel={handleTouchEnd}
+		oncontextmenu={(e) => e.preventDefault()}
 	></canvas>
 	
 	<!-- Custom cursor overlay -->
