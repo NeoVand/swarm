@@ -34,6 +34,15 @@ export enum CursorMode {
 	Repel = 2
 }
 
+export enum AlgorithmMode {
+	Classic = 0,           // Original metric-based (3x3 grid, hard cutoff)
+	TopologicalKNN = 1,    // k-nearest neighbors with smooth kernels
+	SmoothMetric = 2,      // Metric neighbors with smooth kernels + jitter
+	HashFree = 3,          // Per-boid randomized grid offset (no global seams)
+	StochasticSample = 4,  // Random neighbor sampling with distance weighting
+	DensityAdaptive = 5,   // Hash-free with advanced density-adaptive forces
+}
+
 export interface SimulationParams {
 	alignment: number;
 	cohesion: number;
@@ -52,6 +61,7 @@ export interface SimulationParams {
 	colorSpectrum: ColorSpectrum;
 	sensitivity: number;
 	population: number;
+	algorithmMode: AlgorithmMode;
 }
 
 export interface CursorState {
@@ -120,7 +130,8 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorMode: ColorMode.Orientation,
 	colorSpectrum: ColorSpectrum.Chrome,
 	sensitivity: 1.0,
-	population: 10000
+	population: 10000,
+	algorithmMode: AlgorithmMode.Classic
 };
 
 // Uniform buffer layout (must match WGSL struct)

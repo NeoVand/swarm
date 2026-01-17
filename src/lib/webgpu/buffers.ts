@@ -218,6 +218,7 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	f32View[offset++] = data.deltaTime;
 	f32View[offset++] = data.time;
 	u32View[offset++] = data.frameCount;
+	u32View[offset++] = data.params.algorithmMode;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
 }

@@ -1,4 +1,5 @@
 // Pass 5: Main boid simulation with flocking rules
+// Supports multiple algorithm modes including grid-free approaches
 
 struct Uniforms {
     canvasWidth: f32,
@@ -31,6 +32,7 @@ struct Uniforms {
     deltaTime: f32,
     time: f32,
     frameCount: u32,
+    algorithmMode: u32,
 }
 
 // Boundary modes
@@ -44,6 +46,17 @@ const KLEIN_X: u32 = 6u;
 const KLEIN_Y: u32 = 7u;
 const PROJECTIVE_PLANE: u32 = 8u;
 
+// Algorithm modes
+const ALG_CLASSIC: u32 = 0u;
+const ALG_TOPOLOGICAL_KNN: u32 = 1u;
+const ALG_SMOOTH_METRIC: u32 = 2u;
+const ALG_HASH_FREE: u32 = 3u;
+const ALG_STOCHASTIC: u32 = 4u;
+const ALG_DENSITY_ADAPTIVE: u32 = 5u;
+
+const K_NEIGHBORS: u32 = 12u;
+const MAX_CANDIDATES: u32 = 128u;
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positionsIn: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read_write> positionsOut: array<vec2<f32>>;
@@ -54,13 +67,24 @@ const PROJECTIVE_PLANE: u32 = 8u;
 @group(0) @binding(7) var<storage, read> sortedIndices: array<u32>;
 @group(0) @binding(8) var<storage, read_write> trails: array<vec2<f32>>;
 
-// Simple hash for pseudo-random numbers
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
 fn hash(n: u32) -> f32 {
     var x = n;
     x = ((x >> 16u) ^ x) * 0x45d9f3bu;
     x = ((x >> 16u) ^ x) * 0x45d9f3bu;
     x = (x >> 16u) ^ x;
     return f32(x) / f32(0xffffffffu);
+}
+
+fn hash2(n: u32) -> u32 {
+    var x = n;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = (x >> 16u) ^ x;
+    return x;
 }
 
 fn random2(seed: u32) -> vec2<f32> {
@@ -78,34 +102,30 @@ fn limitMagnitude(v: vec2<f32>, maxMag: f32) -> vec2<f32> {
     return v;
 }
 
-fn getCellCoords(pos: vec2<f32>) -> vec2<i32> {
-    return vec2<i32>(
-        clamp(i32(pos.x / uniforms.cellSize), 0i, i32(uniforms.gridWidth) - 1i),
-        clamp(i32(pos.y / uniforms.cellSize), 0i, i32(uniforms.gridHeight) - 1i)
-    );
+// Smooth cubic kernel
+fn smoothKernel(dist: f32, radius: f32) -> f32 {
+    if (dist >= radius) { return 0.0; }
+    let q = dist / radius;
+    let t = 1.0 - q;
+    return t * t * t;
 }
 
-fn getCellIndex(cx: i32, cy: i32) -> u32 {
-    return u32(cy) * uniforms.gridWidth + u32(cx);
+// Stronger separation kernel
+fn separationKernel(dist: f32, radius: f32) -> f32 {
+    if (dist >= radius || dist < 0.001) { return 0.0; }
+    let q = dist / radius;
+    return (1.0 - q) * (1.0 - q) / (q * q + 0.01);
 }
 
-// Handle wrapped distance for toroidal/cylindrical spaces
 fn wrappedDelta(delta: f32, size: f32, wrap: bool) -> f32 {
-    if (!wrap) {
-        return delta;
-    }
+    if (!wrap) { return delta; }
     let halfSize = size * 0.5;
-    if (delta > halfSize) {
-        return delta - size;
-    } else if (delta < -halfSize) {
-        return delta + size;
-    }
+    if (delta > halfSize) { return delta - size; }
+    else if (delta < -halfSize) { return delta + size; }
     return delta;
 }
 
-fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
-    var delta = otherPos - myPos;
-    
+fn getWrapFlags() -> vec2<bool> {
     let wrapX = uniforms.boundaryMode == TORUS || 
                 uniforms.boundaryMode == CYLINDER_X || 
                 uniforms.boundaryMode == MOBIUS_X ||
@@ -116,115 +136,82 @@ fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
                 uniforms.boundaryMode == MOBIUS_Y ||
                 uniforms.boundaryMode == KLEIN_Y ||
                 uniforms.boundaryMode == PROJECTIVE_PLANE;
-    
-    delta.x = wrappedDelta(delta.x, uniforms.canvasWidth, wrapX);
-    delta.y = wrappedDelta(delta.y, uniforms.canvasHeight, wrapY);
-    
+    return vec2<bool>(wrapX, wrapY);
+}
+
+fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
+    var delta = otherPos - myPos;
+    let wrap = getWrapFlags();
+    delta.x = wrappedDelta(delta.x, uniforms.canvasWidth, wrap.x);
+    delta.y = wrappedDelta(delta.y, uniforms.canvasHeight, wrap.y);
     return delta;
 }
 
-fn applyBoundary(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
+fn getCellIndex(cx: i32, cy: i32) -> u32 {
+    let wcx = ((cx % i32(uniforms.gridWidth)) + i32(uniforms.gridWidth)) % i32(uniforms.gridWidth);
+    let wcy = ((cy % i32(uniforms.gridHeight)) + i32(uniforms.gridHeight)) % i32(uniforms.gridHeight);
+    return u32(wcy) * uniforms.gridWidth + u32(wcx);
+}
+
+fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
     var newPos = pos;
-    var newVel = vel;
-    
     let w = uniforms.canvasWidth;
     let h = uniforms.canvasHeight;
     
     switch (uniforms.boundaryMode) {
         case PLANE: {
-            // Bounce off edges
             if (newPos.x < 0.0) { newPos.x = -newPos.x; }
             if (newPos.x >= w) { newPos.x = 2.0 * w - newPos.x - 1.0; }
             if (newPos.y < 0.0) { newPos.y = -newPos.y; }
             if (newPos.y >= h) { newPos.y = 2.0 * h - newPos.y - 1.0; }
         }
         case CYLINDER_X: {
-            // Wrap X, bounce Y
             newPos.x = newPos.x - floor(newPos.x / w) * w;
             if (newPos.y < 0.0) { newPos.y = -newPos.y; }
             if (newPos.y >= h) { newPos.y = 2.0 * h - newPos.y - 1.0; }
         }
         case CYLINDER_Y: {
-            // Bounce X, wrap Y
             if (newPos.x < 0.0) { newPos.x = -newPos.x; }
             if (newPos.x >= w) { newPos.x = 2.0 * w - newPos.x - 1.0; }
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
         case TORUS: {
-            // Wrap both axes
             newPos.x = newPos.x - floor(newPos.x / w) * w;
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
         case MOBIUS_X: {
-            // Wrap X with Y flip, bounce Y
-            if (newPos.x < 0.0) {
-                newPos.x = newPos.x + w;
-                newPos.y = h - newPos.y;
-            } else if (newPos.x >= w) {
-                newPos.x = newPos.x - w;
-                newPos.y = h - newPos.y;
-            }
+            if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
+            else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
             if (newPos.y < 0.0) { newPos.y = -newPos.y; }
             if (newPos.y >= h) { newPos.y = 2.0 * h - newPos.y - 1.0; }
         }
         case MOBIUS_Y: {
-            // Bounce X, wrap Y with X flip
             if (newPos.x < 0.0) { newPos.x = -newPos.x; }
             if (newPos.x >= w) { newPos.x = 2.0 * w - newPos.x - 1.0; }
-            if (newPos.y < 0.0) {
-                newPos.y = newPos.y + h;
-                newPos.x = w - newPos.x;
-            } else if (newPos.y >= h) {
-                newPos.y = newPos.y - h;
-                newPos.x = w - newPos.x;
-            }
+            if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
+            else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
         }
         case KLEIN_X: {
-            // Wrap X with Y flip, wrap Y normally
-            if (newPos.x < 0.0) {
-                newPos.x = newPos.x + w;
-                newPos.y = h - newPos.y;
-            } else if (newPos.x >= w) {
-                newPos.x = newPos.x - w;
-                newPos.y = h - newPos.y;
-            }
+            if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
+            else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
         case KLEIN_Y: {
-            // Wrap X normally, wrap Y with X flip
             newPos.x = newPos.x - floor(newPos.x / w) * w;
-            if (newPos.y < 0.0) {
-                newPos.y = newPos.y + h;
-                newPos.x = w - newPos.x;
-            } else if (newPos.y >= h) {
-                newPos.y = newPos.y - h;
-                newPos.x = w - newPos.x;
-            }
+            if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
+            else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
         }
         case PROJECTIVE_PLANE: {
-            // Wrap both axes with flips
-            if (newPos.x < 0.0) {
-                newPos.x = newPos.x + w;
-                newPos.y = h - newPos.y;
-            } else if (newPos.x >= w) {
-                newPos.x = newPos.x - w;
-                newPos.y = h - newPos.y;
-            }
-            if (newPos.y < 0.0) {
-                newPos.y = newPos.y + h;
-                newPos.x = w - newPos.x;
-            } else if (newPos.y >= h) {
-                newPos.y = newPos.y - h;
-                newPos.x = w - newPos.x;
-            }
+            if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
+            else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
+            if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
+            else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
         }
         default: {
-            // Default to torus
             newPos.x = newPos.x - floor(newPos.x / w) * w;
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
     }
-    
     return newPos;
 }
 
@@ -235,22 +222,15 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     let margin = 50.0;
     let turnForce = 0.5;
     
-    // For bounce modes, reverse velocity at edges
     if (uniforms.boundaryMode == PLANE) {
         if (pos.x < margin) { newVel.x += turnForce; }
         if (pos.x > w - margin) { newVel.x -= turnForce; }
         if (pos.y < margin) { newVel.y += turnForce; }
         if (pos.y > h - margin) { newVel.y -= turnForce; }
-    } else if (uniforms.boundaryMode == CYLINDER_X) {
+    } else if (uniforms.boundaryMode == CYLINDER_X || uniforms.boundaryMode == MOBIUS_X) {
         if (pos.y < margin) { newVel.y += turnForce; }
         if (pos.y > h - margin) { newVel.y -= turnForce; }
-    } else if (uniforms.boundaryMode == CYLINDER_Y) {
-        if (pos.x < margin) { newVel.x += turnForce; }
-        if (pos.x > w - margin) { newVel.x -= turnForce; }
-    } else if (uniforms.boundaryMode == MOBIUS_X) {
-        if (pos.y < margin) { newVel.y += turnForce; }
-        if (pos.y > h - margin) { newVel.y -= turnForce; }
-    } else if (uniforms.boundaryMode == MOBIUS_Y) {
+    } else if (uniforms.boundaryMode == CYLINDER_Y || uniforms.boundaryMode == MOBIUS_Y) {
         if (pos.x < margin) { newVel.x += turnForce; }
         if (pos.x > w - margin) { newVel.x -= turnForce; }
     }
@@ -258,32 +238,15 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     return newVel;
 }
 
-@compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let boidIndex = global_id.x;
+// ============================================================================
+// ALGORITHM 0: CLASSIC
+// ============================================================================
+
+fn algorithmClassic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+    let wrap = getWrapFlags();
+    let myCellX = i32(myPos.x / uniforms.cellSize);
+    let myCellY = i32(myPos.y / uniforms.cellSize);
     
-    if (boidIndex >= uniforms.boidCount) {
-        return;
-    }
-    
-    let myPos = positionsIn[boidIndex];
-    let myVel = velocitiesIn[boidIndex];
-    let myCellCoords = getCellCoords(myPos);
-    
-    // Check if this boid is a rebel
-    // Rebels have consistent rebellious periods based on time
-    // Each boid has a unique phase offset, and rebels for ~60 frames when their phase aligns
-    let rebelPeriod = 180u; // ~3 seconds at 60fps between potential rebel phases
-    let rebelDuration = 60u; // ~1 second of rebellion
-    let boidPhase = u32(hash(boidIndex * 12345u) * f32(rebelPeriod));
-    let timeInCycle = (uniforms.frameCount + boidPhase) % rebelPeriod;
-    let inRebelWindow = timeInCycle < rebelDuration;
-    // Only some boids are prone to rebellion (determined by rebels parameter)
-    let isRebelProne = hash(boidIndex * 7919u) < uniforms.rebels * 5.0; // Scale up since it's now persistent
-    let isRebel = isRebelProne && inRebelWindow;
-    let rebelFactor = select(1.0, 0.2, isRebel);
-    
-    // Accumulate forces from neighbors
     var alignmentSum = vec2<f32>(0.0);
     var cohesionSum = vec2<f32>(0.0);
     var separationSum = vec2<f32>(0.0);
@@ -294,97 +257,46 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let separationDist = uniforms.perception * 0.5;
     let separationDistSq = separationDist * separationDist;
     
-    // Max neighbors to process for performance (prevents slowdown in dense clusters)
-    let maxNeighbors = 64u;
-    
-    // Iterate over 3x3 neighboring cells
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
-            var cx = myCellCoords.x + dx;
-            var cy = myCellCoords.y + dy;
+            let cx = myCellX + dx;
+            let cy = myCellY + dy;
             
-            // Handle wrapping for toroidal topologies
-            let wrapX = uniforms.boundaryMode == TORUS || 
-                        uniforms.boundaryMode == CYLINDER_X || 
-                        uniforms.boundaryMode == MOBIUS_X ||
-                        uniforms.boundaryMode == KLEIN_X ||
-                        uniforms.boundaryMode == PROJECTIVE_PLANE;
-            let wrapY = uniforms.boundaryMode == TORUS || 
-                        uniforms.boundaryMode == CYLINDER_Y || 
-                        uniforms.boundaryMode == MOBIUS_Y ||
-                        uniforms.boundaryMode == KLEIN_Y ||
-                        uniforms.boundaryMode == PROJECTIVE_PLANE;
-            
-            if (wrapX) {
-                cx = (cx + i32(uniforms.gridWidth)) % i32(uniforms.gridWidth);
-            } else if (cx < 0i || cx >= i32(uniforms.gridWidth)) {
-                continue;
-            }
-            
-            if (wrapY) {
-                cy = (cy + i32(uniforms.gridHeight)) % i32(uniforms.gridHeight);
-            } else if (cy < 0i || cy >= i32(uniforms.gridHeight)) {
-                continue;
-            }
+            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
+            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
             
             let cellIdx = getCellIndex(cx, cy);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
             
-            // Iterate over boids in this cell
-            for (var i = 0u; i < cellCount && neighborCount < maxNeighbors; i++) {
-                let otherBoidIndex = sortedIndices[cellStart + i];
+            for (var i = 0u; i < cellCount && neighborCount < 64u; i++) {
+                let otherIdx = sortedIndices[cellStart + i];
+                if (otherIdx == boidIndex) { continue; }
                 
-                if (otherBoidIndex == boidIndex) {
-                    continue;
-                }
-                
-                let otherPos = positionsIn[otherBoidIndex];
-                let otherVel = velocitiesIn[otherBoidIndex];
-                
+                let otherPos = positionsIn[otherIdx];
+                let otherVel = velocitiesIn[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
-                // Handle boids that are extremely close (nearly overlapping)
-                // These need strong separation but can't use delta (it's near zero)
                 if (distSq < 0.01) {
-                    // Apply strong random separation force based on boid indices
-                    let seed = boidIndex * 31u + otherBoidIndex * 17u + uniforms.frameCount;
-                    let randomDir = normalize(random2(seed));
-                    separationSum += randomDir * 5.0; // Strong push in random direction
+                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 5.0;
                     closeCount++;
                     continue;
                 }
                 
                 if (distSq < perceptionSq) {
                     let dist = sqrt(distSq);
-                    
-                    // Alignment: average velocity of neighbors
                     alignmentSum += otherVel;
-                    
-                    // Cohesion: average position of neighbors
                     cohesionSum += delta;
-                    
                     neighborCount++;
                     
-                    // Separation: avoid close neighbors
                     if (distSq < separationDistSq) {
-                        // Stronger weight for closer boids (inverse square falloff)
-                        let normalizedDist = dist / separationDist;
-                        let weight = (1.0 - normalizedDist) * (1.0 - normalizedDist);
-                        separationSum -= delta * (weight / dist);
+                        let weight = (1.0 - dist / separationDist);
+                        separationSum -= delta * (weight * weight / dist);
                         closeCount++;
                     }
                 }
             }
-            
-            // Early exit if we've hit max neighbors
-            if (neighborCount >= maxNeighbors) {
-                break;
-            }
-        }
-        if (neighborCount >= maxNeighbors) {
-            break;
         }
     }
     
@@ -392,26 +304,629 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     if (neighborCount > 0u) {
         let nf = f32(neighborCount);
-        
-        // Alignment force
         if (uniforms.alignment > 0.0) {
-            let avgVel = alignmentSum / nf;
-            let alignForce = limitMagnitude(avgVel - myVel, uniforms.maxForce);
-            acceleration += alignForce * uniforms.alignment * rebelFactor;
+            acceleration += limitMagnitude(alignmentSum / nf - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
         }
-        
-        // Cohesion force
         if (uniforms.cohesion > 0.0) {
-            let avgDelta = cohesionSum / nf;
-            let cohesionForce = limitMagnitude(avgDelta, uniforms.maxForce);
-            acceleration += cohesionForce * uniforms.cohesion * rebelFactor;
+            acceleration += limitMagnitude(cohesionSum / nf, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
         }
     }
     
-    // Separation force (higher force limit than other rules for collision avoidance)
     if (closeCount > 0u && uniforms.separation > 0.0) {
-        let sepForce = limitMagnitude(separationSum, uniforms.maxForce * 3.0);
-        acceleration += sepForce * uniforms.separation;
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 3.0) * uniforms.separation;
+    }
+    
+    return acceleration;
+}
+
+// ============================================================================
+// ALGORITHM 1: TOPOLOGICAL K-NN
+// ============================================================================
+
+fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+    let wrap = getWrapFlags();
+    let myCellX = i32(myPos.x / uniforms.cellSize);
+    let myCellY = i32(myPos.y / uniforms.cellSize);
+    
+    var knnDistSq: array<f32, 12>;
+    var knnIndex: array<u32, 12>;
+    for (var i = 0u; i < K_NEIGHBORS; i++) {
+        knnDistSq[i] = 1e10;
+        knnIndex[i] = 0xFFFFFFFFu;
+    }
+    
+    var separationSum = vec2<f32>(0.0);
+    var separationCount = 0u;
+    let separationRadius = uniforms.perception * 0.4;
+    
+    for (var dy = -2i; dy <= 2i; dy++) {
+        for (var dx = -2i; dx <= 2i; dx++) {
+            let cx = myCellX + dx;
+            let cy = myCellY + dy;
+            
+            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
+            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            
+            let cellIdx = getCellIndex(cx, cy);
+            let cellStart = prefixSums[cellIdx];
+            let cellCount = cellCounts[cellIdx];
+            
+            for (var i = 0u; i < cellCount; i++) {
+                let otherIdx = sortedIndices[cellStart + i];
+                if (otherIdx == boidIndex) { continue; }
+                
+                let otherPos = positionsIn[otherIdx];
+                let delta = getNeighborDelta(myPos, otherPos);
+                let distSq = dot(delta, delta);
+                
+                if (distSq < 0.1) {
+                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 8.0;
+                    separationCount++;
+                    continue;
+                }
+                
+                if (distSq < separationRadius * separationRadius) {
+                    let dist = sqrt(distSq);
+                    separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
+                    separationCount++;
+                }
+                
+                if (distSq < knnDistSq[K_NEIGHBORS - 1u]) {
+                    var insertPos = K_NEIGHBORS - 1u;
+                    for (var j = 0u; j < K_NEIGHBORS - 1u; j++) {
+                        if (distSq < knnDistSq[j]) { insertPos = j; break; }
+                    }
+                    for (var j = K_NEIGHBORS - 1u; j > insertPos; j--) {
+                        knnDistSq[j] = knnDistSq[j - 1u];
+                        knnIndex[j] = knnIndex[j - 1u];
+                    }
+                    knnDistSq[insertPos] = distSq;
+                    knnIndex[insertPos] = otherIdx;
+                }
+            }
+        }
+    }
+    
+    var alignmentSum = vec2<f32>(0.0);
+    var cohesionSum = vec2<f32>(0.0);
+    var totalWeight = 0.0;
+    
+    for (var i = 0u; i < K_NEIGHBORS; i++) {
+        if (knnIndex[i] == 0xFFFFFFFFu) { continue; }
+        let dist = sqrt(knnDistSq[i]);
+        let weight = smoothKernel(dist, uniforms.perception);
+        if (weight > 0.0) {
+            alignmentSum += velocitiesIn[knnIndex[i]] * weight;
+            cohesionSum += getNeighborDelta(myPos, positionsIn[knnIndex[i]]) * weight;
+            totalWeight += weight;
+        }
+    }
+    
+    var acceleration = vec2<f32>(0.0);
+    
+    if (totalWeight > 0.0) {
+        if (uniforms.alignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        }
+        if (uniforms.cohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
+        }
+    }
+    
+    if (separationCount > 0u && uniforms.separation > 0.0) {
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 4.0) * uniforms.separation;
+    }
+    
+    return acceleration;
+}
+
+// ============================================================================
+// ALGORITHM 2: SMOOTH METRIC
+// ============================================================================
+
+fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+    let wrap = getWrapFlags();
+    
+    let jitterSeed = uniforms.frameCount * 7u;
+    let jitterX = (hash(jitterSeed) - 0.5) * uniforms.cellSize * 0.3;
+    let jitterY = (hash(jitterSeed + 1u) - 0.5) * uniforms.cellSize * 0.3;
+    let jitteredPos = myPos + vec2<f32>(jitterX, jitterY);
+    let myCellX = i32(jitteredPos.x / uniforms.cellSize);
+    let myCellY = i32(jitteredPos.y / uniforms.cellSize);
+    
+    var alignmentSum = vec2<f32>(0.0);
+    var cohesionSum = vec2<f32>(0.0);
+    var separationSum = vec2<f32>(0.0);
+    var totalWeight = 0.0;
+    var separationCount = 0u;
+    let separationRadius = uniforms.perception * 0.35;
+    
+    for (var dy = -1i; dy <= 1i; dy++) {
+        for (var dx = -1i; dx <= 1i; dx++) {
+            let cx = myCellX + dx;
+            let cy = myCellY + dy;
+            
+            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
+            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            
+            let cellIdx = getCellIndex(cx, cy);
+            let cellStart = prefixSums[cellIdx];
+            let cellCount = cellCounts[cellIdx];
+            
+            for (var i = 0u; i < cellCount && totalWeight < 80.0; i++) {
+                let otherIdx = sortedIndices[cellStart + i];
+                if (otherIdx == boidIndex) { continue; }
+                
+                let otherPos = positionsIn[otherIdx];
+                let delta = getNeighborDelta(myPos, otherPos);
+                let distSq = dot(delta, delta);
+                
+                if (distSq < 0.1) {
+                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 6.0;
+                    separationCount++;
+                    continue;
+                }
+                
+                let dist = sqrt(distSq);
+                let weight = smoothKernel(dist, uniforms.perception);
+                
+                if (weight > 0.0) {
+                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    cohesionSum += delta * weight;
+                    totalWeight += weight;
+                    
+                    if (dist < separationRadius) {
+                        separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
+                        separationCount++;
+                    }
+                }
+            }
+        }
+    }
+    
+    var acceleration = vec2<f32>(0.0);
+    
+    if (totalWeight > 0.0) {
+        if (uniforms.alignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        }
+        if (uniforms.cohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
+        }
+    }
+    
+    if (separationCount > 0u && uniforms.separation > 0.0) {
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 3.5) * uniforms.separation;
+    }
+    
+    return acceleration;
+}
+
+// ============================================================================
+// ALGORITHM 3: HASH-FREE (Per-boid randomized grid - no global seams)
+// Each boid has its own random offset to the grid, so cell boundaries
+// are different for every boid - eliminating coherent grid artifacts
+// Now with density-adaptive force scaling for stable high-density behavior
+// ============================================================================
+
+fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+    let wrap = getWrapFlags();
+    
+    // Each boid gets a unique, stable grid offset based on its index
+    let offsetX = hash(boidIndex * 73856093u) * uniforms.cellSize;
+    let offsetY = hash(boidIndex * 19349663u) * uniforms.cellSize;
+    
+    let shiftedPos = myPos + vec2<f32>(offsetX, offsetY);
+    let myCellX = i32(shiftedPos.x / uniforms.cellSize);
+    let myCellY = i32(shiftedPos.y / uniforms.cellSize);
+    
+    var alignmentSum = vec2<f32>(0.0);
+    var cohesionSum = vec2<f32>(0.0);
+    var separationSum = vec2<f32>(0.0);
+    var totalWeight = 0.0;
+    var neighborCount = 0u;
+    var veryCloseCount = 0u;
+    
+    let perception = uniforms.perception;
+    let separationRadius = perception * 0.4;
+    let veryCloseRadius = 3.0; // Minimum comfortable distance
+    
+    // Search area
+    for (var dy = -2i; dy <= 2i; dy++) {
+        for (var dx = -2i; dx <= 2i; dx++) {
+            let cx = myCellX + dx;
+            let cy = myCellY + dy;
+            
+            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
+            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            
+            let cellIdx = getCellIndex(cx, cy);
+            let cellStart = prefixSums[cellIdx];
+            let cellCount = cellCounts[cellIdx];
+            
+            for (var i = 0u; i < cellCount; i++) {
+                let otherIdx = sortedIndices[cellStart + i];
+                if (otherIdx == boidIndex) { continue; }
+                
+                let otherPos = positionsIn[otherIdx];
+                let delta = getNeighborDelta(myPos, otherPos);
+                let distSq = dot(delta, delta);
+                
+                // Handle overlapping/very close boids with STABLE separation
+                // Use deterministic direction based on boid indices (not random per frame)
+                if (distSq < 1.0) {
+                    // Deterministic push direction based on index difference
+                    // This prevents jittering by always pushing in the same direction
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749; // Golden ratio for good distribution
+                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
+                    let pushStrength = 2.0; // Gentler push
+                    separationSum += pushDir * pushStrength;
+                    veryCloseCount++;
+                    continue;
+                }
+                
+                let dist = sqrt(distSq);
+                
+                // Track very close neighbors for density-adaptive scaling
+                if (dist < veryCloseRadius) {
+                    veryCloseCount++;
+                }
+                
+                // Smooth kernel weight
+                let weight = smoothKernel(dist, perception);
+                
+                if (weight > 0.0) {
+                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    cohesionSum += delta * weight;
+                    totalWeight += weight;
+                    neighborCount++;
+                }
+                
+                // Separation with softer kernel at very close range
+                if (dist < separationRadius) {
+                    // Softer separation: linear falloff instead of inverse square at very close range
+                    let normalizedDist = dist / separationRadius;
+                    let sepStrength = (1.0 - normalizedDist) * (1.0 - normalizedDist * 0.5);
+                    separationSum -= normalize(delta) * sepStrength;
+                }
+            }
+        }
+    }
+    
+    // Density-adaptive force scaling
+    // When density is high, reduce individual force contributions to prevent chaos
+    let densityFactor = 1.0 / (1.0 + f32(veryCloseCount) * 0.15);
+    
+    var acceleration = vec2<f32>(0.0);
+    
+    if (totalWeight > 0.0) {
+        if (uniforms.alignment > 0.0) {
+            let alignForce = limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce);
+            acceleration += alignForce * uniforms.alignment * rebelFactor;
+        }
+        if (uniforms.cohesion > 0.0) {
+            // Reduce cohesion when density is high (already crowded, don't pull more)
+            let cohesionForce = limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce);
+            acceleration += cohesionForce * uniforms.cohesion * rebelFactor * densityFactor;
+        }
+    }
+    
+    // Separation: scale by density factor to prevent oscillation in crowds
+    if (length(separationSum) > 0.0 && uniforms.separation > 0.0) {
+        // Cap separation force more aggressively and scale by density
+        let maxSepForce = uniforms.maxForce * (2.0 + densityFactor);
+        let sepForce = limitMagnitude(separationSum, maxSepForce);
+        acceleration += sepForce * uniforms.separation * densityFactor;
+    }
+    
+    return acceleration;
+}
+
+// ============================================================================
+// ALGORITHM 4: STOCHASTIC SAMPLING
+// Randomly sample cells around the boid with distance-weighted probability
+// No fixed cell boundaries - samples from random positions around the boid
+// ============================================================================
+
+fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+    let wrap = getWrapFlags();
+    
+    var alignmentSum = vec2<f32>(0.0);
+    var cohesionSum = vec2<f32>(0.0);
+    var separationSum = vec2<f32>(0.0);
+    var totalWeight = 0.0;
+    var separationCount = 0u;
+    
+    let perception = uniforms.perception;
+    let separationRadius = perception * 0.4;
+    
+    // Sample multiple random points within perception radius
+    // For each point, check the cell it falls in
+    let numSamples = 32u;
+    var baseSeed = boidIndex * 1000003u + uniforms.frameCount * 31337u;
+    
+    // Also check immediate neighbors to ensure we don't miss close boids
+    let myCellX = i32(myPos.x / uniforms.cellSize);
+    let myCellY = i32(myPos.y / uniforms.cellSize);
+    
+    // First pass: check immediate vicinity (3x3) for close neighbors
+    for (var dy = -1i; dy <= 1i; dy++) {
+        for (var dx = -1i; dx <= 1i; dx++) {
+            let cx = myCellX + dx;
+            let cy = myCellY + dy;
+            
+            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
+            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            
+            let cellIdx = getCellIndex(cx, cy);
+            let cellStart = prefixSums[cellIdx];
+            let cellCount = cellCounts[cellIdx];
+            
+            // Sample up to 3 boids from each nearby cell
+            let sampleCount = min(cellCount, 3u);
+            for (var i = 0u; i < sampleCount; i++) {
+                let otherIdx = sortedIndices[cellStart + i];
+                if (otherIdx == boidIndex) { continue; }
+                
+                let otherPos = positionsIn[otherIdx];
+                let delta = getNeighborDelta(myPos, otherPos);
+                let distSq = dot(delta, delta);
+                
+                if (distSq < 0.1) {
+                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 7.0;
+                    separationCount++;
+                    continue;
+                }
+                
+                let dist = sqrt(distSq);
+                let weight = smoothKernel(dist, perception);
+                
+                if (weight > 0.0) {
+                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    cohesionSum += delta * weight;
+                    totalWeight += weight;
+                }
+                
+                if (dist < separationRadius) {
+                    separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
+                    separationCount++;
+                }
+            }
+        }
+    }
+    
+    // Second pass: random sampling from perception area
+    for (var s = 0u; s < numSamples; s++) {
+        // Generate random point within perception radius using rejection sampling
+        let seed = baseSeed + s * 7u;
+        let angle = hash(seed) * 6.283185307;
+        let r = sqrt(hash(seed + 1u)) * perception; // sqrt for uniform disk distribution
+        
+        let sampleOffset = vec2<f32>(cos(angle), sin(angle)) * r;
+        var samplePos = myPos + sampleOffset;
+        
+        // Wrap sample position
+        if (wrap.x) { samplePos.x = samplePos.x - floor(samplePos.x / uniforms.canvasWidth) * uniforms.canvasWidth; }
+        if (wrap.y) { samplePos.y = samplePos.y - floor(samplePos.y / uniforms.canvasHeight) * uniforms.canvasHeight; }
+        
+        // Clamp to valid range
+        samplePos.x = clamp(samplePos.x, 0.0, uniforms.canvasWidth - 1.0);
+        samplePos.y = clamp(samplePos.y, 0.0, uniforms.canvasHeight - 1.0);
+        
+        let sampleCellX = i32(samplePos.x / uniforms.cellSize);
+        let sampleCellY = i32(samplePos.y / uniforms.cellSize);
+        
+        let cellIdx = getCellIndex(sampleCellX, sampleCellY);
+        let cellStart = prefixSums[cellIdx];
+        let cellCount = cellCounts[cellIdx];
+        
+        if (cellCount == 0u) { continue; }
+        
+        // Pick a random boid from this cell
+        let pickIdx = hash2(seed + 2u) % cellCount;
+        let otherIdx = sortedIndices[cellStart + pickIdx];
+        
+        if (otherIdx == boidIndex) { continue; }
+        
+        let otherPos = positionsIn[otherIdx];
+        let delta = getNeighborDelta(myPos, otherPos);
+        let distSq = dot(delta, delta);
+        
+        if (distSq > perception * perception) { continue; }
+        
+        let dist = sqrt(distSq);
+        let weight = smoothKernel(dist, perception);
+        
+        if (weight > 0.0) {
+            alignmentSum += velocitiesIn[otherIdx] * weight;
+            cohesionSum += delta * weight;
+            totalWeight += weight;
+        }
+        
+        if (dist < separationRadius && dist > 0.1) {
+            separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
+            separationCount++;
+        }
+    }
+    
+    var acceleration = vec2<f32>(0.0);
+    
+    if (totalWeight > 0.0) {
+        if (uniforms.alignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        }
+        if (uniforms.cohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
+        }
+    }
+    
+    if (separationCount > 0u && uniforms.separation > 0.0) {
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 4.0) * uniforms.separation;
+    }
+    
+    return acceleration;
+}
+
+// ============================================================================
+// ALGORITHM 5: DENSITY ADAPTIVE
+// Combines hash-free approach with sophisticated density-based force adaptation
+// Uses pressure-like model: higher local density = reduced cohesion, maintained separation
+// ============================================================================
+
+fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+    let wrap = getWrapFlags();
+    
+    // Per-boid grid offset for hash-free behavior
+    let offsetX = hash(boidIndex * 73856093u) * uniforms.cellSize;
+    let offsetY = hash(boidIndex * 19349663u) * uniforms.cellSize;
+    let shiftedPos = myPos + vec2<f32>(offsetX, offsetY);
+    let myCellX = i32(shiftedPos.x / uniforms.cellSize);
+    let myCellY = i32(shiftedPos.y / uniforms.cellSize);
+    
+    var alignmentSum = vec2<f32>(0.0);
+    var cohesionSum = vec2<f32>(0.0);
+    var separationSum = vec2<f32>(0.0);
+    var totalWeight = 0.0;
+    var localDensity = 0.0; // Measure of how crowded this area is
+    
+    let perception = uniforms.perception;
+    let innerRadius = perception * 0.25; // Very close - high pressure
+    let midRadius = perception * 0.5;    // Medium range
+    
+    // First pass: measure local density and collect neighbor data
+    for (var dy = -2i; dy <= 2i; dy++) {
+        for (var dx = -2i; dx <= 2i; dx++) {
+            let cx = myCellX + dx;
+            let cy = myCellY + dy;
+            
+            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
+            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            
+            let cellIdx = getCellIndex(cx, cy);
+            let cellStart = prefixSums[cellIdx];
+            let cellCount = cellCounts[cellIdx];
+            
+            for (var i = 0u; i < cellCount; i++) {
+                let otherIdx = sortedIndices[cellStart + i];
+                if (otherIdx == boidIndex) { continue; }
+                
+                let otherPos = positionsIn[otherIdx];
+                let delta = getNeighborDelta(myPos, otherPos);
+                let distSq = dot(delta, delta);
+                
+                if (distSq > perception * perception) { continue; }
+                
+                let dist = sqrt(distSq);
+                
+                // Density contribution - closer boids contribute more to perceived density
+                let densityWeight = smoothKernel(dist, perception);
+                localDensity += densityWeight;
+                
+                // Handle very close/overlapping boids
+                if (dist < 1.0) {
+                    // Deterministic gentle push
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
+                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
+                    separationSum += pushDir * 1.5;
+                    continue;
+                }
+                
+                // Alignment and cohesion with smooth weights
+                let weight = smoothKernel(dist, perception);
+                if (weight > 0.0) {
+                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    cohesionSum += delta * weight;
+                    totalWeight += weight;
+                }
+                
+                // Separation: soft pressure model
+                // Inner zone: strong repulsion
+                // Mid zone: moderate repulsion
+                // Outer zone: no repulsion
+                if (dist < midRadius) {
+                    var sepStrength: f32;
+                    if (dist < innerRadius) {
+                        // Very close: strong but capped repulsion
+                        let t = dist / innerRadius;
+                        sepStrength = (1.0 - t) * 2.0;
+                    } else {
+                        // Mid range: gentle falloff
+                        let t = (dist - innerRadius) / (midRadius - innerRadius);
+                        sepStrength = (1.0 - t) * 0.8;
+                    }
+                    separationSum -= normalize(delta) * sepStrength;
+                }
+            }
+        }
+    }
+    
+    // Density-adaptive force scaling
+    // High density: reduce cohesion (already crowded), maintain alignment, cap separation
+    // Low density: normal forces
+    let idealDensity = 3.0; // Comfortable number of weighted neighbors
+    let densityRatio = localDensity / idealDensity;
+    
+    // Cohesion modifier: strong at low density, weak at high density
+    let cohesionMod = 1.0 / (1.0 + max(0.0, densityRatio - 1.0) * 0.5);
+    
+    // Separation modifier: slightly reduced at very high density to prevent oscillation
+    let separationMod = 1.0 / (1.0 + max(0.0, densityRatio - 2.0) * 0.2);
+    
+    var acceleration = vec2<f32>(0.0);
+    
+    if (totalWeight > 0.0) {
+        // Alignment: mostly unaffected by density
+        if (uniforms.alignment > 0.0) {
+            let alignForce = limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce);
+            acceleration += alignForce * uniforms.alignment * rebelFactor;
+        }
+        
+        // Cohesion: reduced when crowded
+        if (uniforms.cohesion > 0.0) {
+            let cohesionForce = limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce);
+            acceleration += cohesionForce * uniforms.cohesion * rebelFactor * cohesionMod;
+        }
+    }
+    
+    // Separation: adaptive with density
+    if (length(separationSum) > 0.0 && uniforms.separation > 0.0) {
+        let sepForce = limitMagnitude(separationSum, uniforms.maxForce * 2.5);
+        acceleration += sepForce * uniforms.separation * separationMod;
+    }
+    
+    return acceleration;
+}
+
+// ============================================================================
+// MAIN ENTRY POINT
+// ============================================================================
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let boidIndex = global_id.x;
+    if (boidIndex >= uniforms.boidCount) { return; }
+    
+    let myPos = positionsIn[boidIndex];
+    let myVel = velocitiesIn[boidIndex];
+    
+    // Rebel behavior
+    let rebelPeriod = 180u;
+    let rebelDuration = 60u;
+    let boidPhase = u32(hash(boidIndex * 12345u) * f32(rebelPeriod));
+    let timeInCycle = (uniforms.frameCount + boidPhase) % rebelPeriod;
+    let isRebel = hash(boidIndex * 7919u) < uniforms.rebels * 5.0 && timeInCycle < rebelDuration;
+    let rebelFactor = select(1.0, 0.2, isRebel);
+    
+    // Select algorithm
+    var acceleration: vec2<f32>;
+    switch (uniforms.algorithmMode) {
+        case ALG_CLASSIC: { acceleration = algorithmClassic(boidIndex, myPos, myVel, rebelFactor); }
+        case ALG_TOPOLOGICAL_KNN: { acceleration = algorithmTopologicalKNN(boidIndex, myPos, myVel, rebelFactor); }
+        case ALG_SMOOTH_METRIC: { acceleration = algorithmSmoothMetric(boidIndex, myPos, myVel, rebelFactor); }
+        case ALG_HASH_FREE: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
+        case ALG_STOCHASTIC: { acceleration = algorithmStochastic(boidIndex, myPos, myVel, rebelFactor); }
+        case ALG_DENSITY_ADAPTIVE: { acceleration = algorithmDensityAdaptive(boidIndex, myPos, myVel, rebelFactor); }
+        default: { acceleration = algorithmClassic(boidIndex, myPos, myVel, rebelFactor); }
     }
     
     // Cursor interaction
@@ -420,59 +935,42 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let toCursor = getNeighborDelta(myPos, cursorPos);
         let cursorDist = length(toCursor);
         
-        if (cursorDist > 1.0) {
-            let cursorInfluence = 200.0; // Influence radius
+        if (cursorDist > 1.0 && cursorDist < 200.0) {
             let strength = select(0.3, 1.0, uniforms.cursorPressed != 0u);
-            
-            if (cursorDist < cursorInfluence) {
-                let cursorWeight = (1.0 - cursorDist / cursorInfluence) * strength;
-                var cursorForce = normalize(toCursor) * uniforms.cursorForce * cursorWeight;
-                
-                if (uniforms.cursorMode == 2u) {
-                    cursorForce = -cursorForce; // Repel
-                }
-                
-                acceleration += cursorForce;
-            }
+            let cursorWeight = smoothKernel(cursorDist, 200.0) * strength * 3.0;
+            var cursorForce = normalize(toCursor) * uniforms.cursorForce * cursorWeight;
+            if (uniforms.cursorMode == 2u) { cursorForce = -cursorForce; }
+            acceleration += cursorForce;
         }
     }
     
-    // Add noise
+    // Noise
     if (uniforms.noise > 0.0) {
-        let noiseSeed = boidIndex * 31u + uniforms.frameCount * 17u;
-        let noiseVec = random2(noiseSeed) * uniforms.noise * uniforms.maxForce;
-        acceleration += noiseVec;
+        acceleration += random2(boidIndex * 31u + uniforms.frameCount * 17u) * uniforms.noise * uniforms.maxForce;
     }
     
-    // Apply boundary steering
+    // Apply forces
     var newVel = applyBoundaryVelocity(myPos, myVel + acceleration);
-    
-    // Limit speed
     newVel = limitMagnitude(newVel, uniforms.maxSpeed);
     
-    // Ensure minimum speed
+    // Minimum speed
     let speed = length(newVel);
     if (speed < uniforms.maxSpeed * 0.3) {
         if (speed > 0.001) {
             newVel = normalize(newVel) * uniforms.maxSpeed * 0.3;
         } else {
-            // Give stationary boid a random direction
-            let rndSeed = boidIndex * 13u + uniforms.frameCount * 23u;
-            newVel = normalize(random2(rndSeed)) * uniforms.maxSpeed * 0.3;
+            newVel = normalize(random2(boidIndex * 13u + uniforms.frameCount * 23u)) * uniforms.maxSpeed * 0.3;
         }
     }
     
     // Update position
     var newPos = myPos + newVel * uniforms.deltaTime * 60.0;
-    
-    // Apply boundary conditions
-    newPos = applyBoundary(newPos, newVel);
+    newPos = applyBoundary(newPos);
     
     // Write output
     positionsOut[boidIndex] = newPos;
     velocitiesOut[boidIndex] = newVel;
     
     // Update trail
-    let trailIdx = boidIndex * uniforms.trailLength + uniforms.trailHead;
-    trails[trailIdx] = newPos;
+    trails[boidIndex * uniforms.trailLength + uniforms.trailHead] = newPos;
 }

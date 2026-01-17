@@ -8,7 +8,8 @@ import {
 	BoundaryMode,
 	ColorMode,
 	ColorSpectrum,
-	CursorMode
+	CursorMode,
+	AlgorithmMode
 } from '$lib/webgpu/types';
 
 // Main simulation parameters store
@@ -131,5 +132,9 @@ export function setPopulation(value: number): void {
 	needsBufferReallocation.set(true);
 }
 
+export function setAlgorithmMode(value: AlgorithmMode): void {
+	params.update((p) => ({ ...p, algorithmMode: value }));
+}
+
 // Export enums for use in components
-export { BoundaryMode, ColorMode, ColorSpectrum, CursorMode };
+export { BoundaryMode, ColorMode, ColorSpectrum, CursorMode, AlgorithmMode };

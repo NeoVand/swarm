@@ -20,10 +20,12 @@
 		setColorSpectrum,
 		setSensitivity,
 		setPopulation,
+		setAlgorithmMode,
 		BoundaryMode,
 		ColorMode,
 		ColorSpectrum,
-		CursorMode
+		CursorMode,
+		AlgorithmMode
 	} from '$lib/stores/simulation';
 
 	let currentParams = $derived($params);
@@ -61,6 +63,15 @@
 		{ value: ColorSpectrum.Rainbow, label: 'Rainbow' },
 		{ value: ColorSpectrum.Mono, label: 'Mono' }
 	];
+
+	const algorithmOptions = [
+		{ value: AlgorithmMode.Classic, label: 'Classic' },
+		{ value: AlgorithmMode.TopologicalKNN, label: 'Topological k-NN' },
+		{ value: AlgorithmMode.SmoothMetric, label: 'Smooth Metric' },
+		{ value: AlgorithmMode.HashFree, label: 'Hash-Free' },
+		{ value: AlgorithmMode.StochasticSample, label: 'Stochastic' },
+		{ value: AlgorithmMode.DensityAdaptive, label: 'Density Adaptive' }
+	];
 </script>
 
 <!-- Gear icon -->
@@ -88,6 +99,15 @@
 
 	<!-- Scrollable content -->
 	<div class="flex-1 overflow-y-auto px-3 pb-4">
+		<!-- Algorithm -->
+		<div class="mb-3">
+			<div class="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-zinc-600">Algorithm</div>
+			<select value={currentParams.algorithmMode} onchange={(e) => setAlgorithmMode(parseInt(e.currentTarget.value))}
+				class="sel w-full" aria-label="Algorithm">
+				{#each algorithmOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
+			</select>
+		</div>
+
 		<!-- Flocking -->
 		<div class="mb-3">
 			<div class="mb-1.5 text-[9px] font-medium uppercase tracking-wider text-zinc-600">Flocking</div>
