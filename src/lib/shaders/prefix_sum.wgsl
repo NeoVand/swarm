@@ -20,7 +20,9 @@ struct Uniforms {
     rebels: f32,
     boundaryMode: u32,
     cursorMode: u32,
+    cursorShape: u32,
     cursorForce: f32,
+    cursorRadius: f32,
     cursorX: f32,
     cursorY: f32,
     cursorPressed: u32,
@@ -32,6 +34,7 @@ struct Uniforms {
     deltaTime: f32,
     time: f32,
     frameCount: u32,
+    algorithmMode: u32,
 }
 
 const WORKGROUP_SIZE: u32 = 256u;

@@ -158,8 +158,26 @@ fn vs_main(
     let idx1 = (head + uniforms.trailLength - age - 1u) % uniforms.trailLength;
     let idx2 = (head + uniforms.trailLength - age) % uniforms.trailLength;
     
-    let p1 = trails[trailBase + idx1];
-    let p2 = trails[trailBase + idx2];
+    var p1 = trails[trailBase + idx1];
+    var p2 = trails[trailBase + idx2];
+    
+    // For the newest segment (age == 0), connect directly behind the current boid's base
+    // The boid triangle has vertices at (1.0, 0.0), (-0.7, ±0.5) in local space
+    // The base center is at (-0.7, 0), which is 0.7 * scale behind the boid center
+    if (age == 0u) {
+        let currentPos = positions[boidIndex];
+        let vel = velocities[boidIndex];
+        let speed = length(vel);
+        if (speed > 0.001) {
+            let dir = vel / speed;
+            // Pull back well past the base to ensure no overlap
+            // Using 0.85 to provide a clear gap behind the triangle
+            let baseOffset = 0.85 * uniforms.boidSize * 6.0;
+            p2 = currentPos - dir * baseOffset;
+        } else {
+            p2 = currentPos;
+        }
+    }
     
     // Skip if points are at origin (uninitialized) or wrapped across boundary
     if ((p1.x == 0.0 && p1.y == 0.0) || (p2.x == 0.0 && p2.y == 0.0) || isWrapped(p1, p2)) {
@@ -185,27 +203,56 @@ fn vs_main(
     }
     
     let normDir = dir / len;
-    let perp = vec2<f32>(-normDir.y, normDir.x);
+    let perp1 = vec2<f32>(-normDir.y, normDir.x);
+    
+    // For the newest segment, use the current velocity direction for p2's perpendicular
+    // This ensures the trail width aligns exactly with the triangle's base orientation
+    var perp2 = perp1;
+    if (age == 0u) {
+        let vel = velocities[boidIndex];
+        let speed = length(vel);
+        if (speed > 0.001) {
+            let velDir = vel / speed;
+            perp2 = vec2<f32>(-velDir.y, velDir.x);
+        }
+    }
     
     // Width tapers from head (thick) to tail (thin)
     // Match boid triangle base: vertices at (-0.7, ±0.5), scaled by boidSize * 6.0
-    // Half-width = 0.5 * 6.0 = 3.0, but trail connects at center so use slightly larger
+    // Half-width at base = 0.5 * boidSize * 6.0 = 3.0 * boidSize
+    // Use slightly smaller (0.95x) to avoid edge overlap
     let ageRatio = f32(age) / f32(uniforms.trailLength - 1u);
-    let baseWidth = uniforms.boidSize * 3.5; // Slightly larger to blend smoothly with boid body
+    let baseWidth = uniforms.boidSize * 2.85; // Slightly smaller than triangle base
     let width1 = baseWidth * (1.0 - ageRatio * 0.95); // Don't fully taper to zero
-    let width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)) * 0.95);
     
-    // Build quad vertices
+    // For newest segment, width2 should be slightly smaller than triangle base
+    var width2: f32;
+    if (age == 0u) {
+        width2 = baseWidth;
+    } else {
+        width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)) * 0.95);
+    }
+    
+    // Build quad vertices - use perp1 for p1 end, perp2 for p2 end
     var worldPos: vec2<f32>;
     var alpha: f32;
     
+    // Alpha at p2 should be 1.0 for newest segment to match boid opacity
+    let alpha1 = 1.0 - ageRatio;
+    var alpha2: f32;
+    if (age == 0u) {
+        alpha2 = 1.0; // Exact match with boid
+    } else {
+        alpha2 = 1.0 - ageRatio - 1.0 / f32(uniforms.trailLength - 1u);
+    }
+    
     switch (quadVertex) {
-        case 0u: { worldPos = p1 + perp * width1; alpha = 1.0 - ageRatio; }
-        case 1u: { worldPos = p1 - perp * width1; alpha = 1.0 - ageRatio; }
-        case 2u: { worldPos = p2 + perp * width2; alpha = 1.0 - ageRatio - 1.0 / f32(uniforms.trailLength - 1u); }
-        case 3u: { worldPos = p2 + perp * width2; alpha = 1.0 - ageRatio - 1.0 / f32(uniforms.trailLength - 1u); }
-        case 4u: { worldPos = p1 - perp * width1; alpha = 1.0 - ageRatio; }
-        case 5u: { worldPos = p2 - perp * width2; alpha = 1.0 - ageRatio - 1.0 / f32(uniforms.trailLength - 1u); }
+        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; }
+        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
+        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
+        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
+        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
+        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; }
         default: { worldPos = p1; alpha = 0.0; }
     }
     
