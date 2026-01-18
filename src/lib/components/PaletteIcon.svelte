@@ -20,20 +20,20 @@
 				{ offset: '100%', color: 'rgb(230, 51, 51)' }
 			]
 		},
-		[ColorSpectrum.Cool]: {
-			id: 'cool',
+		[ColorSpectrum.Neon]: {
+			id: 'neon',
 			stops: [
-				{ offset: '0%', color: 'rgb(26, 26, 128)' },
-				{ offset: '50%', color: 'rgb(26, 102, 153)' },
-				{ offset: '100%', color: 'rgb(102, 230, 230)' }
+				{ offset: '0%', color: 'rgb(0, 255, 255)' },
+				{ offset: '50%', color: 'rgb(255, 0, 200)' },
+				{ offset: '100%', color: 'rgb(120, 0, 255)' }
 			]
 		},
-		[ColorSpectrum.Warm]: {
-			id: 'warm',
+		[ColorSpectrum.Sunset]: {
+			id: 'sunset',
 			stops: [
-				{ offset: '0%', color: 'rgb(153, 26, 26)' },
-				{ offset: '50%', color: 'rgb(242, 102, 26)' },
-				{ offset: '100%', color: 'rgb(255, 230, 77)' }
+				{ offset: '0%', color: 'rgb(255, 0, 128)' },
+				{ offset: '50%', color: 'rgb(255, 100, 0)' },
+				{ offset: '100%', color: 'rgb(255, 220, 0)' }
 			]
 		},
 		[ColorSpectrum.Rainbow]: {

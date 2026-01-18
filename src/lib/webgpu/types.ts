@@ -22,8 +22,8 @@ export enum ColorMode {
 
 export enum ColorSpectrum {
 	Chrome = 0,
-	Cool = 1,
-	Warm = 2,
+	Neon = 1,
+	Sunset = 2,
 	Rainbow = 3,
 	Mono = 4
 }
@@ -138,7 +138,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	boidSize: 1,
 	trailLength: 70,
 	colorMode: ColorMode.Orientation,
-	colorSpectrum: ColorSpectrum.Chrome,
+	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
 	population: 10000,
 	algorithmMode: AlgorithmMode.HashFree

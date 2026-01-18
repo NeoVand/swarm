@@ -45,8 +45,8 @@ const COLOR_TURNING: u32 = 4u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
-const SPECTRUM_COOL: u32 = 1u;
-const SPECTRUM_WARM: u32 = 2u;
+const SPECTRUM_NEON: u32 = 1u;
+const SPECTRUM_SUNSET: u32 = 2u;
 const SPECTRUM_RAINBOW: u32 = 3u;
 const SPECTRUM_MONO: u32 = 4u;
 
@@ -107,20 +107,20 @@ fn getColorFromSpectrum(t: f32, spectrum: u32) -> vec3<f32> {
                 return mix(vec3<f32>(0.95, 0.6, 0.2), vec3<f32>(0.9, 0.2, 0.2), (tt - 0.75) * 4.0);
             }
         }
-        case SPECTRUM_COOL: {
-            // Deep blue to teal to cyan
-            return mix(
-                mix(vec3<f32>(0.1, 0.1, 0.5), vec3<f32>(0.1, 0.4, 0.6), tt * 2.0),
-                mix(vec3<f32>(0.1, 0.4, 0.6), vec3<f32>(0.4, 0.9, 0.9), (tt - 0.5) * 2.0),
-                step(0.5, tt)
-            );
-        }
-        case SPECTRUM_WARM: {
-            // Red to orange to yellow
+        case SPECTRUM_NEON: {
+            // Electric cyan to hot pink to purple (synthwave)
             if (tt < 0.5) {
-                return mix(vec3<f32>(0.6, 0.1, 0.1), vec3<f32>(0.95, 0.4, 0.1), tt * 2.0);
+                return mix(vec3<f32>(0.0, 1.0, 1.0), vec3<f32>(1.0, 0.0, 0.78), tt * 2.0);
             } else {
-                return mix(vec3<f32>(0.95, 0.4, 0.1), vec3<f32>(1.0, 0.9, 0.3), (tt - 0.5) * 2.0);
+                return mix(vec3<f32>(1.0, 0.0, 0.78), vec3<f32>(0.47, 0.0, 1.0), (tt - 0.5) * 2.0);
+            }
+        }
+        case SPECTRUM_SUNSET: {
+            // Magenta to orange to gold (dramatic sunset)
+            if (tt < 0.5) {
+                return mix(vec3<f32>(1.0, 0.0, 0.5), vec3<f32>(1.0, 0.4, 0.0), tt * 2.0);
+            } else {
+                return mix(vec3<f32>(1.0, 0.4, 0.0), vec3<f32>(1.0, 0.86, 0.0), (tt - 0.5) * 2.0);
             }
         }
         case SPECTRUM_RAINBOW: {

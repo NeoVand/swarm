@@ -287,8 +287,8 @@
 
 	const spectrumOptions = [
 		{ value: ColorSpectrum.Chrome, label: 'Chrome' },
-		{ value: ColorSpectrum.Cool, label: 'Cool' },
-		{ value: ColorSpectrum.Warm, label: 'Warm' },
+		{ value: ColorSpectrum.Neon, label: 'Neon' },
+		{ value: ColorSpectrum.Sunset, label: 'Sunset' },
 		{ value: ColorSpectrum.Rainbow, label: 'Rainbow' },
 		{ value: ColorSpectrum.Mono, label: 'Mono' }
 	];
@@ -611,14 +611,14 @@
 
 <style>
 	.panel {
-		background: rgba(20, 20, 24, 0.65);
-		backdrop-filter: blur(20px) saturate(1.2);
-		-webkit-backdrop-filter: blur(20px) saturate(1.2);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(8, 8, 12, 0.92);
+		backdrop-filter: blur(24px) saturate(1.1);
+		-webkit-backdrop-filter: blur(24px) saturate(1.1);
+		border: 1px solid rgba(255, 255, 255, 0.06);
 		box-shadow: 
-			0 4px 24px rgba(0, 0, 0, 0.4),
-			0 1px 2px rgba(0, 0, 0, 0.2),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 8px 32px rgba(0, 0, 0, 0.6),
+			0 2px 4px rgba(0, 0, 0, 0.3),
+			inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.content-scroll {
@@ -641,17 +641,17 @@
 	}
 
 	.gear-btn {
-		background: rgba(20, 20, 24, 0.6);
-		backdrop-filter: blur(16px) saturate(1.2);
-		-webkit-backdrop-filter: blur(16px) saturate(1.2);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		background: rgba(8, 8, 12, 0.85);
+		backdrop-filter: blur(16px) saturate(1.1);
+		-webkit-backdrop-filter: blur(16px) saturate(1.1);
+		border: 1px solid rgba(255, 255, 255, 0.08);
 		box-shadow: 
-			0 2px 12px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.05);
+			0 2px 12px rgba(0, 0, 0, 0.4),
+			inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 	.gear-btn:hover {
-		background: rgba(30, 30, 36, 0.7);
-		border-color: rgba(255, 255, 255, 0.15);
+		background: rgba(16, 16, 20, 0.9);
+		border-color: rgba(255, 255, 255, 0.12);
 	}
 
 	.section-label {
@@ -740,12 +740,12 @@
 	}
 
 	.dropdown-menu {
-		background: rgba(24, 24, 28, 0.95);
+		background: rgba(10, 10, 14, 0.98);
 		backdrop-filter: blur(16px);
 		-webkit-backdrop-filter: blur(16px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.08);
 		border-radius: 6px;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 		padding: 2px;
 	}
 	.dropdown-menu::-webkit-scrollbar {
