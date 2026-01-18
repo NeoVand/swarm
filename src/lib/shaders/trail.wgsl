@@ -240,18 +240,18 @@ fn vs_main(
     }
     
     // Width tapers from head (thick) to tail (thin)
-    // Match boid triangle base: vertices at (-0.7, ±0.5), scaled by boidSize * 6.0
-    // Half-width at base = 0.5 * boidSize * 6.0 = 3.0 * boidSize
+    // Match boid triangle base: vertices at (-0.7, ±0.5), scaled by boidSize * 6.0 * 1.1
+    // Half-width at base = 0.5 * boidSize * 6.0 * 1.1 = 3.3 * boidSize
     let ageRatio = f32(age) / f32(uniforms.trailLength - 1u);
-    let baseWidth = uniforms.boidSize * 3.0; // Exact match with triangle base half-width
-    let width1 = baseWidth * (1.0 - ageRatio * 0.95); // Don't fully taper to zero
+    let baseWidth = uniforms.boidSize * 3.3; // Match enlarged boid (includes 1.1x border scale)
+    let width1 = baseWidth * (1.0 - ageRatio * 0.9); // Don't fully taper to zero
     
-    // For newest segment, width2 should be slightly smaller than triangle base
+    // For newest segment, width2 should match triangle base exactly
     var width2: f32;
     if (age == 0u) {
         width2 = baseWidth;
     } else {
-        width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)) * 0.95);
+        width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)) * 0.9);
     }
     
     // Build quad vertices - use perp1 for p1 end, perp2 for p2 end
@@ -360,11 +360,12 @@ fn vs_main(
     }
     
     // Fade to dark AND transparent as trail ages
-    // Head: bright & opaque, Tail: dark & semi-transparent
-    let fadeFactor = alpha * alpha;  // Squared for aggressive fade
+    // Head: bright & opaque, Tail: darker & semi-transparent
+    // Use linear fade for color (less aggressive than squared)
+    let fadeFactor = 0.3 + alpha * 0.7;  // Range: 0.3 to 1.0 (not too dark at tail)
     output.color = baseColor * fadeFactor;
-    // Alpha also fades so older trail parts don't fully occlude
-    output.alpha = 0.6 + fadeFactor * 0.4;  // Range: 0.6 to 1.0
+    // Higher base alpha for better visibility
+    output.alpha = 0.7 + alpha * 0.3;  // Range: 0.7 to 1.0
     output.edgeDist = edgeDist;
     
     return output;

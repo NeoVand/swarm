@@ -189,9 +189,8 @@ export function encodeRenderPass(
 		]
 	});
 
-	// Render trails first (additive blending underneath boids)
+	// Render trails first (underneath boids)
 	const trailSegments = boidCount * (trailLength - 1);
-	const trailVertices = trailSegments * 6; // 6 vertices per segment (2 triangles)
 	
 	renderPass.setPipeline(resources.pipelines.trail);
 	renderPass.setBindGroup(0, readFromA ? resources.bindGroups.trailB : resources.bindGroups.trailA);
@@ -203,4 +202,8 @@ export function encodeRenderPass(
 	renderPass.draw(3, boidCount); // 3 vertices per triangle
 
 	renderPass.end();
+}
+
+export function destroyRenderResources(): void {
+	// No resources to clean up without depth buffer
 }

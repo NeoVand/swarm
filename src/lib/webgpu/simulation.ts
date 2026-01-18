@@ -12,7 +12,7 @@ import {
 	type BufferConfig
 } from './buffers';
 import { createComputePipelines, encodeComputePasses, type ComputeResources } from './compute';
-import { createRenderPipelines, encodeRenderPass, type RenderResources } from './render';
+import { createRenderPipelines, encodeRenderPass, destroyRenderResources, type RenderResources } from './render';
 
 export interface Simulation {
 	start: () => void;
@@ -169,6 +169,7 @@ export function createSimulation(
 		stop();
 		destroyBuffers(buffers);
 		blockSumsBuffer.destroy();
+		destroyRenderResources();
 	}
 
 	function updateParams(newParams: SimulationParams): void {

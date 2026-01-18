@@ -143,12 +143,12 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	cursorShape: CursorShape.Dot,
 	cursorForce: 0.5,
 	cursorRadius: 50,
-	boidSize: 1,
+	boidSize: 1.5,
 	trailLength: 30,
 	colorMode: ColorMode.Orientation,
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
-	population: 5000,
+	population: 10000,
 	algorithmMode: AlgorithmMode.DensityAdaptive,
 	// Algorithm-specific defaults
 	kNeighbors: 12,      // Topological K-NN
