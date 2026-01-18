@@ -51,16 +51,16 @@ export function createRenderPipelines(
 				{
 					format,
 					blend: {
-						// Max blending - takes brighter color, no draw-order fighting
+						// Standard alpha blending - objects occlude, no extra brightness
 						color: {
-							srcFactor: 'one',
-							dstFactor: 'one',
-							operation: 'max'
+							srcFactor: 'src-alpha',
+							dstFactor: 'one-minus-src-alpha',
+							operation: 'add'
 						},
 						alpha: {
 							srcFactor: 'one',
-							dstFactor: 'one',
-							operation: 'max'
+							dstFactor: 'one-minus-src-alpha',
+							operation: 'add'
 						}
 					}
 				}
@@ -114,17 +114,16 @@ export function createRenderPipelines(
 				{
 					format,
 					blend: {
-						// Max blending - takes brighter color, no draw-order fighting
-						// Same as boids for consistency
+						// Standard alpha blending - trails layer naturally, no extra brightness
 						color: {
-							srcFactor: 'one',
-							dstFactor: 'one',
-							operation: 'max'
+							srcFactor: 'src-alpha',
+							dstFactor: 'one-minus-src-alpha',
+							operation: 'add'
 						},
 						alpha: {
 							srcFactor: 'one',
-							dstFactor: 'one',
-							operation: 'max'
+							dstFactor: 'one-minus-src-alpha',
+							operation: 'add'
 						}
 					}
 				}

@@ -359,11 +359,12 @@ fn vs_main(
         baseColor = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
     }
     
-    // Aggressive fade to dark - squared for faster dropoff
-    // Head (alpha=1): full brightness, Tail (alpha→0): much darker
+    // Fade to dark AND transparent as trail ages
+    // Head: bright & opaque, Tail: dark & semi-transparent
     let fadeFactor = alpha * alpha;  // Squared for aggressive fade
     output.color = baseColor * fadeFactor;
-    output.alpha = 1.0;
+    // Alpha also fades so older trail parts don't fully occlude
+    output.alpha = 0.6 + fadeFactor * 0.4;  // Range: 0.6 to 1.0
     output.edgeDist = edgeDist;
     
     return output;
