@@ -167,6 +167,7 @@ fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
     
     switch (uniforms.boundaryMode) {
         case PLANE: {
+            // Standard flat wall bounce
             if (newPos.x < 0.0) { newPos.x = -newPos.x; }
             if (newPos.x >= w) { newPos.x = 2.0 * w - newPos.x - 1.0; }
             if (newPos.y < 0.0) { newPos.y = -newPos.y; }
@@ -230,10 +231,46 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     let turnForce = 0.5;
     
     if (uniforms.boundaryMode == PLANE) {
+        // Corner avoidance zone - larger than normal margin for smooth corner navigation
+        let cornerZone = margin * 2.0;
+        
+        // Check if in a corner danger zone (both close to X and Y edges)
+        let nearLeft = pos.x < cornerZone;
+        let nearRight = pos.x > w - cornerZone;
+        let nearBottom = pos.y < cornerZone;
+        let nearTop = pos.y > h - cornerZone;
+        
+        let inCorner = (nearLeft || nearRight) && (nearBottom || nearTop);
+        
+        if (inCorner) {
+            // In corner: apply diagonal steering force away from corner
+            // Stronger force the deeper into the corner
+            let cornerForce = turnForce * 2.0;
+            
+            // Calculate distance to the corner point
+            var cornerPoint = vec2<f32>(0.0, 0.0);
+            if (nearLeft && nearBottom) { cornerPoint = vec2<f32>(0.0, 0.0); }
+            else if (nearRight && nearBottom) { cornerPoint = vec2<f32>(w, 0.0); }
+            else if (nearLeft && nearTop) { cornerPoint = vec2<f32>(0.0, h); }
+            else if (nearRight && nearTop) { cornerPoint = vec2<f32>(w, h); }
+            
+            // Steer away from corner - direction is from corner toward center
+            let awayFromCorner = normalize(vec2<f32>(w * 0.5, h * 0.5) - cornerPoint);
+            
+            // Force increases as we get closer to corner
+            let distToCorner = length(pos - cornerPoint);
+            let maxCornerDist = cornerZone * 1.414; // diagonal of corner zone
+            let cornerStrength = cornerForce * (1.0 - distToCorner / maxCornerDist);
+            
+            newVel += awayFromCorner * max(cornerStrength, 0.0);
+        }
+        
+        // Always apply standard edge forces too (they stack with corner forces)
         if (pos.x < margin) { newVel.x += turnForce; }
         if (pos.x > w - margin) { newVel.x -= turnForce; }
         if (pos.y < margin) { newVel.y += turnForce; }
         if (pos.y > h - margin) { newVel.y -= turnForce; }
+        
     } else if (uniforms.boundaryMode == CYLINDER_X || uniforms.boundaryMode == MOBIUS_X) {
         if (pos.y < margin) { newVel.y += turnForce; }
         if (pos.y > h - margin) { newVel.y -= turnForce; }
