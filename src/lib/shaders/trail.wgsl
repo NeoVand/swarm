@@ -360,6 +360,6 @@ fn vs_main(
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Premultiplied alpha for smooth additive blending
+    // Premultiplied alpha output for proper blending
     return vec4<f32>(input.color * input.alpha, input.alpha);
 }

@@ -144,7 +144,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	cursorForce: 0.5,
 	cursorRadius: 50,
 	boidSize: 1,
-	trailLength: 70,
+	trailLength: 30,
 	colorMode: ColorMode.Orientation,
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,

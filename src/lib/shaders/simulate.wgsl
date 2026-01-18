@@ -126,11 +126,13 @@ fn smoothKernel(dist: f32, radius: f32) -> f32 {
     return t * t * t;
 }
 
-// Stronger separation kernel
+// Smooth separation kernel - gentler falloff for less jitter
 fn separationKernel(dist: f32, radius: f32) -> f32 {
     if (dist >= radius || dist < 0.001) { return 0.0; }
     let q = dist / radius;
-    return (1.0 - q) * (1.0 - q) / (q * q + 0.01);
+    let t = 1.0 - q;
+    // Quadratic falloff with soft cap - max value around 4.0 at very close range
+    return t * t * (2.0 / (q + 0.5));
 }
 
 fn wrappedDelta(delta: f32, size: f32, wrap: bool) -> f32 {
@@ -264,65 +266,76 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     var newVel = vel;
     let w = uniforms.canvasWidth;
     let h = uniforms.canvasHeight;
-    let margin = 50.0;
-    let turnForce = 0.5;
     
-    // Emergency margin - very strong force when extremely close to edge
-    let emergencyMargin = 10.0;
-    let emergencyForce = 3.0;
+    // Soft avoidance zone - boids start gently turning well before the wall
+    let softMargin = 150.0;
+    let maxTurnForce = 0.3;
+    
+    // Helper: smooth cubic falloff for gentle steering (0 at edge of margin, 1 at wall)
+    // Uses squared falloff for very gradual force that increases smoothly
     
     if (uniforms.boundaryMode == PLANE) {
-        // Corner avoidance zone - slightly larger than normal margin for smooth corner navigation
-        let cornerZone = margin * 1.0;  // Reduced from 2.0 for tighter corners
+        // Soft steering forces with smooth gradient
+        if (pos.x < softMargin) {
+            let t = 1.0 - pos.x / softMargin;  // 0 at margin edge, 1 at wall
+            let force = t * t * maxTurnForce;   // Squared for smooth curve
+            newVel.x += force;
+        }
+        if (pos.x > w - softMargin) {
+            let t = 1.0 - (w - pos.x) / softMargin;
+            let force = t * t * maxTurnForce;
+            newVel.x -= force;
+        }
+        if (pos.y < softMargin) {
+            let t = 1.0 - pos.y / softMargin;
+            let force = t * t * maxTurnForce;
+            newVel.y += force;
+        }
+        if (pos.y > h - softMargin) {
+            let t = 1.0 - (h - pos.y) / softMargin;
+            let force = t * t * maxTurnForce;
+            newVel.y -= force;
+        }
         
-        // Check if in a corner danger zone (both close to X and Y edges)
+        // Corner avoidance - gentle diagonal push away from corners
+        let cornerZone = softMargin * 0.7;
         let nearLeft = pos.x < cornerZone;
         let nearRight = pos.x > w - cornerZone;
         let nearBottom = pos.y < cornerZone;
         let nearTop = pos.y > h - cornerZone;
         
-        let inCorner = (nearLeft || nearRight) && (nearBottom || nearTop);
-        
-        if (inCorner) {
-            // In corner: apply diagonal steering force away from corner
-            let cornerForce = turnForce * 2.0;
-            
+        if ((nearLeft || nearRight) && (nearBottom || nearTop)) {
             var cornerPoint = vec2<f32>(0.0, 0.0);
             if (nearLeft && nearBottom) { cornerPoint = vec2<f32>(0.0, 0.0); }
             else if (nearRight && nearBottom) { cornerPoint = vec2<f32>(w, 0.0); }
             else if (nearLeft && nearTop) { cornerPoint = vec2<f32>(0.0, h); }
-            else if (nearRight && nearTop) { cornerPoint = vec2<f32>(w, h); }
+            else { cornerPoint = vec2<f32>(w, h); }
             
-            let awayFromCorner = normalize(vec2<f32>(w * 0.5, h * 0.5) - cornerPoint);
+            let toCenter = normalize(vec2<f32>(w * 0.5, h * 0.5) - cornerPoint);
             let distToCorner = length(pos - cornerPoint);
-            let maxCornerDist = cornerZone * 1.414;
-            let cornerStrength = cornerForce * (1.0 - distToCorner / maxCornerDist);
-            
-            newVel += awayFromCorner * max(cornerStrength, 0.0);
+            let maxDist = cornerZone * 1.414;
+            let t = max(0.0, 1.0 - distToCorner / maxDist);
+            newVel += toCenter * t * t * maxTurnForce * 0.5;
         }
         
-        // Standard edge forces (soft steering)
-        if (pos.x < margin) { newVel.x += turnForce * (1.0 - pos.x / margin); }
-        if (pos.x > w - margin) { newVel.x -= turnForce * (1.0 - (w - pos.x) / margin); }
-        if (pos.y < margin) { newVel.y += turnForce * (1.0 - pos.y / margin); }
-        if (pos.y > h - margin) { newVel.y -= turnForce * (1.0 - (h - pos.y) / margin); }
-        
-        // Emergency edge forces (very strong when too close)
-        if (pos.x < emergencyMargin) { newVel.x += emergencyForce; }
-        if (pos.x > w - emergencyMargin) { newVel.x -= emergencyForce; }
-        if (pos.y < emergencyMargin) { newVel.y += emergencyForce; }
-        if (pos.y > h - emergencyMargin) { newVel.y -= emergencyForce; }
-        
     } else if (uniforms.boundaryMode == CYLINDER_X || uniforms.boundaryMode == MOBIUS_X) {
-        if (pos.y < margin) { newVel.y += turnForce * (1.0 - pos.y / margin); }
-        if (pos.y > h - margin) { newVel.y -= turnForce * (1.0 - (h - pos.y) / margin); }
-        if (pos.y < emergencyMargin) { newVel.y += emergencyForce; }
-        if (pos.y > h - emergencyMargin) { newVel.y -= emergencyForce; }
+        if (pos.y < softMargin) {
+            let t = 1.0 - pos.y / softMargin;
+            newVel.y += t * t * maxTurnForce;
+        }
+        if (pos.y > h - softMargin) {
+            let t = 1.0 - (h - pos.y) / softMargin;
+            newVel.y -= t * t * maxTurnForce;
+        }
     } else if (uniforms.boundaryMode == CYLINDER_Y || uniforms.boundaryMode == MOBIUS_Y) {
-        if (pos.x < margin) { newVel.x += turnForce * (1.0 - pos.x / margin); }
-        if (pos.x > w - margin) { newVel.x -= turnForce * (1.0 - (w - pos.x) / margin); }
-        if (pos.x < emergencyMargin) { newVel.x += emergencyForce; }
-        if (pos.x > w - emergencyMargin) { newVel.x -= emergencyForce; }
+        if (pos.x < softMargin) {
+            let t = 1.0 - pos.x / softMargin;
+            newVel.x += t * t * maxTurnForce;
+        }
+        if (pos.x > w - softMargin) {
+            let t = 1.0 - (w - pos.x) / softMargin;
+            newVel.x -= t * t * maxTurnForce;
+        }
     }
     
     return newVel;
@@ -332,9 +345,9 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
 // SHARED CONSTANTS FOR CONSISTENT BEHAVIOR ACROSS ALL ALGORITHMS
 // ============================================================================
 
-const SEPARATION_RADIUS_FACTOR: f32 = 0.4;  // Separation radius = 40% of perception
-const SEPARATION_FORCE_MULT: f32 = 3.5;     // Separation force multiplier
-const OVERLAP_PUSH_STRENGTH: f32 = 5.0;     // Force when boids overlap
+const SEPARATION_RADIUS_FACTOR: f32 = 0.35; // Separation radius = 35% of perception
+const SEPARATION_FORCE_MULT: f32 = 1.5;     // Separation force multiplier (reduced for smoothness)
+const OVERLAP_PUSH_STRENGTH: f32 = 1.0;     // Force when boids overlap (gentle)
 
 // ============================================================================
 // ALGORITHM 0: TOPOLOGICAL K-NN

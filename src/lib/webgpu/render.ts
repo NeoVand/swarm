@@ -113,9 +113,9 @@ export function createRenderPipelines(
 				{
 					format,
 					blend: {
-						// Standard alpha blending for seamless connection with boids
+						// Premultiplied alpha blending - color already multiplied by alpha in shader
 						color: {
-							srcFactor: 'src-alpha',
+							srcFactor: 'one',
 							dstFactor: 'one-minus-src-alpha',
 							operation: 'add'
 						},
