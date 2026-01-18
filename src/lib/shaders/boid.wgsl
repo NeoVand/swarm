@@ -37,6 +37,7 @@ struct Uniforms {
     kNeighbors: u32,
     sampleCount: u32,
     idealDensity: f32,
+    timeScale: f32,
 }
 
 // Color modes

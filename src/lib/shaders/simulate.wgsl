@@ -39,6 +39,8 @@ struct Uniforms {
     kNeighbors: u32,      // Topological K-NN: number of neighbors to track
     sampleCount: u32,     // Stochastic: random samples per frame
     idealDensity: f32,    // Density Adaptive: target neighbor density
+    // Simulation timing
+    timeScale: f32,       // Simulation speed multiplier
 }
 
 // Cursor shapes
@@ -270,8 +272,8 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     let emergencyForce = 3.0;
     
     if (uniforms.boundaryMode == PLANE) {
-        // Corner avoidance zone - larger than normal margin for smooth corner navigation
-        let cornerZone = margin * 2.0;
+        // Corner avoidance zone - slightly larger than normal margin for smooth corner navigation
+        let cornerZone = margin * 1.0;  // Reduced from 2.0 for tighter corners
         
         // Check if in a corner danger zone (both close to X and Y edges)
         let nearLeft = pos.x < cornerZone;
@@ -1057,8 +1059,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
     
-    // Update position
-    var newPos = myPos + newVel * uniforms.deltaTime * 60.0;
+    // Update position (timeScale controls simulation speed)
+    var newPos = myPos + newVel * uniforms.deltaTime * 60.0 * uniforms.timeScale;
     newPos = applyBoundary(newPos);
     
     // Write output

@@ -76,6 +76,8 @@ export interface SimulationParams {
 	kNeighbors: number;      // Topological K-NN: number of neighbors (4-24)
 	sampleCount: number;     // Stochastic: random samples per frame (8-64)
 	idealDensity: number;    // Density Adaptive: target neighbor density (1-10)
+	// Simulation timing
+	timeScale: number;       // Simulation speed multiplier (0.25-2.0)
 }
 
 export interface CursorState {
@@ -147,11 +149,13 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
 	population: 5000,
-	algorithmMode: AlgorithmMode.HashFree,
+	algorithmMode: AlgorithmMode.DensityAdaptive,
 	// Algorithm-specific defaults
 	kNeighbors: 12,      // Topological K-NN
 	sampleCount: 32,     // Stochastic
-	idealDensity: 5.0    // Density Adaptive
+	idealDensity: 5.0,   // Density Adaptive
+	// Simulation timing
+	timeScale: 1.0       // Normal speed
 };
 
 // Uniform buffer layout (must match WGSL struct)

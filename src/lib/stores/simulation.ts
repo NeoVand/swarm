@@ -166,6 +166,10 @@ export function setIdealDensity(value: number): void {
 	params.update((p) => ({ ...p, idealDensity: value }));
 }
 
+export function setTimeScale(value: number): void {
+	params.update((p) => ({ ...p, timeScale: value }));
+}
+
 // Play/pause toggle
 export function togglePlayPause(): void {
 	isRunning.update((running) => !running);

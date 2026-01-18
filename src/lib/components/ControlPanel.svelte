@@ -36,6 +36,7 @@
 		setKNeighbors,
 		setSampleCount,
 		setIdealDensity,
+		setTimeScale,
 		setRecording,
 		BoundaryMode,
 		ColorMode,
@@ -481,8 +482,9 @@
 									<li><strong>Force</strong> — How quickly boids can change direction (agility)</li>
 									<li><strong>Noise</strong> — Random perturbation for organic, less robotic movement</li>
 									<li><strong>Rebels</strong> — Percentage of boids that temporarily ignore flocking rules</li>
+									<li><strong>Time</strong> — Simulation speed (0.25× slow-mo to 2× fast-forward)</li>
 								</ul>
-								<p><em>High noise + rebels creates chaotic, lifelike behavior!</em></p>`,
+								<p><em>Slow down time to observe flocking patterns in detail!</em></p>`,
 							side: 'left',
 							align: 'start'
 						},
@@ -1087,12 +1089,18 @@
 							oninput={(e) => setRebels(parseFloat(e.currentTarget.value))} class="slider" aria-label="Rebels" />
 						<span class="value">{(currentParams.rebels * 100).toFixed(0)}%</span>
 					</div>
+					<div class="row">
+						<span class="label">Time</span>
+						<input type="range" min="0.25" max="2" step="0.05" value={currentParams.timeScale}
+							oninput={(e) => setTimeScale(parseFloat(e.currentTarget.value))} class="slider" aria-label="Time Scale" />
+						<span class="value">{currentParams.timeScale.toFixed(2)}×</span>
+					</div>
 				</div>
-				{/if}
-			</div>
+			{/if}
+		</div>
 
-			<div class="section-divider"></div>
-			<!-- Algorithm -->
+		<div class="section-divider"></div>
+		<!-- Algorithm -->
 			<div id="section-algorithm">
 				<button class="section-header" onclick={() => toggleSection('algorithm')}>
 					<div class="section-title">
