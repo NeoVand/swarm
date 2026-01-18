@@ -196,17 +196,28 @@ fn vs_main(
             colorValue = (angle + 3.14159265) / (2.0 * 3.14159265);
         }
         case COLOR_NEIGHBORS: {
-            // This would need neighbor count passed in, approximate with position hash
-            colorValue = fract(sin(dot(pos, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+            // Estimate local density by sampling nearby boids
+            var nearbyCount = 0.0;
+            let sampleStep = max(1u, uniforms.boidCount / 100u);
+            for (var i = 0u; i < uniforms.boidCount; i += sampleStep) {
+                let otherPos = positions[i];
+                let dist = length(otherPos - pos);
+                if (dist < uniforms.perception && dist > 0.1) {
+                    nearbyCount += 1.0;
+                }
+            }
+            colorValue = clamp(nearbyCount / 15.0, 0.0, 1.0);
         }
         case COLOR_ACCELERATION: {
-            // Approximate with velocity magnitude variation
-            colorValue = fract(speed * 0.5);
+            // Use velocity magnitude relative to max as proxy for acceleration state
+            let speedRatio = speed / uniforms.maxSpeed;
+            colorValue = speedRatio;
         }
         case COLOR_TURNING: {
-            // Use angular velocity approximation
-            let angularChange = abs(sin(angle * 3.0 + uniforms.time));
-            colorValue = angularChange;
+            // Create distinct color bands based on heading angle
+            // As boids turn, they smoothly transition between color bands
+            let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
+            colorValue = fract(angleNorm * 3.0); // 3 color cycles per full rotation
         }
         default: {
             colorValue = 0.5;

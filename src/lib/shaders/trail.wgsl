@@ -36,6 +36,13 @@ struct Uniforms {
     algorithmMode: u32,
 }
 
+// Color modes
+const COLOR_SPEED: u32 = 0u;
+const COLOR_ORIENTATION: u32 = 1u;
+const COLOR_NEIGHBORS: u32 = 2u;
+const COLOR_ACCELERATION: u32 = 3u;
+const COLOR_TURNING: u32 = 4u;
+
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
 const SPECTRUM_NEON: u32 = 1u;
@@ -264,14 +271,46 @@ fn vs_main(
     
     // Color based on current velocity of the boid
     let vel = velocities[boidIndex];
+    let pos = positions[boidIndex];
     let speed = length(vel);
     let angle = atan2(vel.y, vel.x);
     
     var colorValue: f32;
     switch (uniforms.colorMode) {
-        case 0u: { colorValue = speed / uniforms.maxSpeed; }
-        case 1u: { colorValue = (angle + 3.14159265) / (2.0 * 3.14159265); }
-        default: { colorValue = 0.5; }
+        case COLOR_SPEED: { 
+            colorValue = speed / uniforms.maxSpeed; 
+        }
+        case COLOR_ORIENTATION: { 
+            colorValue = (angle + 3.14159265) / (2.0 * 3.14159265); 
+        }
+        case COLOR_NEIGHBORS: {
+            // Estimate local density by sampling nearby boids
+            var nearbyCount = 0.0;
+            let sampleStep = max(1u, uniforms.boidCount / 100u);
+            for (var i = 0u; i < uniforms.boidCount; i += sampleStep) {
+                let otherPos = positions[i];
+                let dist = length(otherPos - pos);
+                if (dist < uniforms.perception && dist > 0.1) {
+                    nearbyCount += 1.0;
+                }
+            }
+            colorValue = clamp(nearbyCount / 15.0, 0.0, 1.0);
+        }
+        case COLOR_ACCELERATION: {
+            // Use velocity magnitude relative to max as proxy for acceleration state
+            let speedRatio = speed / uniforms.maxSpeed;
+            // Boids moving fast are likely accelerating or maintaining, slow ones decelerating
+            colorValue = speedRatio;
+        }
+        case COLOR_TURNING: {
+            // Create distinct color bands based on heading angle
+            // As boids turn, they smoothly transition between color bands
+            let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
+            colorValue = fract(angleNorm * 3.0); // 3 color cycles per full rotation
+        }
+        default: { 
+            colorValue = 0.5; 
+        }
     }
     
     colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { initWebGPU, resizeCanvas } from '$lib/webgpu/context';
+	import { initWebGPU, resizeCanvas, destroyWebGPU } from '$lib/webgpu/context';
 	import { createSimulation, type Simulation } from '$lib/webgpu/simulation';
 	import type { GPUContext, SimulationParams, CursorState } from '$lib/webgpu/types';
 	import { CursorMode, CursorShape } from '$lib/webgpu/types';
@@ -193,6 +193,8 @@
 		unsubRealloc();
 		unsubTrailClear();
 		simulation?.destroy();
+		destroyWebGPU(gpuContext);
+		gpuContext = null;
 	});
 </script>
 

@@ -354,7 +354,7 @@
 					</div>
 					<div class="row">
 						<span class="label">Trail</span>
-						<input type="range" min="5" max="80" step="5" value={currentParams.trailLength}
+						<input type="range" min="5" max="100" step="5" value={currentParams.trailLength}
 							oninput={(e) => setTrailLength(parseInt(e.currentTarget.value))} class="slider" aria-label="Trail" />
 						<span class="value">{currentParams.trailLength}</span>
 					</div>
