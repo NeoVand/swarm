@@ -268,6 +268,245 @@
 		isPanelOpen.update((v) => !v);
 	}
 
+	// Keyboard shortcuts
+	function handleKeyboard(event: KeyboardEvent) {
+		// Ignore if user is typing in an input field
+		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+			return;
+		}
+
+		// Get current values for cycling
+		const boundaryModes = [BoundaryMode.Plane, BoundaryMode.Torus, BoundaryMode.CylinderX, BoundaryMode.MobiusX, BoundaryMode.KleinX, BoundaryMode.ProjectivePlane];
+		const colorModes = [ColorMode.None, ColorMode.Orientation, ColorMode.Speed, ColorMode.Neighbors, ColorMode.Density, ColorMode.Acceleration, ColorMode.Turning];
+		const algorithmModes = [AlgorithmMode.TopologicalKNN, AlgorithmMode.SmoothMetric, AlgorithmMode.HashFree, AlgorithmMode.StochasticSample, AlgorithmMode.DensityAdaptive];
+		const colorSpectrums = [ColorSpectrum.Rainbow, ColorSpectrum.Sunset, ColorSpectrum.Chrome, ColorSpectrum.Neon, ColorSpectrum.Mono];
+
+		switch (event.key.toLowerCase()) {
+			// Playback controls
+			case ' ':
+				event.preventDefault();
+				togglePlayPause();
+				break;
+
+			case 's':
+				if (!event.ctrlKey && !event.metaKey) {
+					event.preventDefault();
+					takeScreenshot();
+				}
+				break;
+
+			case 'v':
+				event.preventDefault();
+				toggleVideoRecording();
+				break;
+
+			case 'r':
+				event.preventDefault();
+				needsSimulationReset.set(true);
+				break;
+
+			// UI controls
+			case 'escape':
+				if (recording) {
+					stopRecording();
+				} else if (isOpen) {
+					isPanelOpen.set(false);
+				}
+				break;
+
+			case 'tab':
+				if (!event.shiftKey) {
+					event.preventDefault();
+					togglePanel();
+				}
+				break;
+
+			case 'h':
+			case '?':
+				event.preventDefault();
+				startTour();
+				break;
+
+			// Cursor interaction modes (1-3)
+			case '1':
+				event.preventDefault();
+				setCursorMode(CursorMode.Off);
+				break;
+
+			case '2':
+				event.preventDefault();
+				setCursorMode(CursorMode.Attract);
+				break;
+
+			case '3':
+				event.preventDefault();
+				setCursorMode(CursorMode.Repel);
+				break;
+
+			// Cycle through options
+			case 'b':
+				event.preventDefault();
+				const currentBoundary = currentParams?.boundaryMode ?? BoundaryMode.Plane;
+				const boundaryIndex = boundaryModes.indexOf(currentBoundary);
+				const nextBoundary = boundaryModes[(boundaryIndex + 1) % boundaryModes.length];
+				setBoundaryMode(nextBoundary);
+				break;
+
+			case 'c':
+				event.preventDefault();
+				const currentColor = currentParams?.colorMode ?? ColorMode.Orientation;
+				const colorIndex = colorModes.indexOf(currentColor);
+				const nextColor = colorModes[(colorIndex + 1) % colorModes.length];
+				setColorMode(nextColor);
+				break;
+
+			case 'a':
+				event.preventDefault();
+				const currentAlgo = currentParams?.algorithmMode ?? AlgorithmMode.SmoothMetric;
+				const algoIndex = algorithmModes.indexOf(currentAlgo);
+				const nextAlgo = algorithmModes[(algoIndex + 1) % algorithmModes.length];
+				setAlgorithmMode(nextAlgo);
+				break;
+
+			case 'p':
+				event.preventDefault();
+				const currentPalette = currentParams?.colorSpectrum ?? ColorSpectrum.Rainbow;
+				const paletteIndex = colorSpectrums.indexOf(currentPalette);
+				const nextPalette = colorSpectrums[(paletteIndex + 1) % colorSpectrums.length];
+				setColorSpectrum(nextPalette);
+				break;
+
+			// Flocking parameters: Q/W for Align, E/D for Cohesion, Z/X for Separate
+			case 'q':
+				event.preventDefault();
+				if (currentParams) {
+					const newAlign = Math.min(currentParams.alignment + 0.1, 2);
+					setAlignment(newAlign);
+				}
+				break;
+
+			case 'w':
+				event.preventDefault();
+				if (currentParams) {
+					const newAlign = Math.max(currentParams.alignment - 0.1, 0);
+					setAlignment(newAlign);
+				}
+				break;
+
+			case 'e':
+				event.preventDefault();
+				if (currentParams) {
+					const newCohesion = Math.min(currentParams.cohesion + 0.1, 2);
+					setCohesion(newCohesion);
+				}
+				break;
+
+			case 'd':
+				event.preventDefault();
+				if (currentParams) {
+					const newCohesion = Math.max(currentParams.cohesion - 0.1, 0);
+					setCohesion(newCohesion);
+				}
+				break;
+
+			case 'z':
+				event.preventDefault();
+				if (currentParams) {
+					const newSep = Math.min(currentParams.separation + 0.1, 2);
+					setSeparation(newSep);
+				}
+				break;
+
+			case 'x':
+				event.preventDefault();
+				if (currentParams) {
+					const newSep = Math.max(currentParams.separation - 0.1, 0);
+					setSeparation(newSep);
+				}
+				break;
+
+			// Adjustments with +/- and [/]
+			case '=':
+			case '+':
+				event.preventDefault();
+				if (currentParams) {
+					const newPop = Math.min(currentParams.population + 1000, 50000);
+					setPopulation(newPop);
+				}
+				break;
+
+			case '-':
+				event.preventDefault();
+				if (currentParams) {
+					const newPop = Math.max(currentParams.population - 1000, 100);
+					setPopulation(newPop);
+				}
+				break;
+
+			case ']':
+				event.preventDefault();
+				if (currentParams) {
+					const newTrail = Math.min(currentParams.trailLength + 10, 100);
+					setTrailLength(newTrail);
+				}
+				break;
+
+			case '[':
+				event.preventDefault();
+				if (currentParams) {
+					const newTrail = Math.max(currentParams.trailLength - 10, 1);
+					setTrailLength(newTrail);
+				}
+				break;
+
+			// Arrow keys for fine adjustments when sidebar is closed
+			case 'arrowup':
+				if (!isOpen) {
+					event.preventDefault();
+					if (currentParams) {
+						const newSpeed = Math.min(currentParams.maxSpeed + 0.5, 10);
+						setMaxSpeed(newSpeed);
+					}
+				}
+				break;
+
+			case 'arrowdown':
+				if (!isOpen) {
+					event.preventDefault();
+					if (currentParams) {
+						const newSpeed = Math.max(currentParams.maxSpeed - 0.5, 0.5);
+						setMaxSpeed(newSpeed);
+					}
+				}
+				break;
+
+			case 'arrowleft':
+				if (!isOpen) {
+					event.preventDefault();
+					if (currentParams) {
+						const newSize = Math.max(currentParams.boidSize - 0.5, 0.5);
+						setBoidSize(newSize);
+					}
+				}
+				break;
+
+			case 'arrowright':
+				if (!isOpen) {
+					event.preventDefault();
+					if (currentParams) {
+						const newSize = Math.min(currentParams.boidSize + 0.5, 10);
+						setBoidSize(newSize);
+					}
+				}
+				break;
+		}
+	}
+
+	onMount(() => {
+		window.addEventListener('keydown', handleKeyboard);
+		return () => window.removeEventListener('keydown', handleKeyboard);
+	});
+
 	// Driver.js tour configuration
 	function startTour(): void {
 		// Ensure panel is open before starting tour
@@ -288,10 +527,11 @@
 				popoverClass: 'tour-popover',
 				popoverOffset: 12,
 				onPopoverRender: (popover, { state }) => {
-					// On the first step, replace the disabled Previous button with a GitHub link
+					// On the first step, replace the disabled Previous button with GitHub link and add keyboard shortcut button
 					if (state.activeIndex === 0) {
 						const prevBtn = popover.previousButton;
-						if (prevBtn) {
+						const footer = popover.footer;
+						if (prevBtn && footer) {
 							// Create GitHub link button
 							const githubLink = document.createElement('a');
 							githubLink.href = 'https://github.com/NeoVand/swarm';
@@ -301,8 +541,23 @@
 							githubLink.style.cssText = 'display: flex; align-items: center; justify-content: center; padding: 8px !important; text-decoration: none;';
 							githubLink.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>`;
 							githubLink.title = 'Star on GitHub';
-							// Replace the button
-							prevBtn.replaceWith(githubLink);
+							
+							// Create keyboard shortcuts button
+							const keyboardBtn = document.createElement('button');
+							keyboardBtn.className = 'driver-popover-prev-btn';
+							keyboardBtn.style.cssText = 'display: flex; align-items: center; justify-content: center; padding: 8px !important; cursor: pointer; border: none;';
+							keyboardBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>`;
+							keyboardBtn.title = 'View Keyboard Shortcuts';
+							keyboardBtn.onclick = () => {
+								driverObj.moveTo(7); // Jump to keyboard shortcuts card (index 7)
+							};
+							
+							// Replace previous button with a container holding both buttons
+							const btnContainer = document.createElement('div');
+							btnContainer.style.cssText = 'display: flex; gap: 6px;';
+							btnContainer.appendChild(githubLink);
+							btnContainer.appendChild(keyboardBtn);
+							prevBtn.replaceWith(btnContainer);
 						}
 					}
 				},
@@ -399,45 +654,12 @@
 								<span>Controls</span>
 							</div>`,
 							description: `<p>Quick access to media and navigation:</p>
-								<div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 12px 0;">
-									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(34, 211, 238, 0.15); border-radius: 6px;">
-										<svg viewBox="0 0 20 20" fill="#22d3ee" style="width: 14px; height: 14px;">
-											<path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z"/>
-										</svg>
-									</div>
-									<div>
-										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Play / Pause</div>
-										<div style="font-size: 10px; color: #71717a;">Pause or resume the animation</div>
-									</div>
-									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(167, 139, 250, 0.15); border-radius: 6px;">
-										<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
-											<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-											<path d="M3 3v5h5"/>
-										</svg>
-									</div>
-									<div>
-										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Reset</div>
-										<div style="font-size: 10px; color: #71717a;">Reinitialize boid positions</div>
-									</div>
-									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(251, 113, 133, 0.15); border-radius: 6px;">
-										<svg viewBox="0 0 20 20" fill="#fb7185" style="width: 14px; height: 14px;">
-											<path d="M3.25 4A2.25 2.25 0 001 6.25v7.5A2.25 2.25 0 003.25 16h7.5A2.25 2.25 0 0013 13.75v-1.956l2.842 1.895A.75.75 0 0017 13.057V6.943a.75.75 0 00-1.158-.632L13 8.206V6.25A2.25 2.25 0 0010.75 4h-7.5z"/>
-										</svg>
-									</div>
-									<div>
-										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Record / Photo</div>
-										<div style="font-size: 10px; color: #71717a;">Record video (playing) or photo (paused)</div>
-									</div>
-									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(251, 191, 36, 0.15); border-radius: 6px;">
-										<svg viewBox="0 0 20 20" fill="#fbbf24" style="width: 14px; height: 14px;">
-											<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
-										</svg>
-									</div>
-									<div>
-										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Help Tour</div>
-										<div style="font-size: 10px; color: #71717a;">Take this guided tour again</div>
-									</div>
-								</div>`,
+								<ul>
+									<li><strong>Play/Pause</strong> — Pause or resume <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">Space</kbd></li>
+									<li><strong>Reset</strong> — Reinitialize boids <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">R</kbd></li>
+									<li><strong>Record/Photo</strong> — Video or screenshot <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">V</kbd> <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">S</kbd></li>
+									<li><strong>Help</strong> — This tour <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">H</kbd></li>
+								</ul>`,
 							side: 'bottom',
 							align: 'end'
 						}
@@ -453,13 +675,12 @@
 							</div>`,
 							description: `<p>Control the swarm population and appearance:</p>
 								<ul>
-									<li><strong>Population</strong> — Number of boids (WebGPU handles 50,000+!)</li>
-									<li><strong>Size</strong> — Scale of each boid triangle</li>
-									<li><strong>Trail</strong> — Length of the motion trail (up to 100)</li>
-									<li><strong>Colorize</strong> — What property determines color</li>
-									<li><strong>Palette</strong> — Chrome, Neon, Sunset, Rainbow, or Mono</li>
-								</ul>
-								<p><em>Try Neon palette for synthwave vibes!</em></p>`,
+									<li><strong>Population</strong> — Number of boids <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">+</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">-</kbd></li>
+									<li><strong>Size</strong> — Scale of each boid <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">←</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">→</kbd></li>
+									<li><strong>Trail</strong> — Motion trail length <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">[</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">]</kbd></li>
+									<li><strong>Colorize</strong> — Color property <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">C</kbd></li>
+									<li><strong>Palette</strong> — Color spectrum <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">P</kbd></li>
+								</ul>`,
 							side: 'left',
 							align: 'start'
 						},
@@ -476,12 +697,11 @@
 							</div>`,
 							description: `<p>Define the simulation space and your interaction:</p>
 								<ul>
-									<li><strong>Bounds</strong> — Topology of the world (Plane has walls, Torus wraps around, Möbius flips!)</li>
-									<li><strong>Interaction</strong> — Power toggles cursor, then Attract or Repel</li>
-									<li><strong>Shape</strong> — Dot, Ring, Disk, or Vortex cursor styles</li>
-									<li><strong>Size & Power</strong> — Control cursor influence area and strength</li>
-								</ul>
-								<p><em>Try Vortex cursor with Attract for mesmerizing spirals!</em></p>`,
+									<li><strong>Bounds</strong> — Topology (Plane, Torus, Möbius...) <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">B</kbd></li>
+									<li><strong>Interaction</strong> — Off / Attract / Repel <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">1</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">2</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">3</kbd></li>
+									<li><strong>Shape</strong> — Dot, Ring, Disk, or Vortex cursor</li>
+									<li><strong>Size & Power</strong> — Cursor influence</li>
+								</ul>`,
 							side: 'left',
 							align: 'start'
 						},
@@ -496,14 +716,13 @@
 								</svg>
 								<span>Flocking</span>
 							</div>`,
-							description: `<p>The three classic rules of boids, discovered by Craig Reynolds in 1986:</p>
+							description: `<p>The three classic rules of boids (Craig Reynolds, 1986):</p>
 								<ul>
-									<li><strong>Align</strong> — Steer toward the average heading of nearby boids</li>
-									<li><strong>Cohesion</strong> — Move toward the center of mass of neighbors</li>
-									<li><strong>Separate</strong> — Avoid crowding nearby boids</li>
-									<li><strong>Range</strong> — How far each boid can "see" its neighbors</li>
-								</ul>
-								<p><em>Try setting Cohesion high and Separation low to see tight swarms!</em></p>`,
+									<li><strong>Align</strong> — Match neighbors' heading <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">Q</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">W</kbd></li>
+									<li><strong>Cohesion</strong> — Move toward group center <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">E</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">D</kbd></li>
+									<li><strong>Separate</strong> — Avoid crowding <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">Z</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">X</kbd></li>
+									<li><strong>Range</strong> — Perception distance</li>
+								</ul>`,
 							side: 'left',
 							align: 'start'
 						},
@@ -520,13 +739,12 @@
 							</div>`,
 							description: `<p>Control the physics of movement:</p>
 								<ul>
-									<li><strong>Speed</strong> — Maximum velocity of each boid</li>
-									<li><strong>Force</strong> — How quickly boids can change direction (agility)</li>
-									<li><strong>Noise</strong> — Random perturbation for organic, less robotic movement</li>
-									<li><strong>Rebels</strong> — Percentage of boids that temporarily ignore flocking rules</li>
-									<li><strong>Time</strong> — Simulation speed (0.25× slow-mo to 2× fast-forward)</li>
-								</ul>
-								<p><em>Slow down time to observe flocking patterns in detail!</em></p>`,
+									<li><strong>Speed</strong> — Maximum velocity <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">↑</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">↓</kbd></li>
+									<li><strong>Force</strong> — Turning agility</li>
+									<li><strong>Noise</strong> — Random perturbation</li>
+									<li><strong>Rebels</strong> — Boids ignoring rules</li>
+									<li><strong>Time</strong> — Simulation speed</li>
+								</ul>`,
 							side: 'left',
 							align: 'start'
 						},
@@ -541,18 +759,82 @@
 								</svg>
 								<span>Algorithm</span>
 							</div>`,
-							description: `<p>Choose the spatial algorithm for neighbor detection.</p>
+							description: `<p>Choose the neighbor detection algorithm <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">A</kbd></p>
 								<ul>
-									<li><strong>Hash-Free</strong> — Eliminates grid artifacts by giving each boid a unique spatial offset</li>
-									<li><strong>Topological k-NN</strong> — Each boid considers exactly k nearest neighbors regardless of distance</li>
-									<li><strong>Smooth Metric</strong> — Uses smooth kernel weighting with grid jitter</li>
-									<li><strong>Stochastic</strong> — Random spatial sampling for organic behavior</li>
-									<li><strong>Density Adaptive</strong> — Adjusts forces based on local crowding</li>
+									<li><strong>Smooth Metric</strong> — Smooth kernel weighting</li>
+									<li><strong>Topological k-NN</strong> — Fixed k neighbors</li>
+									<li><strong>Hash-Free</strong> — No grid artifacts</li>
+									<li><strong>Stochastic</strong> — Random sampling</li>
+									<li><strong>Density Adaptive</strong> — Crowding-aware</li>
 								</ul>`,
 							side: 'left',
 							align: 'start'
 						},
 						onHighlightStarted: () => { openSection = 'algorithm'; }
+					},
+					{
+						popover: {
+							title: `<div style="display: flex; align-items: center; gap: 8px;">
+								<svg viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+									<rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
+									<path d="M6 8h.001"/>
+									<path d="M10 8h.001"/>
+									<path d="M14 8h.001"/>
+									<path d="M18 8h.001"/>
+									<path d="M8 12h.001"/>
+									<path d="M12 12h.001"/>
+									<path d="M16 12h.001"/>
+									<path d="M7 16h10"/>
+								</svg>
+								<span>Keyboard Shortcuts</span>
+							</div>`,
+							description: `
+								<p style="margin-bottom: 10px; color: #a1a1aa;">Control the simulation without opening the sidebar:</p>
+								<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; font-size: 10px;">
+									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
+										<div style="font-weight: 600; color: #f472b6; margin-bottom: 3px;">Playback</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Space</kbd> Play</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">S</kbd> Photo</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">V</kbd> Video</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">R</kbd> Reset</div>
+									</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
+										<div style="font-weight: 600; color: #fb7185; margin-bottom: 3px;">Flocking</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Q/W</kbd> Align</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">E/D</kbd> Cohesion</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Z/X</kbd> Separate</div>
+									</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
+										<div style="font-weight: 600; color: #22d3ee; margin-bottom: 3px;">Cursor</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">1</kbd> Off</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">2</kbd> Attract</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">3</kbd> Repel</div>
+									</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
+										<div style="font-weight: 600; color: #a78bfa; margin-bottom: 3px;">Cycle</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">B</kbd> Bounds</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">C</kbd> Color</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">P</kbd> Palette</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">A</kbd> Algo</div>
+									</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
+										<div style="font-weight: 600; color: #fbbf24; margin-bottom: 3px;">Adjust</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">+/-</kbd> Pop</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">[]</kbd> Trail</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">↑↓</kbd> Speed</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">←→</kbd> Size</div>
+									</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
+										<div style="font-weight: 600; color: #34d399; margin-bottom: 3px;">UI</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Tab</kbd> Sidebar</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">H</kbd> Help</div>
+										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Esc</kbd> Close</div>
+									</div>
+								</div>
+							`,
+							side: 'left',
+							align: 'center'
+						}
 					}
 				]
 			});
