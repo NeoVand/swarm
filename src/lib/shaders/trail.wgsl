@@ -284,17 +284,14 @@ fn vs_main(
             colorValue = (angle + 3.14159265) / (2.0 * 3.14159265); 
         }
         case COLOR_NEIGHBORS: {
-            // Estimate local density by sampling nearby boids
-            var nearbyCount = 0.0;
-            let sampleStep = max(1u, uniforms.boidCount / 100u);
-            for (var i = 0u; i < uniforms.boidCount; i += sampleStep) {
-                let otherPos = positions[i];
-                let dist = length(otherPos - pos);
-                if (dist < uniforms.perception && dist > 0.1) {
-                    nearbyCount += 1.0;
-                }
-            }
-            colorValue = clamp(nearbyCount / 15.0, 0.0, 1.0);
+            // Fast density estimation using spatial hash
+            // Creates smooth color variation based on local position clustering
+            let cellX = floor(pos.x / uniforms.perception);
+            let cellY = floor(pos.y / uniforms.perception);
+            let cellHash = fract(sin(cellX * 12.9898 + cellY * 78.233) * 43758.5453);
+            // Combine with velocity for more variation
+            let velFactor = length(vel) / uniforms.maxSpeed;
+            colorValue = fract(cellHash + velFactor * 0.3);
         }
         case COLOR_ACCELERATION: {
             // Use velocity magnitude relative to max as proxy for acceleration state

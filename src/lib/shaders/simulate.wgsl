@@ -277,7 +277,8 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
             
-            for (var i = 0u; i < cellCount; i++) {
+            let maxPerCell = min(cellCount, 64u); // Cap iterations per cell
+            for (var i = 0u; i < maxPerCell; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
                 
@@ -469,8 +470,9 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
             let cellIdx = getCellIndex(cx, cy);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
+            let maxPerCell2 = min(cellCount, 64u); // Cap iterations per cell
             
-            for (var i = 0u; i < cellCount; i++) {
+            for (var i = 0u; i < maxPerCell2; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
                 
@@ -731,8 +733,9 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
             let cellIdx = getCellIndex(cx, cy);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
+            let maxPerCell3 = min(cellCount, 64u); // Cap iterations per cell
             
-            for (var i = 0u; i < cellCount; i++) {
+            for (var i = 0u; i < maxPerCell3; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
                 
