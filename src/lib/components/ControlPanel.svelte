@@ -302,9 +302,9 @@
 	];
 
 	const cursorShapeOptions = [
+		{ value: CursorShape.Dot, label: 'Dot' },
 		{ value: CursorShape.Ring, label: 'Ring' },
 		{ value: CursorShape.Disk, label: 'Disk' },
-		{ value: CursorShape.Dot, label: 'Dot' },
 		{ value: CursorShape.Vortex, label: 'Vortex' }
 	];
 </script>
@@ -479,6 +479,12 @@
 					<div class="row">
 						<span class="label">Shape</span>
 						<div class="flex flex-1 gap-0.5">
+							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Dot}
+								onclick={() => setCursorShape(CursorShape.Dot)} aria-label="Dot" title="Dot">
+								<svg viewBox="0 0 16 16" class="h-3.5 w-3.5">
+									<circle cx="8" cy="8" r="2.5" fill="currentColor" />
+								</svg>
+							</button>
 							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Ring}
 								onclick={() => setCursorShape(CursorShape.Ring)} aria-label="Ring" title="Ring">
 								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5">
@@ -490,12 +496,6 @@
 								<svg viewBox="0 0 16 16" class="h-3.5 w-3.5">
 									<circle cx="8" cy="8" r="5" fill="currentColor" opacity="0.6" />
 									<circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.5" />
-								</svg>
-							</button>
-							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Dot}
-								onclick={() => setCursorShape(CursorShape.Dot)} aria-label="Dot" title="Dot">
-								<svg viewBox="0 0 16 16" class="h-3.5 w-3.5">
-									<circle cx="8" cy="8" r="2.5" fill="currentColor" />
 								</svg>
 							</button>
 							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Vortex}

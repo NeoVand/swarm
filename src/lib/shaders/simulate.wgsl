@@ -899,13 +899,27 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     }
                 }
                 case CURSOR_DISK: {
-                    // Disk: filled circle - point attractor with soft edge
-                    if (cursorDist < influenceRange) {
-                        let weight = smoothKernel(cursorDist, influenceRange);
-                        if (uniforms.cursorMode == 1u) {
-                            cursorForce = towardCenter * weight * strength * uniforms.cursorForce * 2.0;
-                        } else {
-                            cursorForce = awayFromCenter * weight * strength * uniforms.cursorForce * 2.5;
+                    // Disk: containment area - keeps boids inside (attract) or clears area (repel)
+                    let diskRadius = radius;
+                    let edgeWidth = radius * 0.5;
+                    
+                    if (uniforms.cursorMode == 1u) {
+                        // Attract: contain boids within disk
+                        if (cursorDist > diskRadius) {
+                            // Outside disk: pull toward the edge
+                            let distFromEdge = cursorDist - diskRadius;
+                            let pull = smoothKernel(distFromEdge, edgeWidth * 2.0);
+                            cursorForce = towardCenter * pull * strength * uniforms.cursorForce * 3.0;
+                        } else if (cursorDist < diskRadius * 0.3) {
+                            // Too close to center: gentle push outward to distribute
+                            let push = 1.0 - (cursorDist / (diskRadius * 0.3));
+                            cursorForce = awayFromCenter * push * strength * uniforms.cursorForce * 0.5;
+                        }
+                    } else {
+                        // Repel: clear boids from disk area
+                        if (cursorDist < diskRadius + edgeWidth) {
+                            let weight = smoothKernel(cursorDist, diskRadius + edgeWidth);
+                            cursorForce = awayFromCenter * weight * strength * uniforms.cursorForce * 3.0;
                         }
                     }
                 }

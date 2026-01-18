@@ -132,7 +132,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	rebels: 0.02,
 	boundaryMode: BoundaryMode.Torus,
 	cursorMode: CursorMode.Attract,
-	cursorShape: CursorShape.Ring,
+	cursorShape: CursorShape.Dot,
 	cursorForce: 0.5,
 	cursorRadius: 50,
 	boidSize: 1,
