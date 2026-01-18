@@ -184,11 +184,11 @@
 							description: `<p>Customize how the swarm looks:</p>
 								<ul>
 									<li><strong>Size</strong> — Scale of each boid triangle</li>
-									<li><strong>Trail</strong> — Length of the motion trail behind each boid</li>
+									<li><strong>Trail</strong> — Length of the motion trail (up to 100!)</li>
 									<li><strong>Colorize</strong> — What property determines boid color (direction, speed, neighbors...)</li>
-									<li><strong>Palette</strong> — Color scheme for visualization</li>
+									<li><strong>Palette</strong> — Color scheme: Chrome, Neon, Sunset, Rainbow, or Mono</li>
 								</ul>
-								<p><em>Rainbow palette + Direction coloring shows flow beautifully!</em></p>`,
+								<p><em>Try Neon palette for synthwave vibes, or Sunset for dramatic warmth!</em></p>`,
 							side: 'left',
 							align: 'start'
 						}
@@ -210,9 +210,9 @@
 							title: 'World & Cursor',
 							description: `<p>Define the simulation space and your interaction:</p>
 								<ul>
-									<li><strong>Bounds</strong> — Topology of the world (Torus wraps around, Plane has walls, Möbius flips!)</li>
+									<li><strong>Bounds</strong> — Topology of the world (Plane has walls, Torus wraps around, Möbius flips!)</li>
 									<li><strong>Cursor</strong> — Pull attracts boids, Push repels them</li>
-									<li><strong>Shape</strong> — Ring makes boids orbit you, Vortex creates swirls!</li>
+									<li><strong>Shape</strong> — Dot for focused attraction, Ring for orbits, Disk to contain, Vortex for swirls!</li>
 									<li><strong>Size & Power</strong> — Control cursor influence area and strength</li>
 								</ul>
 								<p><em>Try Vortex cursor with Pull mode for mesmerizing spirals!</em></p>`,

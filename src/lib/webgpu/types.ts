@@ -130,7 +130,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	maxForce: 0.1,
 	noise: 0.35,
 	rebels: 0.02,
-	boundaryMode: BoundaryMode.Torus,
+	boundaryMode: BoundaryMode.Plane,
 	cursorMode: CursorMode.Attract,
 	cursorShape: CursorShape.Dot,
 	cursorForce: 0.5,
