@@ -43,6 +43,8 @@
 	let boundaryDropdownRef: HTMLDivElement;
 	let paletteDropdownOpen = $state(false);
 	let paletteDropdownRef: HTMLDivElement;
+	let algorithmDropdownOpen = $state(false);
+	let algorithmDropdownRef: HTMLDivElement;
 
 	function selectBoundary(mode: BoundaryMode) {
 		setBoundaryMode(mode);
@@ -54,6 +56,11 @@
 		paletteDropdownOpen = false;
 	}
 
+	function selectAlgorithm(mode: AlgorithmMode) {
+		setAlgorithmMode(mode);
+		algorithmDropdownOpen = false;
+	}
+
 	function handleClickOutside(event: MouseEvent) {
 		if (boundaryDropdownOpen && boundaryDropdownRef && !boundaryDropdownRef.contains(event.target as Node)) {
 			boundaryDropdownOpen = false;
@@ -61,10 +68,13 @@
 		if (paletteDropdownOpen && paletteDropdownRef && !paletteDropdownRef.contains(event.target as Node)) {
 			paletteDropdownOpen = false;
 		}
+		if (algorithmDropdownOpen && algorithmDropdownRef && !algorithmDropdownRef.contains(event.target as Node)) {
+			algorithmDropdownOpen = false;
+		}
 	}
 
 	$effect(() => {
-		if (boundaryDropdownOpen || paletteDropdownOpen) {
+		if (boundaryDropdownOpen || paletteDropdownOpen || algorithmDropdownOpen) {
 			document.addEventListener('click', handleClickOutside);
 			return () => document.removeEventListener('click', handleClickOutside);
 		}
@@ -588,10 +598,35 @@
 			<!-- Algorithm -->
 			<div id="section-algorithm">
 				<div class="section-label">Algorithm</div>
-				<select value={currentParams.algorithmMode} onchange={(e) => setAlgorithmMode(parseInt(e.currentTarget.value))}
-					class="sel w-full" aria-label="Algorithm">
-					{#each algorithmOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
-				</select>
+				<div class="relative" bind:this={algorithmDropdownRef}>
+					<button 
+						class="sel w-full flex items-center gap-2 text-left"
+						onclick={() => algorithmDropdownOpen = !algorithmDropdownOpen}
+						aria-label="Algorithm"
+						aria-expanded={algorithmDropdownOpen}
+					>
+						<span class="flex-1 truncate">{algorithmOptions.find(o => o.value === currentParams.algorithmMode)?.label}</span>
+						<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={algorithmDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+						</svg>
+					</button>
+					{#if algorithmDropdownOpen}
+						<div 
+							class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md"
+							transition:slide={{ duration: 150, easing: cubicOut }}
+						>
+							{#each algorithmOptions as opt}
+								<button
+									class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
+									class:active={currentParams.algorithmMode === opt.value}
+									onclick={() => selectAlgorithm(opt.value)}
+								>
+									<span>{opt.label}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
 			</div>
 		</div>
 	</div>
