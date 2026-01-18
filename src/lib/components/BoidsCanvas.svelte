@@ -141,44 +141,49 @@
 		cursor.update((c) => ({ ...c, isPressed: false, isActive: false }));
 	}
 
-	onMount(async () => {
-		// Initialize WebGPU
-		gpuContext = await initWebGPU(canvas);
+	let resizeObserver: ResizeObserver | null = null;
 
-		if (!gpuContext) {
-			isWebGPUAvailable.set(false);
-			return;
-		}
+	onMount(() => {
+		// Initialize WebGPU (async but we don't return the promise)
+		initWebGPU(canvas).then((ctx) => {
+			gpuContext = ctx;
 
-		isWebGPUAvailable.set(true);
+			if (!gpuContext) {
+				isWebGPUAvailable.set(false);
+				return;
+			}
 
-		// Set initial dimensions
-		updateDimensions();
+			isWebGPUAvailable.set(true);
 
-		// Create simulation
-		simulation = createSimulation(gpuContext, currentParams, (newFps) => {
-			fps.set(newFps);
-		});
-
-		// Start simulation
-		simulation.start();
-
-		// Setup resize observers
-		const resizeObserver = new ResizeObserver(() => {
+			// Set initial dimensions
 			updateDimensions();
+
+			// Create simulation
+			simulation = createSimulation(gpuContext, currentParams, (newFps) => {
+				fps.set(newFps);
+			});
+
+			// Start simulation
+			simulation.start();
+
+			// Setup resize observers
+			resizeObserver = new ResizeObserver(() => {
+				updateDimensions();
+			});
+			resizeObserver.observe(container);
+
+			// Visual viewport listener for mobile
+			if (window.visualViewport) {
+				window.visualViewport.addEventListener('resize', updateDimensions);
+			}
+
+			window.addEventListener('resize', updateDimensions);
+			window.addEventListener('orientationchange', updateDimensions);
 		});
-		resizeObserver.observe(container);
 
-		// Visual viewport listener for mobile
-		if (window.visualViewport) {
-			window.visualViewport.addEventListener('resize', updateDimensions);
-		}
-
-		window.addEventListener('resize', updateDimensions);
-		window.addEventListener('orientationchange', updateDimensions);
-
+		// Return cleanup function
 		return () => {
-			resizeObserver.disconnect();
+			resizeObserver?.disconnect();
 			if (window.visualViewport) {
 				window.visualViewport.removeEventListener('resize', updateDimensions);
 			}

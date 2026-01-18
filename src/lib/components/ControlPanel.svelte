@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { driver } from 'driver.js';
 	import 'driver.js/dist/driver.css';
+	import { base } from '$app/paths';
 	import BoundaryIcon from './BoundaryIcon.svelte';
 	import PaletteIcon from './PaletteIcon.svelte';
 	import {
@@ -45,6 +46,13 @@
 	let paletteDropdownRef: HTMLDivElement;
 	let algorithmDropdownOpen = $state(false);
 	let algorithmDropdownRef: HTMLDivElement;
+
+	// Accordion - only one section open at a time
+	let openSection = $state<'boids' | 'world' | 'flocking' | 'dynamics' | 'algorithm'>('boids');
+
+	function toggleSection(section: typeof openSection) {
+		openSection = openSection === section ? section : section; // Always open clicked section
+	}
 
 	function selectBoundary(mode: BoundaryMode) {
 		setBoundaryMode(mode);
@@ -106,7 +114,14 @@
 				steps: [
 					{
 						popover: {
-							title: 'Welcome to Boids',
+							title: `<div style="display: flex; align-items: center; gap: 10px;">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" style="width: 28px; height: 28px;">
+									<defs><linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>
+									<rect width="32" height="32" rx="6" fill="#0a0a0f"/>
+									<g fill="url(#fg)"><path d="M16 6 L20 14 L12 14 Z"/><path d="M8 14 L12 22 L4 22 Z" opacity="0.7"/><path d="M24 14 L28 22 L20 22 Z" opacity="0.7"/></g>
+								</svg>
+								<span>Welcome to Swarm</span>
+							</div>`,
 							description: `
 								<p style="margin-bottom: 12px; color: #a1a1aa;">Boids simulate flocking behavior using three simple rules, discovered by Craig Reynolds in 1986:</p>
 								<div style="display: flex; gap: 8px; margin-bottom: 12px;">
@@ -178,52 +193,59 @@
 						}
 					},
 					{
-						element: '#section-visuals',
+						element: '#section-boids',
 						popover: {
-							title: 'Boid Appearance',
-							description: `<p>Customize how the swarm looks:</p>
+							title: `<div style="display: flex; align-items: center; gap: 8px;">
+								<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+									<polygon points="12 2 19 21 12 17 5 21 12 2"/>
+								</svg>
+								<span>Boids</span>
+							</div>`,
+							description: `<p>Control the swarm population and appearance:</p>
 								<ul>
+									<li><strong>Population</strong> — Number of boids (WebGPU handles 50,000+!)</li>
 									<li><strong>Size</strong> — Scale of each boid triangle</li>
-									<li><strong>Trail</strong> — Length of the motion trail (up to 100!)</li>
-									<li><strong>Colorize</strong> — What property determines boid color (direction, speed, neighbors...)</li>
-									<li><strong>Palette</strong> — Color scheme: Chrome, Neon, Sunset, Rainbow, or Mono</li>
+									<li><strong>Trail</strong> — Length of the motion trail (up to 100)</li>
+									<li><strong>Colorize</strong> — What property determines color</li>
+									<li><strong>Palette</strong> — Chrome, Neon, Sunset, Rainbow, or Mono</li>
 								</ul>
-								<p><em>Try Neon palette for synthwave vibes, or Sunset for dramatic warmth!</em></p>`,
+								<p><em>Try Neon palette for synthwave vibes!</em></p>`,
 							side: 'left',
 							align: 'start'
-						}
-					},
-					{
-						element: '#section-population',
-						popover: {
-							title: 'Population',
-							description: `<p>Control the number of boids in the simulation.</p>
-								<p>This simulation uses <strong>WebGPU</strong> for massively parallel computation, allowing tens of thousands of boids to interact in real-time.</p>
-								<p><em>Modern GPUs can handle 50,000+ boids at smooth framerates!</em></p>`,
-							side: 'left',
-							align: 'start'
-						}
+						},
+						onHighlightStarted: () => { openSection = 'boids'; }
 					},
 					{
 						element: '#section-world',
 						popover: {
-							title: 'World & Cursor',
+							title: `<div style="display: flex; align-items: center; gap: 8px;">
+								<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+									<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+								</svg>
+								<span>World</span>
+							</div>`,
 							description: `<p>Define the simulation space and your interaction:</p>
 								<ul>
 									<li><strong>Bounds</strong> — Topology of the world (Plane has walls, Torus wraps around, Möbius flips!)</li>
-									<li><strong>Cursor</strong> — Pull attracts boids, Push repels them</li>
-									<li><strong>Shape</strong> — Dot for focused attraction, Ring for orbits, Disk to contain, Vortex for swirls!</li>
+									<li><strong>Interaction</strong> — Power toggles cursor, then Attract or Repel</li>
+									<li><strong>Shape</strong> — Dot, Ring, Disk, or Vortex cursor styles</li>
 									<li><strong>Size & Power</strong> — Control cursor influence area and strength</li>
 								</ul>
-								<p><em>Try Vortex cursor with Pull mode for mesmerizing spirals!</em></p>`,
+								<p><em>Try Vortex cursor with Attract for mesmerizing spirals!</em></p>`,
 							side: 'left',
 							align: 'start'
-						}
+						},
+						onHighlightStarted: () => { openSection = 'world'; }
 					},
 					{
 						element: '#section-flocking',
 						popover: {
-							title: 'Flocking Behavior',
+							title: `<div style="display: flex; align-items: center; gap: 8px;">
+								<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+									<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+								</svg>
+								<span>Flocking</span>
+							</div>`,
 							description: `<p>The three classic rules of boids, discovered by Craig Reynolds in 1986:</p>
 								<ul>
 									<li><strong>Align</strong> — Steer toward the average heading of nearby boids</li>
@@ -234,12 +256,18 @@
 								<p><em>Try setting Cohesion high and Separation low to see tight swarms!</em></p>`,
 							side: 'left',
 							align: 'start'
-						}
+						},
+						onHighlightStarted: () => { openSection = 'flocking'; }
 					},
 					{
 						element: '#section-dynamics',
 						popover: {
-							title: 'Dynamics',
+							title: `<div style="display: flex; align-items: center; gap: 8px;">
+								<svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+									<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+								</svg>
+								<span>Dynamics</span>
+							</div>`,
 							description: `<p>Control the physics of movement:</p>
 								<ul>
 									<li><strong>Speed</strong> — Maximum velocity of each boid</li>
@@ -250,12 +278,18 @@
 								<p><em>High noise + rebels creates chaotic, lifelike behavior!</em></p>`,
 							side: 'left',
 							align: 'start'
-						}
+						},
+						onHighlightStarted: () => { openSection = 'dynamics'; }
 					},
 					{
 						element: '#section-algorithm',
 						popover: {
-							title: 'Algorithm',
+							title: `<div style="display: flex; align-items: center; gap: 8px;">
+								<svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+									<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+								</svg>
+								<span>Algorithm</span>
+							</div>`,
 							description: `<p>Choose the spatial algorithm for neighbor detection.</p>
 								<ul>
 									<li><strong>Hash-Free</strong> — Eliminates grid artifacts by giving each boid a unique spatial offset</li>
@@ -266,7 +300,8 @@
 								</ul>`,
 							side: 'left',
 							align: 'start'
-						}
+						},
+						onHighlightStarted: () => { openSection = 'algorithm'; }
 					}
 				]
 			});
@@ -317,7 +352,25 @@
 		{ value: CursorShape.Disk, label: 'Disk' },
 		{ value: CursorShape.Vortex, label: 'Vortex' }
 	];
+
+	// Cursor toggle indicator position
+	let cursorModeIndex = $derived(
+		currentParams.cursorMode === CursorMode.Off ? 0 : 
+		currentParams.cursorMode === CursorMode.Attract ? 1 : 2
+	);
 </script>
+
+<!-- Gear button (always rendered, animated visibility) -->
+<button
+	onclick={togglePanel}
+	class="gear-btn fixed right-4 top-4 z-40 flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-all hover:text-zinc-200"
+	class:gear-hidden={isOpen}
+	aria-label="Open Settings"
+>
+	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
+		<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+	</svg>
+</button>
 
 {#if isOpen}
 	<!-- Panel (open state) -->
@@ -325,9 +378,12 @@
 		class="panel fixed right-4 top-4 z-40 w-64 rounded-xl"
 		transition:scale={{ duration: 200, easing: cubicOut, start: 0.95, opacity: 0 }}
 	>
-		<!-- Header with help and gear buttons -->
+		<!-- Header with logo and buttons -->
 		<div class="flex items-center justify-between px-3 py-2.5">
-			<span class="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Controls</span>
+			<div class="flex items-center gap-2">
+				<img src="{base}/favicon.svg" alt="Swarm" class="h-5 w-5" />
+				<span class="brand-title">Swarm</span>
+			</div>
 			<div class="flex items-center gap-1">
 				<button
 					onclick={startTour}
@@ -343,8 +399,8 @@
 					class="flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition-all hover:bg-white/10 hover:text-zinc-200"
 					aria-label="Close Settings"
 				>
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5 rotate-90">
-						<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+						<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
 					</svg>
 				</button>
 			</div>
@@ -352,80 +408,100 @@
 
 		<!-- Content -->
 		<div class="content-scroll max-h-[calc(100vh-100px)] px-3 pb-3">
-			<!-- Visuals -->
-			<div id="section-visuals" class="mb-3">
-				<div class="section-label">Boids</div>
-				<div class="space-y-1.5">
-					<div class="row">
-						<span class="label">Size</span>
-						<input type="range" min="0.2" max="3" step="0.1" value={currentParams.boidSize}
-							oninput={(e) => setBoidSize(parseFloat(e.currentTarget.value))} class="slider" aria-label="Boid Size" />
-						<span class="value">{currentParams.boidSize.toFixed(1)}</span>
+			<!-- Boids -->
+			<div id="section-boids" class="mb-2">
+				<button class="section-header" onclick={() => toggleSection('boids')}>
+					<div class="section-title">
+						<svg class="section-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polygon points="12 2 19 21 12 17 5 21 12 2"/>
+						</svg>
+						<span class="section-label">Boids</span>
 					</div>
-					<div class="row">
-						<span class="label">Trail</span>
-						<input type="range" min="5" max="100" step="5" value={currentParams.trailLength}
-							oninput={(e) => setTrailLength(parseInt(e.currentTarget.value))} class="slider" aria-label="Trail" />
-						<span class="value">{currentParams.trailLength}</span>
-					</div>
-					<div class="row">
-						<span class="label">Colorize</span>
-						<select value={currentParams.colorMode} onchange={(e) => setColorMode(parseInt(e.currentTarget.value))}
-							class="sel flex-1" aria-label="Colorize Mode">
-							{#each colorOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
-						</select>
-					</div>
-					<div class="row">
-						<span class="label">Palette</span>
-						<div class="relative flex-1" bind:this={paletteDropdownRef}>
-							<button 
-								class="sel w-full flex items-center gap-2 text-left"
-								onclick={() => paletteDropdownOpen = !paletteDropdownOpen}
-								aria-label="Palette"
-								aria-expanded={paletteDropdownOpen}
-							>
-								<PaletteIcon spectrum={currentParams.colorSpectrum} size={14} />
-								<span class="flex-1 truncate">{spectrumOptions.find(o => o.value === currentParams.colorSpectrum)?.label}</span>
-								<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={paletteDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
-									<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-								</svg>
-							</button>
-							{#if paletteDropdownOpen}
-								<div 
-									class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 overflow-y-auto rounded-md"
-									transition:slide={{ duration: 150, easing: cubicOut }}
+					<svg class="section-chevron" class:open={openSection === 'boids'} viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+					</svg>
+				</button>
+				{#if openSection === 'boids'}
+					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+						<div class="row">
+							<span class="label">Population</span>
+							<input type="range" min="500" max="50000" step="500" value={currentParams.population}
+								oninput={(e) => setPopulation(parseInt(e.currentTarget.value))} class="slider" aria-label="Population" />
+							<span class="value">{(currentParams.population / 1000).toFixed(1)}k</span>
+						</div>
+						<div class="row">
+							<span class="label">Size</span>
+							<input type="range" min="0.2" max="3" step="0.1" value={currentParams.boidSize}
+								oninput={(e) => setBoidSize(parseFloat(e.currentTarget.value))} class="slider" aria-label="Boid Size" />
+							<span class="value">{currentParams.boidSize.toFixed(1)}</span>
+						</div>
+						<div class="row">
+							<span class="label">Trail</span>
+							<input type="range" min="5" max="100" step="5" value={currentParams.trailLength}
+								oninput={(e) => setTrailLength(parseInt(e.currentTarget.value))} class="slider" aria-label="Trail" />
+							<span class="value">{currentParams.trailLength}</span>
+						</div>
+						<div class="row">
+							<span class="label">Colorize</span>
+							<select value={currentParams.colorMode} onchange={(e) => setColorMode(parseInt(e.currentTarget.value))}
+								class="sel flex-1" aria-label="Colorize Mode">
+								{#each colorOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
+							</select>
+						</div>
+						<div class="row">
+							<span class="label">Palette</span>
+							<div class="relative flex-1" bind:this={paletteDropdownRef}>
+								<button 
+									class="sel w-full flex items-center gap-2 text-left"
+									onclick={() => paletteDropdownOpen = !paletteDropdownOpen}
+									aria-label="Palette"
+									aria-expanded={paletteDropdownOpen}
 								>
-									{#each spectrumOptions as opt}
-										<button
-											class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
-											class:active={currentParams.colorSpectrum === opt.value}
-											onclick={() => selectPalette(opt.value)}
-										>
-											<PaletteIcon spectrum={opt.value} size={14} />
-											<span>{opt.label}</span>
-										</button>
-									{/each}
-								</div>
-							{/if}
+									<PaletteIcon spectrum={currentParams.colorSpectrum} size={14} />
+									<span class="flex-1 truncate">{spectrumOptions.find(o => o.value === currentParams.colorSpectrum)?.label}</span>
+									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={paletteDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
+										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+									</svg>
+								</button>
+								{#if paletteDropdownOpen}
+									<div 
+										class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 overflow-y-auto rounded-md"
+										transition:slide={{ duration: 150, easing: cubicOut }}
+									>
+										{#each spectrumOptions as opt}
+											<button
+												class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
+												class:active={currentParams.colorSpectrum === opt.value}
+												onclick={() => selectPalette(opt.value)}
+											>
+												<PaletteIcon spectrum={opt.value} size={14} />
+												<span>{opt.label}</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
 						</div>
 					</div>
-				</div>
-			</div>
-
-			<!-- Population -->
-			<div id="section-population" class="mb-3">
-				<div class="section-label">Population</div>
-				<div class="row">
-					<input type="range" min="500" max="50000" step="500" value={currentParams.population}
-						oninput={(e) => setPopulation(parseInt(e.currentTarget.value))} class="slider" aria-label="Population" />
-					<span class="value">{(currentParams.population / 1000).toFixed(1)}k</span>
-				</div>
+				{/if}
 			</div>
 
 			<!-- World -->
-			<div id="section-world" class="mb-3">
-				<div class="section-label">World & Cursor</div>
-				<div class="space-y-1.5">
+			<div id="section-world" class="mb-2">
+				<button class="section-header" onclick={() => toggleSection('world')}>
+					<div class="section-title">
+						<svg class="section-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/>
+							<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+						</svg>
+						<span class="section-label">World</span>
+					</div>
+					<svg class="section-chevron" class:open={openSection === 'world'} viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+					</svg>
+				</button>
+				{#if openSection === 'world'}
+				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 					<div class="row">
 						<span class="label">Bounds</span>
 						<div class="relative flex-1" bind:this={boundaryDropdownRef}>
@@ -461,59 +537,96 @@
 						</div>
 					</div>
 					<div class="row">
-						<span class="label">Cursor</span>
-						<div class="flex flex-1 gap-0.5">
-							<button class="btn icon-btn" class:active={currentParams.cursorMode === CursorMode.Off}
-								onclick={() => setCursorMode(CursorMode.Off)} aria-label="Cursor Off" title="Off">
-								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5">
-									<circle cx="8" cy="8" r="5" stroke-dasharray="2 2" />
-									<line x1="4" y1="4" x2="12" y2="12" />
+						<span class="label">Interaction</span>
+						<!-- Premium segmented control with sliding indicator -->
+						<div class="cursor-toggle">
+							<!-- Sliding indicator -->
+							<div class="cursor-toggle-indicator" style="transform: translateX({cursorModeIndex * 100}%)"></div>
+							
+							<button 
+								class="cursor-toggle-btn power-btn"
+								class:active={currentParams.cursorMode !== CursorMode.Off}
+								onclick={() => setCursorMode(currentParams.cursorMode === CursorMode.Off ? CursorMode.Attract : CursorMode.Off)}
+								aria-label="Toggle Cursor"
+							>
+								<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+									<!-- Proper power icon -->
+									<path d="M12 3 L12 11"/>
+									<path d="M6.3 6.3 A8.5 8.5 0 1 0 17.7 6.3"/>
 								</svg>
 							</button>
-							<button class="btn icon-btn" class:active={currentParams.cursorMode === CursorMode.Attract}
-								onclick={() => setCursorMode(CursorMode.Attract)} aria-label="Pull/Attract" title="Pull">
-								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5">
-									<circle cx="8" cy="8" r="5" />
-									<path d="M8 5v6M5 8l3-3 3 3" />
+							<button 
+								class="cursor-toggle-btn attract"
+								class:active={currentParams.cursorMode === CursorMode.Attract}
+								onclick={() => setCursorMode(CursorMode.Attract)}
+								aria-label="Attract"
+							>
+								<svg viewBox="0 0 24 24" class="h-5 w-5">
+									<!-- 3 arrows pointing inward to center -->
+									<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+										<!-- Top -->
+										<path d="M12 1 L12 8 M9 5 L12 8 L15 5"/>
+										<!-- Bottom-left -->
+										<path d="M1.5 19.5 L7.5 13.5 M2 14.5 L7.5 13.5 L6.5 19"/>
+										<!-- Bottom-right -->
+										<path d="M22.5 19.5 L16.5 13.5 M22 14.5 L16.5 13.5 L17.5 19"/>
+									</g>
+									<!-- Center dot -->
+									<circle cx="12" cy="12" r="2.5" fill="currentColor"/>
 								</svg>
 							</button>
-							<button class="btn icon-btn" class:active={currentParams.cursorMode === CursorMode.Repel}
-								onclick={() => setCursorMode(CursorMode.Repel)} aria-label="Push/Repel" title="Push">
-								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5">
-									<circle cx="8" cy="8" r="5" />
-									<path d="M8 5v6M5 8l3 3 3-3" />
+							<button 
+								class="cursor-toggle-btn repel"
+								class:active={currentParams.cursorMode === CursorMode.Repel}
+								onclick={() => setCursorMode(CursorMode.Repel)}
+								aria-label="Repel"
+							>
+								<svg viewBox="0 0 24 24" class="h-5 w-5">
+									<!-- 3 arrows pointing outward from center -->
+									<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+										<!-- Top -->
+										<path d="M12 8 L12 1 M9 4 L12 1 L15 4"/>
+										<!-- Bottom-left -->
+										<path d="M7.5 13.5 L1.5 19.5 M5 19.5 L1.5 19.5 L1.5 16"/>
+										<!-- Bottom-right -->
+										<path d="M16.5 13.5 L22.5 19.5 M19 19.5 L22.5 19.5 L22.5 16"/>
+									</g>
+									<!-- Center dot -->
+									<circle cx="12" cy="12" r="2.5" fill="currentColor"/>
 								</svg>
 							</button>
 						</div>
 					</div>
 					<div class="row">
 						<span class="label">Shape</span>
-						<div class="flex flex-1 gap-0.5">
-							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Dot}
+						<div class="shape-toggle">
+							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Dot}
 								onclick={() => setCursorShape(CursorShape.Dot)} aria-label="Dot" title="Dot">
-								<svg viewBox="0 0 16 16" class="h-3.5 w-3.5">
-									<circle cx="8" cy="8" r="2.5" fill="currentColor" />
+								<svg viewBox="0 0 24 24" class="h-5 w-5">
+									<circle cx="12" cy="12" r="4" fill="currentColor" />
 								</svg>
 							</button>
-							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Ring}
+							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Ring}
 								onclick={() => setCursorShape(CursorShape.Ring)} aria-label="Ring" title="Ring">
-								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="h-3.5 w-3.5">
-									<circle cx="8" cy="8" r="5" />
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+									<circle cx="12" cy="12" r="7" />
 								</svg>
 							</button>
-							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Disk}
+							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Disk}
 								onclick={() => setCursorShape(CursorShape.Disk)} aria-label="Disk" title="Disk">
-								<svg viewBox="0 0 16 16" class="h-3.5 w-3.5">
-									<circle cx="8" cy="8" r="5" fill="currentColor" opacity="0.6" />
-									<circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.5" />
+								<svg viewBox="0 0 24 24" class="h-5 w-5">
+									<circle cx="12" cy="12" r="7" fill="currentColor" opacity="0.4" />
+									<circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2" />
 								</svg>
 							</button>
-							<button class="btn icon-btn" class:active={currentParams.cursorShape === CursorShape.Vortex}
+							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Vortex}
 								onclick={() => setCursorShape(CursorShape.Vortex)} aria-label="Vortex" title="Vortex">
-								<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" class="h-3.5 w-3.5">
-									<path d="M8 3c2.5 0 4.5 2 4.5 5s-2 5-4.5 5" />
-									<path d="M8 5c1.5 0 2.5 1.2 2.5 3s-1 3-2.5 3" />
-									<circle cx="8" cy="8" r="1" fill="currentColor" />
+								<!-- Lucide: refresh-cw -->
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+									<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+									<path d="M21 3v5h-5"/>
+									<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+									<path d="M3 21v-5h5"/>
 								</svg>
 							</button>
 						</div>
@@ -531,12 +644,26 @@
 						<span class="value">{currentParams.cursorForce.toFixed(2)}</span>
 					</div>
 				</div>
+				{/if}
 			</div>
 
 			<!-- Flocking -->
-			<div id="section-flocking" class="mb-3">
-				<div class="section-label">Flocking</div>
-				<div class="space-y-1.5">
+			<div id="section-flocking" class="mb-2">
+				<button class="section-header" onclick={() => toggleSection('flocking')}>
+					<div class="section-title">
+						<svg class="section-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+							<circle cx="9" cy="7" r="4"/>
+							<path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+						</svg>
+						<span class="section-label">Flocking</span>
+					</div>
+					<svg class="section-chevron" class:open={openSection === 'flocking'} viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+					</svg>
+				</button>
+				{#if openSection === 'flocking'}
+				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 					<div class="row">
 						<span class="label">Align</span>
 						<input type="range" min="0" max="3" step="0.1" value={currentParams.alignment}
@@ -562,12 +689,24 @@
 						<span class="value">{currentParams.perception}</span>
 					</div>
 				</div>
+				{/if}
 			</div>
 
 			<!-- Dynamics -->
-			<div id="section-dynamics" class="mb-3">
-				<div class="section-label">Dynamics</div>
-				<div class="space-y-1.5">
+			<div id="section-dynamics" class="mb-2">
+				<button class="section-header" onclick={() => toggleSection('dynamics')}>
+					<div class="section-title">
+						<svg class="section-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+						</svg>
+						<span class="section-label">Dynamics</span>
+					</div>
+					<svg class="section-chevron" class:open={openSection === 'dynamics'} viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+					</svg>
+				</button>
+				{#if openSection === 'dynamics'}
+				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 					<div class="row">
 						<span class="label">Speed</span>
 						<input type="range" min="1" max="15" step="0.5" value={currentParams.maxSpeed}
@@ -593,55 +732,67 @@
 						<span class="value">{(currentParams.rebels * 100).toFixed(0)}%</span>
 					</div>
 				</div>
+				{/if}
 			</div>
 
 			<!-- Algorithm -->
-			<div id="section-algorithm">
-				<div class="section-label">Algorithm</div>
-				<div class="relative" bind:this={algorithmDropdownRef}>
-					<button 
-						class="sel w-full flex items-center gap-2 text-left"
-						onclick={() => algorithmDropdownOpen = !algorithmDropdownOpen}
-						aria-label="Algorithm"
-						aria-expanded={algorithmDropdownOpen}
-					>
-						<span class="flex-1 truncate">{algorithmOptions.find(o => o.value === currentParams.algorithmMode)?.label}</span>
-						<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={algorithmDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
-							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+			<div id="section-algorithm" class="mb-2">
+				<button class="section-header" onclick={() => toggleSection('algorithm')}>
+					<div class="section-title">
+						<svg class="section-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+							<rect x="9" y="9" width="6" height="6"/>
+							<line x1="9" y1="1" x2="9" y2="4"/>
+							<line x1="15" y1="1" x2="15" y2="4"/>
+							<line x1="9" y1="20" x2="9" y2="23"/>
+							<line x1="15" y1="20" x2="15" y2="23"/>
+							<line x1="20" y1="9" x2="23" y2="9"/>
+							<line x1="20" y1="14" x2="23" y2="14"/>
+							<line x1="1" y1="9" x2="4" y2="9"/>
+							<line x1="1" y1="14" x2="4" y2="14"/>
 						</svg>
-					</button>
-					{#if algorithmDropdownOpen}
-						<div 
-							class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md"
-							transition:slide={{ duration: 150, easing: cubicOut }}
+						<span class="section-label">Algorithm</span>
+					</div>
+					<svg class="section-chevron" class:open={openSection === 'algorithm'} viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+					</svg>
+				</button>
+				{#if openSection === 'algorithm'}
+				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+					<div class="relative" bind:this={algorithmDropdownRef}>
+						<button 
+							class="sel w-full flex items-center gap-2 text-left"
+							onclick={() => algorithmDropdownOpen = !algorithmDropdownOpen}
+							aria-label="Algorithm"
+							aria-expanded={algorithmDropdownOpen}
 						>
-							{#each algorithmOptions as opt}
-								<button
-									class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
-									class:active={currentParams.algorithmMode === opt.value}
-									onclick={() => selectAlgorithm(opt.value)}
-								>
-									<span>{opt.label}</span>
-								</button>
-							{/each}
-						</div>
-					{/if}
+							<span class="flex-1 truncate">{algorithmOptions.find(o => o.value === currentParams.algorithmMode)?.label}</span>
+							<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={algorithmDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
+								<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+							</svg>
+						</button>
+						{#if algorithmDropdownOpen}
+							<div 
+								class="dropdown-menu dropdown-up absolute left-0 right-0 bottom-full z-50 mb-1 max-h-48 overflow-y-auto rounded-md"
+								transition:slide={{ duration: 150, easing: cubicOut }}
+							>
+								{#each algorithmOptions as opt}
+									<button
+										class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
+										class:active={currentParams.algorithmMode === opt.value}
+										onclick={() => selectAlgorithm(opt.value)}
+									>
+										<span>{opt.label}</span>
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
+				{/if}
 			</div>
 		</div>
 	</div>
-{:else}
-	<!-- Gear button (closed state) - circular -->
-	<button
-		onclick={togglePanel}
-		class="gear-btn fixed right-4 top-4 z-40 flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-all hover:text-zinc-200"
-		aria-label="Open Settings"
-		transition:scale={{ duration: 200, easing: cubicOut, start: 0.8, opacity: 0 }}
-	>
-		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
-			<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-		</svg>
-	</button>
 {/if}
 
 <style>
@@ -683,19 +834,84 @@
 		box-shadow: 
 			0 2px 12px rgba(0, 0, 0, 0.4),
 			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+		transition: opacity 0.2s ease, transform 0.2s ease;
 	}
 	.gear-btn:hover {
 		background: rgba(16, 16, 20, 0.9);
 		border-color: rgba(255, 255, 255, 0.12);
 	}
+	.gear-btn.gear-hidden {
+		opacity: 0;
+		pointer-events: none;
+		transform: scale(0.8);
+	}
+
+	.brand-title {
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		background: linear-gradient(135deg, #a78bfa 0%, #22d3ee 50%, #fbbf24 100%);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+	}
+
+	.section-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 8px 6px;
+		margin: 0 -6px;
+		background: rgba(255, 255, 255, 0.02);
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.section-header:hover {
+		background: rgba(255, 255, 255, 0.05);
+	}
+	.section-title {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.section-icon {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+		transition: color 0.15s;
+	}
+	.section-icon.icon-purple { color: #a78bfa; }
+	.section-icon.icon-cyan { color: #22d3ee; }
+	.section-icon.icon-rose { color: #fb7185; }
+	.section-icon.icon-amber { color: #fbbf24; }
+	.section-icon.icon-emerald { color: #34d399; }
 
 	.section-label {
-		margin-bottom: 6px;
-		font-size: 9px;
-		font-weight: 500;
+		font-size: 10px;
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.06em;
+		color: rgb(161 161 170);
+	}
+	.section-chevron {
+		width: 14px;
+		height: 14px;
 		color: rgb(113 113 122);
+		transition: transform 0.2s ease;
+		transform: rotate(-90deg);
+	}
+	.section-chevron.open {
+		transform: rotate(0deg);
+	}
+	.section-content {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 8px 0 4px 0;
 	}
 
 	.row {
@@ -832,6 +1048,102 @@
 		align-items: center;
 		justify-content: center;
 		padding: 0;
+	}
+
+	/* Premium Cursor Toggle */
+	.cursor-toggle {
+		flex: 1;
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		position: relative;
+		height: 36px;
+		background: rgba(0, 0, 0, 0.4);
+		border-radius: 8px;
+		padding: 3px;
+		gap: 2px;
+		border: 1px solid rgba(255, 255, 255, 0.06);
+	}
+	.cursor-toggle-indicator {
+		position: absolute;
+		top: 3px;
+		left: 3px;
+		width: calc(33.333% - 2px);
+		height: calc(100% - 6px);
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+		pointer-events: none;
+	}
+	.cursor-toggle-btn {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: none;
+		border-radius: 5px;
+		color: rgb(113 113 122);
+		cursor: pointer;
+		transition: color 0.15s;
+	}
+	.cursor-toggle-btn:hover {
+		color: rgb(161 161 170);
+	}
+	.cursor-toggle-btn.active {
+		color: rgb(228 228 231);
+	}
+	/* Power button - green when cursor is enabled */
+	.cursor-toggle-btn.power-btn.active {
+		color: rgb(74 222 128);
+	}
+	/* Attract button glow */
+	.cursor-toggle-btn.attract.active {
+		color: rgb(34 211 238);
+	}
+	.cursor-toggle:has(.cursor-toggle-btn.attract.active) .cursor-toggle-indicator {
+		background: rgba(34, 211, 238, 0.15);
+		box-shadow: 0 0 12px rgba(34, 211, 238, 0.2);
+	}
+	/* Repel button glow */
+	.cursor-toggle-btn.repel.active {
+		color: rgb(251 113 133);
+	}
+	.cursor-toggle:has(.cursor-toggle-btn.repel.active) .cursor-toggle-indicator {
+		background: rgba(251, 113, 133, 0.15);
+		box-shadow: 0 0 12px rgba(251, 113, 133, 0.2);
+	}
+
+	/* Shape Toggle - square buttons */
+	.shape-toggle {
+		flex: 1;
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		height: 32px;
+		background: rgba(0, 0, 0, 0.4);
+		border-radius: 8px;
+		padding: 3px;
+		gap: 2px;
+		border: 1px solid rgba(255, 255, 255, 0.06);
+	}
+	.shape-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: none;
+		border-radius: 5px;
+		color: rgb(113 113 122);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.shape-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: rgb(161 161 170);
+	}
+	.shape-btn.active {
+		background: rgba(255, 255, 255, 0.12);
+		color: rgb(228 228 231);
 	}
 
 	/* Driver.js custom styles */
