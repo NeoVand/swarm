@@ -34,6 +34,9 @@ struct Uniforms {
     time: f32,
     frameCount: u32,
     algorithmMode: u32,
+    kNeighbors: u32,
+    sampleCount: u32,
+    idealDensity: f32,
 }
 
 // Color modes
@@ -166,35 +169,6 @@ fn vs_main(
     // segmentIndex 0 is the oldest segment, trailLength-2 is the newest
     // We render from old to new
     let age = uniforms.trailLength - 2u - segmentIndex;
-    
-    // =========================================================================
-    // LOD (Level of Detail) - Skip segments for older parts of trail
-    // This dramatically reduces GPU load while maintaining visual quality
-    // - Newest 25%: render ALL segments (full detail near boid head)
-    // - Next 25%: render every 2nd segment
-    // - Oldest 50%: render every 4th segment
-    // Result: ~50% fewer rendered segments with minimal visual impact
-    // =========================================================================
-    let quarterLength = uniforms.trailLength / 4u;
-    let halfLength = uniforms.trailLength / 2u;
-    
-    var skipSegment = false;
-    if (age >= halfLength) {
-        // Oldest 50%: render every 4th segment only
-        skipSegment = (segmentIndex % 4u) != 0u;
-    } else if (age >= quarterLength) {
-        // Middle 25%: render every 2nd segment
-        skipSegment = (segmentIndex % 2u) != 0u;
-    }
-    // Newest 25%: render all segments (skipSegment stays false)
-    
-    if (skipSegment) {
-        // Early exit - produce degenerate triangle (zero area, no fragment processing)
-        output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-        output.color = vec3<f32>(0.0);
-        output.alpha = 0.0;
-        return output;
-    }
     
     // Get the two endpoints of this segment
     let idx1 = (head + uniforms.trailLength - age - 1u) % uniforms.trailLength;

@@ -33,6 +33,9 @@
 		setSensitivity,
 		setPopulation,
 		setAlgorithmMode,
+		setKNeighbors,
+		setSampleCount,
+		setIdealDensity,
 		setRecording,
 		BoundaryMode,
 		ColorMode,
@@ -1099,35 +1102,62 @@
 				</button>
 				{#if openSection === 'algorithm'}
 				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-					<div class="relative" bind:this={algorithmDropdownRef}>
-						<button 
-							class="sel w-full flex items-center gap-2 text-left"
-							onclick={() => algorithmDropdownOpen = !algorithmDropdownOpen}
-							aria-label="Algorithm"
-							aria-expanded={algorithmDropdownOpen}
-						>
-							<span class="flex-1 truncate">{algorithmOptions.find(o => o.value === currentParams.algorithmMode)?.label}</span>
-							<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={algorithmDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
-								<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-							</svg>
-						</button>
-						{#if algorithmDropdownOpen}
-							<div 
-								class="dropdown-menu dropdown-up absolute left-0 right-0 bottom-full z-50 mb-1 max-h-48 overflow-y-auto rounded-md"
-								transition:slide={{ duration: 150, easing: cubicOut }}
+					<div class="row">
+						<span class="label">Mode</span>
+						<div class="relative flex-1" bind:this={algorithmDropdownRef}>
+							<button 
+								class="sel w-full flex items-center gap-2 text-left"
+								onclick={() => algorithmDropdownOpen = !algorithmDropdownOpen}
+								aria-label="Algorithm"
+								aria-expanded={algorithmDropdownOpen}
 							>
-								{#each algorithmOptions as opt}
-									<button
-										class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
-										class:active={currentParams.algorithmMode === opt.value}
-										onclick={() => selectAlgorithm(opt.value)}
-									>
-										<span>{opt.label}</span>
-									</button>
-								{/each}
-							</div>
-						{/if}
+								<span class="flex-1 truncate">{algorithmOptions.find(o => o.value === currentParams.algorithmMode)?.label}</span>
+								<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={algorithmDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
+									<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+								</svg>
+							</button>
+							{#if algorithmDropdownOpen}
+								<div 
+									class="dropdown-menu dropdown-up absolute left-0 right-0 bottom-full z-50 mb-1 max-h-48 overflow-y-auto rounded-md"
+									transition:slide={{ duration: 150, easing: cubicOut }}
+								>
+									{#each algorithmOptions as opt}
+										<button
+											class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
+											class:active={currentParams.algorithmMode === opt.value}
+											onclick={() => selectAlgorithm(opt.value)}
+										>
+											<span>{opt.label}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
 					</div>
+					
+					<!-- Algorithm-specific parameters -->
+					{#if currentParams.algorithmMode === AlgorithmMode.TopologicalKNN}
+						<div class="row">
+							<span class="label">K-Neighbors</span>
+							<input type="range" min="4" max="24" step="1" value={currentParams.kNeighbors}
+								oninput={(e) => setKNeighbors(parseInt(e.currentTarget.value))} class="slider" aria-label="K-Neighbors" />
+							<span class="value">{currentParams.kNeighbors}</span>
+						</div>
+					{:else if currentParams.algorithmMode === AlgorithmMode.StochasticSample}
+						<div class="row">
+							<span class="label">Samples</span>
+							<input type="range" min="8" max="64" step="4" value={currentParams.sampleCount}
+								oninput={(e) => setSampleCount(parseInt(e.currentTarget.value))} class="slider" aria-label="Sample Count" />
+							<span class="value">{currentParams.sampleCount}</span>
+						</div>
+					{:else if currentParams.algorithmMode === AlgorithmMode.DensityAdaptive}
+						<div class="row">
+							<span class="label">Density</span>
+							<input type="range" min="1" max="10" step="0.5" value={currentParams.idealDensity}
+								oninput={(e) => setIdealDensity(parseFloat(e.currentTarget.value))} class="slider" aria-label="Ideal Density" />
+							<span class="value">{currentParams.idealDensity.toFixed(1)}</span>
+						</div>
+					{/if}
 				</div>
 				{/if}
 			</div>

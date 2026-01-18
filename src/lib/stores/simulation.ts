@@ -153,6 +153,19 @@ export function setAlgorithmMode(value: AlgorithmMode): void {
 	params.update((p) => ({ ...p, algorithmMode: value }));
 }
 
+// Algorithm-specific parameters
+export function setKNeighbors(value: number): void {
+	params.update((p) => ({ ...p, kNeighbors: value }));
+}
+
+export function setSampleCount(value: number): void {
+	params.update((p) => ({ ...p, sampleCount: value }));
+}
+
+export function setIdealDensity(value: number): void {
+	params.update((p) => ({ ...p, idealDensity: value }));
+}
+
 // Play/pause toggle
 export function togglePlayPause(): void {
 	isRunning.update((running) => !running);

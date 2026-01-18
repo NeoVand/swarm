@@ -34,6 +34,9 @@ struct Uniforms {
     time: f32,
     frameCount: u32,
     algorithmMode: u32,
+    kNeighbors: u32,
+    sampleCount: u32,
+    idealDensity: f32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

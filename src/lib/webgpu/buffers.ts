@@ -235,6 +235,10 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	f32View[offset++] = data.time;
 	u32View[offset++] = data.frameCount;
 	u32View[offset++] = data.params.algorithmMode;
+	// Algorithm-specific parameters
+	u32View[offset++] = data.params.kNeighbors;
+	u32View[offset++] = data.params.sampleCount;
+	f32View[offset++] = data.params.idealDensity;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
 }

@@ -35,6 +35,10 @@ struct Uniforms {
     time: f32,
     frameCount: u32,
     algorithmMode: u32,
+    // Algorithm-specific parameters
+    kNeighbors: u32,      // Topological K-NN: number of neighbors to track
+    sampleCount: u32,     // Stochastic: random samples per frame
+    idealDensity: f32,    // Density Adaptive: target neighbor density
 }
 
 // Cursor shapes
@@ -61,7 +65,7 @@ const ALG_HASH_FREE: u32 = 2u;
 const ALG_STOCHASTIC: u32 = 3u;
 const ALG_DENSITY_ADAPTIVE: u32 = 4u;
 
-const K_NEIGHBORS: u32 = 12u;
+const MAX_K_NEIGHBORS: u32 = 24u;  // Maximum supported (for array sizing)
 const MAX_CANDIDATES: u32 = 128u;
 
 // Maximum trail length for buffer stride (must match CPU-side MAX_TRAIL_LENGTH)
@@ -339,9 +343,12 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
     
-    var knnDistSq: array<f32, 12>;
-    var knnIndex: array<u32, 12>;
-    for (var i = 0u; i < K_NEIGHBORS; i++) {
+    // Use configurable k, capped at MAX_K_NEIGHBORS for array bounds
+    let k = min(uniforms.kNeighbors, MAX_K_NEIGHBORS);
+    
+    var knnDistSq: array<f32, 24>;  // MAX_K_NEIGHBORS
+    var knnIndex: array<u32, 24>;
+    for (var i = 0u; i < MAX_K_NEIGHBORS; i++) {
         knnDistSq[i] = 1e10;
         knnIndex[i] = 0xFFFFFFFFu;
     }
@@ -386,12 +393,12 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
                     separationCount++;
                 }
                 
-                if (distSq < knnDistSq[K_NEIGHBORS - 1u]) {
-                    var insertPos = K_NEIGHBORS - 1u;
-                    for (var j = 0u; j < K_NEIGHBORS - 1u; j++) {
+                if (distSq < knnDistSq[k - 1u]) {
+                    var insertPos = k - 1u;
+                    for (var j = 0u; j < k - 1u; j++) {
                         if (distSq < knnDistSq[j]) { insertPos = j; break; }
                     }
-                    for (var j = K_NEIGHBORS - 1u; j > insertPos; j--) {
+                    for (var j = k - 1u; j > insertPos; j--) {
                         knnDistSq[j] = knnDistSq[j - 1u];
                         knnIndex[j] = knnIndex[j - 1u];
                     }
@@ -406,7 +413,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     var cohesionSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     
-    for (var i = 0u; i < K_NEIGHBORS; i++) {
+    for (var i = 0u; i < k; i++) {
         if (knnIndex[i] == 0xFFFFFFFFu) { continue; }
         let dist = sqrt(knnDistSq[i]);
         let weight = smoothKernel(dist, uniforms.perception);
@@ -637,7 +644,7 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     
     // Sample multiple random points within perception radius
     // For each point, check the cell it falls in
-    let numSamples = 32u;
+    let numSamples = uniforms.sampleCount;
     var baseSeed = boidIndex * 1000003u + uniforms.frameCount * 31337u;
     
     // Also check immediate neighbors to ensure we don't miss close boids
@@ -849,8 +856,7 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     
     // Mild density-adaptive cohesion scaling (unique to this algorithm)
     // High density: slightly reduce cohesion to prevent over-crowding
-    let idealDensity = 5.0;
-    let densityRatio = localDensity / idealDensity;
+    let densityRatio = localDensity / uniforms.idealDensity;
     let cohesionMod = 1.0 / (1.0 + max(0.0, densityRatio - 1.0) * 0.3);
     
     var acceleration = vec2<f32>(0.0);
