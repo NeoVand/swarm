@@ -40,9 +40,9 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
-	// Trail buffer: vec2<f32> × trailLength per boid
+	// Trail buffer: vec2<f32> × MAX_TRAIL_LENGTH per boid (pre-allocated for max)
 	const trails = device.createBuffer({
-		size: boidCount * trailLength * 2 * 4,
+		size: boidCount * MAX_TRAIL_LENGTH * 2 * 4,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
@@ -126,11 +126,23 @@ export function initializeBoids(
 	canvasWidth: number,
 	canvasHeight: number
 ): void {
-	// Create initial positions (random)
+	// Safe spawn margin - keep boids away from edges and corners
+	// This matches the boundary force margin in simulate.wgsl
+	const safeMargin = 60; // Slightly larger than shader's 50px margin
+	
+	// Calculate safe spawn area
+	const safeMinX = safeMargin;
+	const safeMaxX = canvasWidth - safeMargin;
+	const safeMinY = safeMargin;
+	const safeMaxY = canvasHeight - safeMargin;
+	const safeWidth = safeMaxX - safeMinX;
+	const safeHeight = safeMaxY - safeMinY;
+	
+	// Create initial positions (random within safe area)
 	const positions = new Float32Array(boidCount * 2);
 	for (let i = 0; i < boidCount; i++) {
-		positions[i * 2] = Math.random() * canvasWidth;
-		positions[i * 2 + 1] = Math.random() * canvasHeight;
+		positions[i * 2] = safeMinX + Math.random() * safeWidth;
+		positions[i * 2 + 1] = safeMinY + Math.random() * safeHeight;
 	}
 
 	// Create initial velocities (random directions, moderate speed)
@@ -153,10 +165,10 @@ export function clearTrails(
 	device: GPUDevice,
 	buffers: SimulationBuffers,
 	boidCount: number,
-	trailLength: number
+	_trailLength?: number // Unused - always clears full pre-allocated buffer
 ): void {
-	// Zero out trail buffer
-	const zeros = new Float32Array(boidCount * trailLength * 2);
+	// Zero out trail buffer (full pre-allocated size)
+	const zeros = new Float32Array(boidCount * MAX_TRAIL_LENGTH * 2);
 	device.queue.writeBuffer(buffers.trails, 0, zeros);
 
 	// Reset trail head
@@ -229,6 +241,9 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 
 // Minimum perception for buffer pre-allocation (matches UI min)
 const MIN_PERCEPTION_FOR_ALLOCATION = 20;
+
+// Maximum trail length for buffer pre-allocation (matches UI max)
+const MAX_TRAIL_LENGTH = 100;
 
 // Calculate grid dimensions based on canvas size and perception radius
 export function calculateGridDimensions(

@@ -682,10 +682,13 @@
 			</div>
 		</div>
 
+		<!-- Separator after header -->
+		<div class="header-divider"></div>
+
 		<!-- Content -->
 		<div class="content-scroll max-h-[calc(100vh-100px)]">
 			<!-- Boids -->
-			<div id="section-boids" class="mb-2">
+			<div id="section-boids">
 				<button class="section-header" onclick={() => toggleSection('boids')}>
 					<div class="section-title">
 						<svg class="section-icon icon-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -713,7 +716,7 @@
 						</div>
 						<div class="row">
 							<span class="label">Trail</span>
-							<input type="range" min="5" max="100" step="5" value={currentParams.trailLength}
+							<input type="range" min="1" max="100" step="1" value={currentParams.trailLength}
 								oninput={(e) => setTrailLength(parseInt(e.currentTarget.value))} class="slider" aria-label="Trail" />
 							<span class="value">{currentParams.trailLength}</span>
 						</div>
@@ -819,8 +822,9 @@
 				{/if}
 			</div>
 
+			<div class="section-divider"></div>
 			<!-- World -->
-			<div id="section-world" class="mb-2">
+			<div id="section-world">
 				<button class="section-header" onclick={() => toggleSection('world')}>
 					<div class="section-title">
 						<svg class="section-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -980,8 +984,9 @@
 				{/if}
 			</div>
 
+			<div class="section-divider"></div>
 			<!-- Flocking -->
-			<div id="section-flocking" class="mb-2">
+			<div id="section-flocking">
 				<button class="section-header" onclick={() => toggleSection('flocking')}>
 					<div class="section-title">
 						<svg class="section-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1025,8 +1030,9 @@
 				{/if}
 			</div>
 
+			<div class="section-divider"></div>
 			<!-- Dynamics -->
-			<div id="section-dynamics" class="mb-2">
+			<div id="section-dynamics">
 				<button class="section-header" onclick={() => toggleSection('dynamics')}>
 					<div class="section-title">
 						<svg class="section-icon icon-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1068,6 +1074,7 @@
 				{/if}
 			</div>
 
+			<div class="section-divider"></div>
 			<!-- Algorithm -->
 			<div id="section-algorithm">
 				<button class="section-header" onclick={() => toggleSection('algorithm')}>
@@ -1283,13 +1290,25 @@
 		background-clip: text;
 	}
 
+	/* Section separators - subtle full-width lines between sections */
+	.header-divider {
+		height: 1px;
+		background: rgba(255, 255, 255, 0.06);
+		margin: 0; /* No negative margin - already at panel edges */
+	}
+	.section-divider {
+		height: 1px;
+		background: rgba(255, 255, 255, 0.06);
+		margin: 0 -12px; /* Extend to panel edges within padded container */
+	}
+
 	.section-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		width: calc(100% + 24px);
 		margin-left: -12px;
-		padding: 10px 12px;
+		padding: 8px 12px;
 		background: transparent;
 		border: none;
 		border-radius: 0;
@@ -1297,7 +1316,7 @@
 		transition: background 0.15s;
 	}
 	.section-header:hover {
-		background: rgba(255, 255, 255, 0.04);
+		background: rgba(255, 255, 255, 0.03);
 	}
 	.section-title {
 		display: flex;

@@ -64,6 +64,9 @@ const ALG_DENSITY_ADAPTIVE: u32 = 4u;
 const K_NEIGHBORS: u32 = 12u;
 const MAX_CANDIDATES: u32 = 128u;
 
+// Maximum trail length for buffer stride (must match CPU-side MAX_TRAIL_LENGTH)
+const MAX_TRAIL_LENGTH: u32 = 100u;
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positionsIn: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read_write> positionsOut: array<vec2<f32>>;
@@ -160,27 +163,51 @@ fn getCellIndex(cx: i32, cy: i32) -> u32 {
     return u32(wcy) * uniforms.gridWidth + u32(wcx);
 }
 
+// Helper: robust bounce that handles any position, even far outside bounds
+fn bounceCoord(val: f32, size: f32) -> f32 {
+    if (val < 0.0) {
+        // Reflect back into bounds
+        let reflected = -val;
+        // If still out of bounds (went very far), use modulo
+        if (reflected >= size) {
+            return size - 1.0 - (reflected % size);
+        }
+        return reflected;
+    } else if (val >= size) {
+        // Reflect back into bounds
+        let overshoot = val - size;
+        let reflected = size - 1.0 - overshoot;
+        // If still out of bounds, use modulo
+        if (reflected < 0.0) {
+            return (-reflected) % size;
+        }
+        return reflected;
+    }
+    return val;
+}
+
 fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
     var newPos = pos;
     let w = uniforms.canvasWidth;
     let h = uniforms.canvasHeight;
     
+    // Safety margin to keep boids slightly inside bounds
+    let safeMargin = 1.0;
+    let safeW = w - safeMargin;
+    let safeH = h - safeMargin;
+    
     switch (uniforms.boundaryMode) {
         case PLANE: {
-            // Standard flat wall bounce
-            if (newPos.x < 0.0) { newPos.x = -newPos.x; }
-            if (newPos.x >= w) { newPos.x = 2.0 * w - newPos.x - 1.0; }
-            if (newPos.y < 0.0) { newPos.y = -newPos.y; }
-            if (newPos.y >= h) { newPos.y = 2.0 * h - newPos.y - 1.0; }
+            // Robust bounce with helper function
+            newPos.x = bounceCoord(newPos.x, w);
+            newPos.y = bounceCoord(newPos.y, h);
         }
         case CYLINDER_X: {
             newPos.x = newPos.x - floor(newPos.x / w) * w;
-            if (newPos.y < 0.0) { newPos.y = -newPos.y; }
-            if (newPos.y >= h) { newPos.y = 2.0 * h - newPos.y - 1.0; }
+            newPos.y = bounceCoord(newPos.y, h);
         }
         case CYLINDER_Y: {
-            if (newPos.x < 0.0) { newPos.x = -newPos.x; }
-            if (newPos.x >= w) { newPos.x = 2.0 * w - newPos.x - 1.0; }
+            newPos.x = bounceCoord(newPos.x, w);
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
         case TORUS: {
@@ -190,12 +217,10 @@ fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
         case MOBIUS_X: {
             if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
             else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
-            if (newPos.y < 0.0) { newPos.y = -newPos.y; }
-            if (newPos.y >= h) { newPos.y = 2.0 * h - newPos.y - 1.0; }
+            newPos.y = bounceCoord(newPos.y, h);
         }
         case MOBIUS_Y: {
-            if (newPos.x < 0.0) { newPos.x = -newPos.x; }
-            if (newPos.x >= w) { newPos.x = 2.0 * w - newPos.x - 1.0; }
+            newPos.x = bounceCoord(newPos.x, w);
             if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
             else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
         }
@@ -220,6 +245,12 @@ fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
     }
+    
+    // HARD CLAMP: Absolute guarantee boids stay inside bounds
+    // This catches any edge cases the above logic might miss
+    newPos.x = clamp(newPos.x, safeMargin, safeW);
+    newPos.y = clamp(newPos.y, safeMargin, safeH);
+    
     return newPos;
 }
 
@@ -229,6 +260,10 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     let h = uniforms.canvasHeight;
     let margin = 50.0;
     let turnForce = 0.5;
+    
+    // Emergency margin - very strong force when extremely close to edge
+    let emergencyMargin = 10.0;
+    let emergencyForce = 3.0;
     
     if (uniforms.boundaryMode == PLANE) {
         // Corner avoidance zone - larger than normal margin for smooth corner navigation
@@ -244,43 +279,56 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
         
         if (inCorner) {
             // In corner: apply diagonal steering force away from corner
-            // Stronger force the deeper into the corner
             let cornerForce = turnForce * 2.0;
             
-            // Calculate distance to the corner point
             var cornerPoint = vec2<f32>(0.0, 0.0);
             if (nearLeft && nearBottom) { cornerPoint = vec2<f32>(0.0, 0.0); }
             else if (nearRight && nearBottom) { cornerPoint = vec2<f32>(w, 0.0); }
             else if (nearLeft && nearTop) { cornerPoint = vec2<f32>(0.0, h); }
             else if (nearRight && nearTop) { cornerPoint = vec2<f32>(w, h); }
             
-            // Steer away from corner - direction is from corner toward center
             let awayFromCorner = normalize(vec2<f32>(w * 0.5, h * 0.5) - cornerPoint);
-            
-            // Force increases as we get closer to corner
             let distToCorner = length(pos - cornerPoint);
-            let maxCornerDist = cornerZone * 1.414; // diagonal of corner zone
+            let maxCornerDist = cornerZone * 1.414;
             let cornerStrength = cornerForce * (1.0 - distToCorner / maxCornerDist);
             
             newVel += awayFromCorner * max(cornerStrength, 0.0);
         }
         
-        // Always apply standard edge forces too (they stack with corner forces)
-        if (pos.x < margin) { newVel.x += turnForce; }
-        if (pos.x > w - margin) { newVel.x -= turnForce; }
-        if (pos.y < margin) { newVel.y += turnForce; }
-        if (pos.y > h - margin) { newVel.y -= turnForce; }
+        // Standard edge forces (soft steering)
+        if (pos.x < margin) { newVel.x += turnForce * (1.0 - pos.x / margin); }
+        if (pos.x > w - margin) { newVel.x -= turnForce * (1.0 - (w - pos.x) / margin); }
+        if (pos.y < margin) { newVel.y += turnForce * (1.0 - pos.y / margin); }
+        if (pos.y > h - margin) { newVel.y -= turnForce * (1.0 - (h - pos.y) / margin); }
+        
+        // Emergency edge forces (very strong when too close)
+        if (pos.x < emergencyMargin) { newVel.x += emergencyForce; }
+        if (pos.x > w - emergencyMargin) { newVel.x -= emergencyForce; }
+        if (pos.y < emergencyMargin) { newVel.y += emergencyForce; }
+        if (pos.y > h - emergencyMargin) { newVel.y -= emergencyForce; }
         
     } else if (uniforms.boundaryMode == CYLINDER_X || uniforms.boundaryMode == MOBIUS_X) {
-        if (pos.y < margin) { newVel.y += turnForce; }
-        if (pos.y > h - margin) { newVel.y -= turnForce; }
+        if (pos.y < margin) { newVel.y += turnForce * (1.0 - pos.y / margin); }
+        if (pos.y > h - margin) { newVel.y -= turnForce * (1.0 - (h - pos.y) / margin); }
+        if (pos.y < emergencyMargin) { newVel.y += emergencyForce; }
+        if (pos.y > h - emergencyMargin) { newVel.y -= emergencyForce; }
     } else if (uniforms.boundaryMode == CYLINDER_Y || uniforms.boundaryMode == MOBIUS_Y) {
-        if (pos.x < margin) { newVel.x += turnForce; }
-        if (pos.x > w - margin) { newVel.x -= turnForce; }
+        if (pos.x < margin) { newVel.x += turnForce * (1.0 - pos.x / margin); }
+        if (pos.x > w - margin) { newVel.x -= turnForce * (1.0 - (w - pos.x) / margin); }
+        if (pos.x < emergencyMargin) { newVel.x += emergencyForce; }
+        if (pos.x > w - emergencyMargin) { newVel.x -= emergencyForce; }
     }
     
     return newVel;
 }
+
+// ============================================================================
+// SHARED CONSTANTS FOR CONSISTENT BEHAVIOR ACROSS ALL ALGORITHMS
+// ============================================================================
+
+const SEPARATION_RADIUS_FACTOR: f32 = 0.4;  // Separation radius = 40% of perception
+const SEPARATION_FORCE_MULT: f32 = 3.5;     // Separation force multiplier
+const OVERLAP_PUSH_STRENGTH: f32 = 5.0;     // Force when boids overlap
 
 // ============================================================================
 // ALGORITHM 0: TOPOLOGICAL K-NN
@@ -300,7 +348,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     
     var separationSum = vec2<f32>(0.0);
     var separationCount = 0u;
-    let separationRadius = uniforms.perception * 0.4;
+    let separationRadius = uniforms.perception * SEPARATION_RADIUS_FACTOR;
     
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
@@ -323,8 +371,11 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
-                if (distSq < 0.1) {
-                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 8.0;
+                if (distSq < 1.0) {
+                    // Deterministic push direction for overlapping boids
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
+                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
+                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
                     separationCount++;
                     continue;
                 }
@@ -378,7 +429,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     }
     
     if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 4.0) * uniforms.separation;
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
     }
     
     return acceleration;
@@ -403,7 +454,7 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
-    let separationRadius = uniforms.perception * 0.35;
+    let separationRadius = uniforms.perception * SEPARATION_RADIUS_FACTOR;
     
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
@@ -425,8 +476,11 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
-                if (distSq < 0.1) {
-                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 6.0;
+                if (distSq < 1.0) {
+                    // Deterministic push direction for overlapping boids
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
+                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
+                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
                     separationCount++;
                     continue;
                 }
@@ -460,7 +514,7 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
     }
     
     if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 3.5) * uniforms.separation;
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
     }
     
     return acceleration;
@@ -470,7 +524,6 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
 // ALGORITHM 2: HASH-FREE (Per-boid randomized grid - no global seams)
 // Each boid has its own random offset to the grid, so cell boundaries
 // are different for every boid - eliminating coherent grid artifacts
-// Now with density-adaptive force scaling for stable high-density behavior
 // ============================================================================
 
 fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
@@ -488,12 +541,10 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
     var cohesionSum = vec2<f32>(0.0);
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
-    var neighborCount = 0u;
-    var veryCloseCount = 0u;
+    var separationCount = 0u;
     
     let perception = uniforms.perception;
-    let separationRadius = perception * 0.4;
-    let veryCloseRadius = 3.0; // Minimum comfortable distance
+    let separationRadius = perception * SEPARATION_RADIUS_FACTOR;
     
     // Search area
     for (var dy = -2i; dy <= 2i; dy++) {
@@ -517,25 +568,16 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
-                // Handle overlapping/very close boids with STABLE separation
-                // Use deterministic direction based on boid indices (not random per frame)
+                // Handle overlapping boids with deterministic push
                 if (distSq < 1.0) {
-                    // Deterministic push direction based on index difference
-                    // This prevents jittering by always pushing in the same direction
-                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749; // Golden ratio for good distribution
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
-                    let pushStrength = 2.0; // Gentler push
-                    separationSum += pushDir * pushStrength;
-                    veryCloseCount++;
+                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
+                    separationCount++;
                     continue;
                 }
                 
                 let dist = sqrt(distSq);
-                
-                // Track very close neighbors for density-adaptive scaling
-                if (dist < veryCloseRadius) {
-                    veryCloseCount++;
-                }
                 
                 // Smooth kernel weight
                 let weight = smoothKernel(dist, perception);
@@ -544,23 +586,16 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
                     alignmentSum += velocitiesIn[otherIdx] * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
-                    neighborCount++;
                 }
                 
-                // Separation with softer kernel at very close range
+                // Separation using consistent kernel
                 if (dist < separationRadius) {
-                    // Softer separation: linear falloff instead of inverse square at very close range
-                    let normalizedDist = dist / separationRadius;
-                    let sepStrength = (1.0 - normalizedDist) * (1.0 - normalizedDist * 0.5);
-                    separationSum -= normalize(delta) * sepStrength;
+                    separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
+                    separationCount++;
                 }
             }
         }
     }
-    
-    // Density-adaptive force scaling
-    // When density is high, reduce individual force contributions to prevent chaos
-    let densityFactor = 1.0 / (1.0 + f32(veryCloseCount) * 0.15);
     
     var acceleration = vec2<f32>(0.0);
     
@@ -570,18 +605,13 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
             acceleration += alignForce * uniforms.alignment * rebelFactor;
         }
         if (uniforms.cohesion > 0.0) {
-            // Reduce cohesion when density is high (already crowded, don't pull more)
             let cohesionForce = limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce);
-            acceleration += cohesionForce * uniforms.cohesion * rebelFactor * densityFactor;
+            acceleration += cohesionForce * uniforms.cohesion * rebelFactor;
         }
     }
     
-    // Separation: scale by density factor to prevent oscillation in crowds
-    if (length(separationSum) > 0.0 && uniforms.separation > 0.0) {
-        // Cap separation force more aggressively and scale by density
-        let maxSepForce = uniforms.maxForce * (2.0 + densityFactor);
-        let sepForce = limitMagnitude(separationSum, maxSepForce);
-        acceleration += sepForce * uniforms.separation * densityFactor;
+    if (separationCount > 0u && uniforms.separation > 0.0) {
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
     }
     
     return acceleration;
@@ -603,7 +633,7 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     var separationCount = 0u;
     
     let perception = uniforms.perception;
-    let separationRadius = perception * 0.4;
+    let separationRadius = perception * SEPARATION_RADIUS_FACTOR;
     
     // Sample multiple random points within perception radius
     // For each point, check the cell it falls in
@@ -637,8 +667,11 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
-                if (distSq < 0.1) {
-                    separationSum += normalize(random2(boidIndex * 31u + otherIdx * 17u + uniforms.frameCount)) * 7.0;
+                if (distSq < 1.0) {
+                    // Deterministic push direction for overlapping boids
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
+                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
+                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
                     separationCount++;
                     continue;
                 }
@@ -726,7 +759,7 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     }
     
     if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * 4.0) * uniforms.separation;
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
     }
     
     return acceleration;
@@ -734,8 +767,8 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
 
 // ============================================================================
 // ALGORITHM 4: DENSITY ADAPTIVE
-// Combines hash-free approach with sophisticated density-based force adaptation
-// Uses pressure-like model: higher local density = reduced cohesion, maintained separation
+// Combines hash-free approach with density-based force adaptation
+// High density areas get slightly reduced cohesion to prevent over-crowding
 // ============================================================================
 
 fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
@@ -752,13 +785,13 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     var cohesionSum = vec2<f32>(0.0);
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
+    var separationCount = 0u;
     var localDensity = 0.0; // Measure of how crowded this area is
     
     let perception = uniforms.perception;
-    let innerRadius = perception * 0.25; // Very close - high pressure
-    let midRadius = perception * 0.5;    // Medium range
+    let separationRadius = perception * SEPARATION_RADIUS_FACTOR;
     
-    // First pass: measure local density and collect neighbor data
+    // Collect neighbor data and measure local density
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
             let cx = myCellX + dx;
@@ -784,16 +817,16 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                 
                 let dist = sqrt(distSq);
                 
-                // Density contribution - closer boids contribute more to perceived density
+                // Density contribution - closer boids contribute more
                 let densityWeight = smoothKernel(dist, perception);
                 localDensity += densityWeight;
                 
-                // Handle very close/overlapping boids
+                // Handle overlapping boids with deterministic push
                 if (dist < 1.0) {
-                    // Deterministic gentle push
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
-                    separationSum += pushDir * 1.5;
+                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
+                    separationCount++;
                     continue;
                 }
                 
@@ -805,59 +838,38 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                     totalWeight += weight;
                 }
                 
-                // Separation: soft pressure model
-                // Inner zone: strong repulsion
-                // Mid zone: moderate repulsion
-                // Outer zone: no repulsion
-                if (dist < midRadius) {
-                    var sepStrength: f32;
-                    if (dist < innerRadius) {
-                        // Very close: strong but capped repulsion
-                        let t = dist / innerRadius;
-                        sepStrength = (1.0 - t) * 2.0;
-                    } else {
-                        // Mid range: gentle falloff
-                        let t = (dist - innerRadius) / (midRadius - innerRadius);
-                        sepStrength = (1.0 - t) * 0.8;
-                    }
-                    separationSum -= normalize(delta) * sepStrength;
+                // Separation using consistent kernel
+                if (dist < separationRadius) {
+                    separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
+                    separationCount++;
                 }
             }
         }
     }
     
-    // Density-adaptive force scaling
-    // High density: reduce cohesion (already crowded), maintain alignment, cap separation
-    // Low density: normal forces
-    let idealDensity = 3.0; // Comfortable number of weighted neighbors
+    // Mild density-adaptive cohesion scaling (unique to this algorithm)
+    // High density: slightly reduce cohesion to prevent over-crowding
+    let idealDensity = 5.0;
     let densityRatio = localDensity / idealDensity;
-    
-    // Cohesion modifier: strong at low density, weak at high density
-    let cohesionMod = 1.0 / (1.0 + max(0.0, densityRatio - 1.0) * 0.5);
-    
-    // Separation modifier: slightly reduced at very high density to prevent oscillation
-    let separationMod = 1.0 / (1.0 + max(0.0, densityRatio - 2.0) * 0.2);
+    let cohesionMod = 1.0 / (1.0 + max(0.0, densityRatio - 1.0) * 0.3);
     
     var acceleration = vec2<f32>(0.0);
     
     if (totalWeight > 0.0) {
-        // Alignment: mostly unaffected by density
         if (uniforms.alignment > 0.0) {
             let alignForce = limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce);
             acceleration += alignForce * uniforms.alignment * rebelFactor;
         }
         
-        // Cohesion: reduced when crowded
         if (uniforms.cohesion > 0.0) {
             let cohesionForce = limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce);
+            // Apply mild density-based cohesion reduction
             acceleration += cohesionForce * uniforms.cohesion * rebelFactor * cohesionMod;
         }
     }
     
-    // Separation: adaptive with density
-    if (length(separationSum) > 0.0 && uniforms.separation > 0.0) {
-        let sepForce = limitMagnitude(separationSum, uniforms.maxForce * 2.5);
-        acceleration += sepForce * uniforms.separation * separationMod;
+    if (separationCount > 0u && uniforms.separation > 0.0) {
+        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
     }
     
     return acceleration;
@@ -1053,5 +1065,6 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // Offset to the triangle's base: 0.7 * boidSize * 6.0
         trailPos = newPos - trailDir * 0.7 * uniforms.boidSize * 6.0;
     }
-    trails[boidIndex * uniforms.trailLength + uniforms.trailHead] = trailPos;
+    // Use MAX_TRAIL_LENGTH for buffer stride so changing trailLength doesn't shift data
+    trails[boidIndex * MAX_TRAIL_LENGTH + uniforms.trailHead] = trailPos;
 }

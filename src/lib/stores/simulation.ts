@@ -128,7 +128,8 @@ export function setBoidSize(value: number): void {
 
 export function setTrailLength(value: number): void {
 	params.update((p) => ({ ...p, trailLength: value }));
-	needsBufferReallocation.set(true);
+	// No buffer reallocation needed - trail buffer is pre-allocated for max length (100)
+	// Ring buffer handles length changes naturally via modulo in shader
 }
 
 export function setColorMode(value: ColorMode): void {
