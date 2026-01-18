@@ -754,7 +754,7 @@
 									>
 										{#each colorOptions as opt}
 											<button
-												class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
+												class="dropdown-item w-full h-[28px] flex items-center gap-2 px-[10px] text-left text-[10px]"
 												class:active={currentParams.colorMode === opt.value}
 												onclick={() => selectColorize(opt.value)}
 											>
@@ -955,7 +955,7 @@
 							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Vortex}
 								onclick={() => setCursorShape(CursorShape.Vortex)} aria-label="Vortex" title="Vortex">
 								<!-- Lucide: refresh-cw -->
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
 									<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
 									<path d="M21 3v5h-5"/>
 									<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
@@ -1379,7 +1379,7 @@
 		appearance: none;
 		border-radius: 50%;
 		background: rgb(8 8 12);
-		border: 2px solid rgba(212, 212, 216, 0.8);
+		border: 1px solid rgba(212, 212, 216, 0.8);
 		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 		transition: transform 0.1s, border-color 0.1s, box-shadow 0.1s;
 	}
@@ -1399,7 +1399,7 @@
 		appearance: none;
 		border-radius: 50%;
 		background: rgb(8 8 12);
-		border: 2px solid rgba(212, 212, 216, 0.8);
+		border: 1px solid rgba(212, 212, 216, 0.8);
 		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 	}
 	.slider::-moz-range-thumb:active {
