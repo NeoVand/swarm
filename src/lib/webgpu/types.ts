@@ -149,7 +149,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
 	population: 10000,
-	algorithmMode: AlgorithmMode.DensityAdaptive,
+	algorithmMode: AlgorithmMode.SmoothMetric,
 	// Algorithm-specific defaults
 	kNeighbors: 12,      // Topological K-NN
 	sampleCount: 32,     // Stochastic
