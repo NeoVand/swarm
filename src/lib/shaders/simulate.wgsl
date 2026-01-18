@@ -1004,6 +1004,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     positionsOut[boidIndex] = newPos;
     velocitiesOut[boidIndex] = newVel;
     
-    // Update trail
-    trails[boidIndex * uniforms.trailLength + uniforms.trailHead] = newPos;
+    // Update trail - store at the BASE of the boid (x = -0.7 in local space), not the center
+    // This ensures trails connect seamlessly to the triangle's back edge
+    let finalSpeed = length(newVel);
+    var trailPos = newPos;
+    if (finalSpeed > 0.001) {
+        let trailDir = newVel / finalSpeed;
+        // Offset to the triangle's base: 0.7 * boidSize * 6.0
+        trailPos = newPos - trailDir * 0.7 * uniforms.boidSize * 6.0;
+    }
+    trails[boidIndex * uniforms.trailLength + uniforms.trailHead] = trailPos;
 }

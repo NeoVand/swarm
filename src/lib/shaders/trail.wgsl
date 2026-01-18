@@ -161,7 +161,7 @@ fn vs_main(
     var p1 = trails[trailBase + idx1];
     var p2 = trails[trailBase + idx2];
     
-    // For the newest segment (age == 0), connect directly behind the current boid's base
+    // For the newest segment (age == 0), connect to the current boid's base position
     // The boid triangle has vertices at (1.0, 0.0), (-0.7, ±0.5) in local space
     // The base center is at (-0.7, 0), which is 0.7 * scale behind the boid center
     if (age == 0u) {
@@ -170,9 +170,8 @@ fn vs_main(
         let speed = length(vel);
         if (speed > 0.001) {
             let dir = vel / speed;
-            // Pull back well past the base to ensure no overlap
-            // Using 0.85 to provide a clear gap behind the triangle
-            let baseOffset = 0.85 * uniforms.boidSize * 6.0;
+            // Offset exactly to the triangle's base: 0.7 * boidSize * 6.0
+            let baseOffset = 0.7 * uniforms.boidSize * 6.0;
             p2 = currentPos - dir * baseOffset;
         } else {
             p2 = currentPos;
@@ -220,9 +219,8 @@ fn vs_main(
     // Width tapers from head (thick) to tail (thin)
     // Match boid triangle base: vertices at (-0.7, ±0.5), scaled by boidSize * 6.0
     // Half-width at base = 0.5 * boidSize * 6.0 = 3.0 * boidSize
-    // Use slightly smaller (0.95x) to avoid edge overlap
     let ageRatio = f32(age) / f32(uniforms.trailLength - 1u);
-    let baseWidth = uniforms.boidSize * 2.85; // Slightly smaller than triangle base
+    let baseWidth = uniforms.boidSize * 3.0; // Exact match with triangle base half-width
     let width1 = baseWidth * (1.0 - ageRatio * 0.95); // Don't fully taper to zero
     
     // For newest segment, width2 should be slightly smaller than triangle base
