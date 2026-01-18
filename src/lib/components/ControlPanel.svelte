@@ -70,25 +70,53 @@
 		isRunning.update(v => !v);
 	}
 
+	// Check if we can use native share (mobile)
+	function canUseNativeShare(): boolean {
+		return typeof navigator !== 'undefined' && 
+			   typeof navigator.share === 'function' && 
+			   typeof navigator.canShare === 'function';
+	}
+
+	// Save file - uses Share API on mobile (saves to Photos), download on desktop
+	async function saveFile(blob: Blob, filename: string, mimeType: string) {
+		const file = new File([blob], filename, { type: mimeType });
+		
+		// Try native share on mobile (allows saving to Photos)
+		if (canUseNativeShare() && navigator.canShare({ files: [file] })) {
+			try {
+				await navigator.share({
+					files: [file],
+					title: 'Swarm'
+				});
+				return; // Success
+			} catch (err) {
+				// User cancelled or share failed - fall back to download
+				if ((err as Error).name === 'AbortError') return; // User cancelled, don't download
+			}
+		}
+		
+		// Fall back to standard download (desktop or if share unavailable)
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+
 	// Take screenshot
 	function takeScreenshot() {
 		if (!canvas) return;
 		
-		canvas.toBlob((blob) => {
+		canvas.toBlob(async (blob) => {
 			if (!blob) return;
 			
-			const url = URL.createObjectURL(blob);
 			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 			const filename = `swarm-${timestamp}.png`;
 			
-			// Create download link
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = filename;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
+			await saveFile(blob, filename, 'image/png');
 		}, 'image/png');
 	}
 
@@ -141,22 +169,13 @@
 				}
 			};
 			
-			mediaRecorder.onstop = () => {
+			mediaRecorder.onstop = async () => {
 				const blob = new Blob(recordedChunks, { type: selectedMimeType });
-				const url = URL.createObjectURL(blob);
 				const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 				const extension = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
 				const filename = `swarm-${timestamp}.${extension}`;
 				
-				// Create download link
-				const a = document.createElement('a');
-				a.href = url;
-				a.download = filename;
-				document.body.appendChild(a);
-				a.click();
-				document.body.removeChild(a);
-				URL.revokeObjectURL(url);
-				
+				await saveFile(blob, filename, selectedMimeType);
 				recordedChunks = [];
 			};
 			
