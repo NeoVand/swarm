@@ -140,7 +140,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorMode: ColorMode.Orientation,
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
-	population: 10000,
+	population: 5000,
 	algorithmMode: AlgorithmMode.HashFree
 };
 
