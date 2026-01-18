@@ -4,7 +4,6 @@
 ![WebGPU](https://img.shields.io/badge/WebGPU-005A9C?style=flat&logo=webgl&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
 
 ![Swarm Screenshot](static/swarmscreenshot.jpg)
 
@@ -14,15 +13,15 @@ A high-performance boids flocking simulation running entirely on the GPU using W
 
 ## Features
 
-- **Massive Scale**: Simulate 10,000+ boids at 60fps with smooth trails
-- **GPU-Accelerated**: All simulation logic runs in WebGPU compute shaders
-- **Interactive**: Attract, repel, or create vortices with cursor interactions
-- **Topological Boundaries**: Torus, Klein bottle, Möbius strip, projective plane
-- **Real-time Controls**: Adjust flocking behavior, colors, and dynamics on the fly
+- **Massive Scale** — Simulate 10,000+ boids at 60fps with smooth trails
+- **GPU-Accelerated** — All physics and rendering runs in WebGPU compute shaders
+- **Interactive Cursors** — Attract, repel, or create vortices with different cursor shapes
+- **Exotic Boundaries** — Torus, Klein bottle, Möbius strip, projective plane topologies
+- **Multiple Algorithms** — 5 neighbor-finding strategies with tunable parameters
+- **Rich Visualization** — 7 color modes including speed, direction, density, and more
+- **Media Capture** — Record videos or take screenshots directly from the app
 
-## How It Works
-
-### The Boids Algorithm
+## The Boids Algorithm
 
 Each boid follows three simple rules that create complex emergent behavior:
 
@@ -32,111 +31,77 @@ Each boid follows three simple rules that create complex emergent behavior:
 
 These local interactions produce global patterns: schools of fish, flocks of birds, swarms of insects.
 
+## Architecture
+
 ### Spatial Hashing
 
-To efficiently find neighbors for thousands of boids, the simulation uses a **uniform spatial grid**:
-
-1. **Count** — Count how many boids fall into each grid cell
-2. **Prefix Sum** — Compute cumulative offsets for each cell
-3. **Scatter** — Place boid indices into sorted order by cell
-
-This transforms O(n²) neighbor searches into O(n) operations, enabling real-time simulation of massive swarms.
-
-### GPU Pipeline
-
-The entire simulation runs in WebGPU compute shaders:
+To efficiently find neighbors for thousands of boids, the simulation uses a uniform spatial grid:
 
 ```mermaid
 flowchart LR
     A([Clear Counts]) --> B([Count Per Cell])
     B --> C([Prefix Sum])
     C --> D([Scatter Indices])
-    D --> E([Simulate Physics])
-    E --> F([Render Boids])
+    D --> E([Simulate Boids])
+    E --> F([Render Frame])
 ```
 
-### Frame Loop Sequence
+This transforms O(n²) neighbor searches into O(n) operations.
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant CPU
-    participant GPU
-    
-    Browser->>CPU: requestAnimationFrame
-    CPU->>GPU: Update uniforms
-    CPU->>GPU: Dispatch compute passes
-    
-    rect rgb(40, 40, 40)
-        Note over GPU: Spatial Hashing
-        GPU->>GPU: Clear cell counts
-        GPU->>GPU: Count boids per cell
-        GPU->>GPU: Parallel prefix sum
-        GPU->>GPU: Scatter to sorted order
-    end
-    
-    rect rgb(40, 40, 40)
-        Note over GPU: Physics & Rendering
-        GPU->>GPU: Simulate flocking forces
-        GPU->>GPU: Update positions & trails
-        GPU->>GPU: Render instanced triangles
-    end
-    
-    GPU->>Browser: Present frame
-```
+### Algorithms
+
+| Algorithm | Description |
+|-----------|-------------|
+| **Smooth Metric** | Metric neighbors with smooth kernels and jitter |
+| **Topological K-NN** | K-nearest neighbors regardless of distance |
+| **Hash Free** | Per-boid randomized grid offset (no seams) |
+| **Stochastic Sample** | Random neighbor sampling with distance weighting |
+| **Density Adaptive** | Adjusts behavior based on local density |
 
 ### Boundary Topologies
 
-The simulation supports exotic topological spaces:
-
 | Boundary | Description |
 |----------|-------------|
-| **Plane** | Hard walls, boids bounce back |
-| **Torus** | Wraps horizontally and vertically (like Pac-Man) |
-| **Cylinder** | Wraps on one axis only |
-| **Möbius Strip** | Wraps with a twist—exit right, enter left upside-down |
+| **Plane** | Bounded area with soft wall avoidance |
+| **Torus** | Wraps both axes (like Pac-Man) |
+| **Cylinder** | Wraps on one axis, bounces on the other |
+| **Möbius Strip** | Wraps with a twist—exit right, enter left flipped |
 | **Klein Bottle** | Double twist, non-orientable surface |
-| **Projective Plane** | Both axes twisted, most exotic topology |
+| **Projective Plane** | Both axes twisted |
 
 ### Color Modes
 
-Boids are colored based on various properties:
-
-- **Direction** — Hue based on heading angle (rainbow compass)
-- **Speed** — Slow=cool, fast=hot
-- **Neighbors** — Density visualization
+- **Direction** — Hue based on heading angle
+- **Speed** — Velocity magnitude visualization
+- **Neighbors** — Local density coloring
+- **Density** — Spatial hash cell occupancy
 - **Acceleration** — Force magnitude
 - **Turning** — Angular velocity
+- **None** — Solid color from palette
 
 ## Tech Stack
 
-- **[SvelteKit](https://kit.svelte.dev/)** — Framework & static site generation
-- **[WebGPU](https://www.w3.org/TR/webgpu/)** — GPU compute & rendering API
-- **[WGSL](https://www.w3.org/TR/WGSL/)** — Shader language for WebGPU
+- **[SvelteKit](https://svelte.dev/)** — Framework & static site generation
+- **[WebGPU](https://www.w3.org/TR/webgpu/)** — GPU compute & rendering
+- **[WGSL](https://www.w3.org/TR/WGSL/)** — Shader language
 - **[Tailwind CSS](https://tailwindcss.com/)** — Styling
+- **[Driver.js](https://driverjs.com/)** — Guided tour
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Start dev server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
+npm install      # Install dependencies
+npm run dev      # Start dev server
+npm run build    # Build for production
+npm run preview  # Preview production build
 ```
 
 ## Browser Support
 
-WebGPU is required. Currently supported in:
-- Chrome 113+ / Edge 113+
-- Firefox Nightly (with flag)
+WebGPU required:
+- Chrome/Edge 113+
 - Safari 18+ (macOS Sequoia / iOS 18)
+- Firefox (behind flag)
 
 ## License
 
