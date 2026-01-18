@@ -62,17 +62,38 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 			await new Promise(resolve => setTimeout(resolve, 300));
 		}
 
+		// Detect if we're on a mobile device
+		const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+		
 		// Request adapter with retry logic and exponential backoff
+		// On mobile, try without power preference first (more compatible), then with preferences
 		let adapter: GPUAdapter | null = null;
 		const maxRetries = 5;
+		
+		// Different adapter options to try - mobile devices often work better without power preference
+		const adapterOptions: GPURequestAdapterOptions[] = isMobile
+			? [
+				{}, // No preference - most compatible on mobile
+				{ powerPreference: 'low-power' },
+				{ powerPreference: 'high-performance' }
+			  ]
+			: [
+				{ powerPreference: 'high-performance' },
+				{ powerPreference: 'low-power' },
+				{} // No preference as fallback
+			  ];
+		
 		for (let attempt = 0; attempt < maxRetries; attempt++) {
+			// Cycle through different adapter options
+			const options = adapterOptions[attempt % adapterOptions.length];
 			try {
-				adapter = await navigator.gpu.requestAdapter({
-					powerPreference: 'high-performance'
-				});
-				if (adapter) break;
+				adapter = await navigator.gpu.requestAdapter(options);
+				if (adapter) {
+					console.log(`WebGPU adapter obtained with options:`, options);
+					break;
+				}
 			} catch (e) {
-				console.warn(`Adapter request attempt ${attempt + 1} failed:`, e);
+				console.warn(`Adapter request attempt ${attempt + 1} failed with options ${JSON.stringify(options)}:`, e);
 			}
 			// Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
 			const delay = 200 * Math.pow(2, attempt);

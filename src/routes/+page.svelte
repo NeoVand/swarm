@@ -6,6 +6,11 @@
 
 	let webGPUAvailable = $derived($isWebGPUAvailable);
 	
+	// Detect device type
+	const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+	const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+	const isMobile = isAndroid || isiOS;
+	
 	// Check if this is a temporary failure that can be fixed with reload
 	let isTemporaryFailure = $derived(
 		failureReason === 'no-adapter' || failureReason === 'device-error'
@@ -75,19 +80,66 @@
 					computing directly in the browser. Your browser doesn't support WebGPU yet.
 				</p>
 				
-				<div class="space-y-3 pt-4">
-					<p class="text-xs font-medium uppercase tracking-wider text-zinc-500">
-						Supported Browsers
-					</p>
-					<div class="flex flex-wrap justify-center gap-3 text-xs text-zinc-400">
-						<span class="rounded-md bg-zinc-800/50 px-3 py-1.5">Chrome 113+</span>
-						<span class="rounded-md bg-zinc-800/50 px-3 py-1.5">Edge 113+</span>
-						<span class="rounded-md bg-zinc-800/50 px-3 py-1.5">Opera 99+</span>
+				{#if isAndroid}
+					<!-- Android-specific instructions -->
+					<div class="space-y-3 pt-4 text-left">
+						<p class="text-xs font-medium uppercase tracking-wider text-zinc-500 text-center">
+							Enable WebGPU on Android
+						</p>
+						<ol class="space-y-2 text-xs text-zinc-400 list-decimal list-inside">
+							<li>Open <span class="text-cyan-400 font-mono">chrome://flags</span> in Chrome</li>
+							<li>Search for <span class="text-cyan-400">"WebGPU"</span></li>
+							<li>Enable <span class="text-cyan-400">"Unsafe WebGPU Support"</span></li>
+							<li>Enable <span class="text-cyan-400">"WebGPU Developer Features"</span> (if available)</li>
+							<li>Tap <span class="text-cyan-400">"Relaunch"</span> to restart Chrome</li>
+						</ol>
+						<p class="pt-2 text-xs text-zinc-500 text-center">
+							Requires Chrome 121+ on Android. Some devices may not support WebGPU.
+						</p>
+						<div class="pt-2 flex justify-center">
+							<button
+								onclick={handleReload}
+								class="rounded-lg bg-cyan-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500"
+							>
+								Try Again
+							</button>
+						</div>
 					</div>
-					<p class="pt-2 text-xs text-zinc-500">
-						Safari and Firefox have experimental support via flags
-					</p>
-				</div>
+				{:else if isiOS}
+					<!-- iOS-specific instructions -->
+					<div class="space-y-3 pt-4">
+						<p class="text-xs font-medium uppercase tracking-wider text-zinc-500">
+							iOS Support
+						</p>
+						<p class="text-xs text-zinc-400">
+							WebGPU is available in Safari 17+ on iOS 17+. Make sure your device is updated to the latest iOS version.
+						</p>
+						<div class="pt-2 flex justify-center">
+							<button
+								onclick={handleReload}
+								class="rounded-lg bg-cyan-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500"
+							>
+								Try Again
+							</button>
+						</div>
+					</div>
+				{:else}
+					<!-- Desktop browser instructions -->
+					<div class="space-y-3 pt-4">
+						<p class="text-xs font-medium uppercase tracking-wider text-zinc-500">
+							Supported Browsers
+						</p>
+						<div class="flex flex-wrap justify-center gap-3 text-xs text-zinc-400">
+							<span class="rounded-md bg-zinc-800/50 px-3 py-1.5">Chrome 113+</span>
+							<span class="rounded-md bg-zinc-800/50 px-3 py-1.5">Edge 113+</span>
+							<span class="rounded-md bg-zinc-800/50 px-3 py-1.5">Opera 99+</span>
+							<span class="rounded-md bg-zinc-800/50 px-3 py-1.5">Safari 17+</span>
+						</div>
+						<p class="pt-2 text-xs text-zinc-500">
+							Firefox has experimental support via <span class="font-mono">about:config</span>
+						</p>
+					</div>
+				{/if}
 			{/if}
 		</div>
 	</div>
