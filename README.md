@@ -1,5 +1,11 @@
 # Swarm
 
+![SvelteKit](https://img.shields.io/badge/SvelteKit-FF3E00?style=flat&logo=svelte&logoColor=white)
+![WebGPU](https://img.shields.io/badge/WebGPU-005A9C?style=flat&logo=webgl&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
+
 ![Swarm Screenshot](static/swarmscreenshot.jpg)
 
 **[▶ Live Demo](https://neovand.github.io/swarm/)**
@@ -40,16 +46,43 @@ This transforms O(n²) neighbor searches into O(n) operations, enabling real-tim
 
 The entire simulation runs in WebGPU compute shaders:
 
+```mermaid
+flowchart LR
+    A([Clear Counts]) --> B([Count Per Cell])
+    B --> C([Prefix Sum])
+    C --> D([Scatter Indices])
+    D --> E([Simulate Physics])
+    E --> F([Render Boids])
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Clear      │───▶│  Count      │───▶│ Prefix Sum  │───▶│  Scatter    │
-│  Counts     │    │  Per Cell   │    │  (Parallel) │    │  Indices    │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-                                                                │
-                   ┌─────────────┐    ┌─────────────┐           ▼
-                   │  Render     │◀───│  Simulate   │◀──────────┘
-                   │  Boids      │    │  Physics    │
-                   └─────────────┘    └─────────────┘
+
+### Frame Loop Sequence
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant CPU
+    participant GPU
+    
+    Browser->>CPU: requestAnimationFrame
+    CPU->>GPU: Update uniforms
+    CPU->>GPU: Dispatch compute passes
+    
+    rect rgb(40, 40, 40)
+        Note over GPU: Spatial Hashing
+        GPU->>GPU: Clear cell counts
+        GPU->>GPU: Count boids per cell
+        GPU->>GPU: Parallel prefix sum
+        GPU->>GPU: Scatter to sorted order
+    end
+    
+    rect rgb(40, 40, 40)
+        Note over GPU: Physics & Rendering
+        GPU->>GPU: Simulate flocking forces
+        GPU->>GPU: Update positions & trails
+        GPU->>GPU: Render instanced triangles
+    end
+    
+    GPU->>Browser: Present frame
 ```
 
 ### Boundary Topologies
