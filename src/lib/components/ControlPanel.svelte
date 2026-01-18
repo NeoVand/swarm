@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fade, scale, slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { driver } from 'driver.js';
 	import 'driver.js/dist/driver.css';
 	import { base } from '$app/paths';
@@ -10,6 +10,9 @@
 	import {
 		params,
 		isPanelOpen,
+		isRunning,
+		isRecording,
+		canvasElement,
 		setAlignment,
 		setCohesion,
 		setSeparation,
@@ -30,6 +33,7 @@
 		setSensitivity,
 		setPopulation,
 		setAlgorithmMode,
+		setRecording,
 		BoundaryMode,
 		ColorMode,
 		ColorSpectrum,
@@ -40,12 +44,147 @@
 
 	let currentParams = $derived($params);
 	let isOpen = $derived($isPanelOpen);
+	let isPlaying = $derived($isRunning);
+	let recording = $derived($isRecording);
+	let canvas = $derived($canvasElement);
+	
 	let boundaryDropdownOpen = $state(false);
-	let boundaryDropdownRef: HTMLDivElement;
+	let boundaryDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let paletteDropdownOpen = $state(false);
-	let paletteDropdownRef: HTMLDivElement;
+	let paletteDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let algorithmDropdownOpen = $state(false);
-	let algorithmDropdownRef: HTMLDivElement;
+	let algorithmDropdownRef = $state<HTMLDivElement | undefined>(undefined);
+
+	// Recording state
+	let mediaRecorder: MediaRecorder | null = null;
+	let recordedChunks: Blob[] = [];
+
+	// Toggle play/pause
+	function togglePlayPause() {
+		isRunning.update(v => !v);
+	}
+
+	// Take screenshot
+	function takeScreenshot() {
+		if (!canvas) return;
+		
+		canvas.toBlob((blob) => {
+			if (!blob) return;
+			
+			const url = URL.createObjectURL(blob);
+			const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+			const filename = `swarm-${timestamp}.png`;
+			
+			// Create download link
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		}, 'image/png');
+	}
+
+	// Start/stop video recording
+	function toggleVideoRecording() {
+		if (recording) {
+			stopRecording();
+		} else {
+			startRecording();
+		}
+	}
+
+	function startRecording() {
+		if (!canvas) return;
+		
+		try {
+			// Get canvas stream at 60fps
+			const stream = canvas.captureStream(60);
+			
+			// Try to use WebM with VP9, fallback to VP8, then any available codec
+			const mimeTypes = [
+				'video/webm;codecs=vp9',
+				'video/webm;codecs=vp8',
+				'video/webm',
+				'video/mp4'
+			];
+			
+			let selectedMimeType = '';
+			for (const mimeType of mimeTypes) {
+				if (MediaRecorder.isTypeSupported(mimeType)) {
+					selectedMimeType = mimeType;
+					break;
+				}
+			}
+			
+			if (!selectedMimeType) {
+				alert('Video recording is not supported in this browser.');
+				return;
+			}
+			
+			recordedChunks = [];
+			mediaRecorder = new MediaRecorder(stream, {
+				mimeType: selectedMimeType,
+				videoBitsPerSecond: 8000000 // 8 Mbps for good quality
+			});
+			
+			mediaRecorder.ondataavailable = (event) => {
+				if (event.data.size > 0) {
+					recordedChunks.push(event.data);
+				}
+			};
+			
+			mediaRecorder.onstop = () => {
+				const blob = new Blob(recordedChunks, { type: selectedMimeType });
+				const url = URL.createObjectURL(blob);
+				const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+				const extension = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
+				const filename = `swarm-${timestamp}.${extension}`;
+				
+				// Create download link
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+				
+				recordedChunks = [];
+			};
+			
+			mediaRecorder.start(100); // Collect data every 100ms
+			setRecording(true);
+		} catch (err) {
+			console.error('Failed to start recording:', err);
+			alert('Failed to start recording. Please try again.');
+		}
+	}
+
+	function stopRecording() {
+		if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+			mediaRecorder.stop();
+			setRecording(false);
+			mediaRecorder = null;
+		}
+	}
+
+	// Handle camera button click (video when playing, screenshot when paused)
+	function handleCameraClick() {
+		if (isPlaying) {
+			toggleVideoRecording();
+		} else {
+			takeScreenshot();
+		}
+	}
+
+	// Cleanup on destroy
+	onDestroy(() => {
+		if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+			mediaRecorder.stop();
+		}
+	});
 
 	// Accordion - only one section open at a time
 	let openSection = $state<'boids' | 'world' | 'flocking' | 'dynamics' | 'algorithm'>('boids');
@@ -190,6 +329,61 @@
 							`,
 							side: 'over',
 							align: 'center'
+						}
+					},
+					{
+						element: '#header-controls',
+						popover: {
+							title: `<div style="display: flex; align-items: center; gap: 8px;">
+								<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+									<rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+									<path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+									<line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+								</svg>
+								<span>Controls</span>
+							</div>`,
+							description: `<p>Quick access to media and navigation:</p>
+								<div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin: 12px 0;">
+									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(34, 211, 238, 0.15); border-radius: 6px;">
+										<svg viewBox="0 0 20 20" fill="#22d3ee" style="width: 14px; height: 14px;">
+											<path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z"/>
+										</svg>
+									</div>
+									<div>
+										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Play / Pause</div>
+										<div style="font-size: 10px; color: #71717a;">Pause or resume the animation</div>
+									</div>
+									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(167, 139, 250, 0.15); border-radius: 6px;">
+										<svg viewBox="0 0 20 20" fill="#a78bfa" style="width: 14px; height: 14px;">
+											<path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909-4.19-4.19a.75.75 0 00-1.06 0L1.5 11.06zm5.5-3.31a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z" clip-rule="evenodd"/>
+										</svg>
+									</div>
+									<div>
+										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Screenshot</div>
+										<div style="font-size: 10px; color: #71717a;">Save the current view as PNG</div>
+									</div>
+									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(251, 113, 133, 0.15); border-radius: 6px;">
+										<svg viewBox="0 0 20 20" fill="#fb7185" style="width: 14px; height: 14px;">
+											<path d="M3.25 4A2.25 2.25 0 001 6.25v7.5A2.25 2.25 0 003.25 16h7.5A2.25 2.25 0 0013 13.75v-1.956l2.842 1.895A.75.75 0 0017 13.057V6.943a.75.75 0 00-1.158-.632L13 8.206V6.25A2.25 2.25 0 0010.75 4h-7.5z"/>
+										</svg>
+									</div>
+									<div>
+										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Record / Photo</div>
+										<div style="font-size: 10px; color: #71717a;">Record video (playing) or photo (paused)</div>
+									</div>
+									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(251, 191, 36, 0.15); border-radius: 6px;">
+										<svg viewBox="0 0 20 20" fill="#fbbf24" style="width: 14px; height: 14px;">
+											<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+										</svg>
+									</div>
+									<div>
+										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Help Tour</div>
+										<div style="font-size: 10px; color: #71717a;">Take this guided tour again</div>
+									</div>
+								</div>
+								<p style="font-size: 10px; color: #52525b; margin-top: 8px;"><em>Tip: When recording and sidebar is closed, a red indicator shows recording status.</em></p>`,
+							side: 'bottom',
+							align: 'end'
 						}
 					},
 					{
@@ -360,16 +554,23 @@
 	);
 </script>
 
-<!-- Gear button (always rendered, animated visibility) -->
+<!-- Floating button (gear or recording indicator when closed) -->
 <button
 	onclick={togglePanel}
-	class="gear-btn fixed right-4 top-4 z-40 flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 transition-all hover:text-zinc-200"
+	class="gear-btn fixed right-4 top-4 z-40 flex h-9 w-9 items-center justify-center rounded-full transition-all"
 	class:gear-hidden={isOpen}
-	aria-label="Open Settings"
+	class:recording-btn={recording && !isOpen}
+	aria-label={recording ? "Recording - Click to open panel" : "Open Settings"}
 >
-	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4">
-		<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
-	</svg>
+	{#if recording && !isOpen}
+		<!-- Recording indicator (red pulsing dot) -->
+		<div class="recording-dot"></div>
+	{:else}
+		<!-- Gear icon -->
+		<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4 text-zinc-400 hover:text-zinc-200">
+			<path fill-rule="evenodd" d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+		</svg>
+	{/if}
 </button>
 
 {#if isOpen}
@@ -384,20 +585,85 @@
 				<img src="{base}/favicon.svg" alt="Swarm" class="h-5 w-5" />
 				<span class="brand-title">Swarm</span>
 			</div>
-			<div class="flex items-center gap-1">
+			<div id="header-controls" class="flex items-center gap-0.5">
+				<!-- Play/Pause Button -->
+				<button
+					onclick={togglePlayPause}
+					class="header-btn btn-cyan"
+					class:active={!isPlaying}
+					aria-label={isPlaying ? "Pause" : "Play"}
+					title={isPlaying ? "Pause animation" : "Play animation"}
+				>
+					{#if isPlaying}
+						<!-- Pause icon -->
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+							<path d="M5.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75A.75.75 0 007.25 3h-1.5zM12.75 3a.75.75 0 00-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75V3.75a.75.75 0 00-.75-.75h-1.5z" />
+						</svg>
+					{:else}
+						<!-- Play icon -->
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+							<path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+						</svg>
+					{/if}
+				</button>
+
+				<!-- Screenshot Button -->
+				<button
+					onclick={takeScreenshot}
+					class="header-btn btn-purple"
+					aria-label="Take Screenshot"
+					title="Take screenshot"
+				>
+					<!-- Image/Photo icon -->
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+						<path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909-4.19-4.19a.75.75 0 00-1.06 0L1.5 11.06zm5.5-3.31a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z" clip-rule="evenodd" />
+					</svg>
+				</button>
+
+				<!-- Camera/Record Button -->
+				<button
+					onclick={handleCameraClick}
+					class="header-btn btn-rose"
+					class:recording={recording}
+					aria-label={isPlaying ? (recording ? "Stop Recording" : "Start Recording") : "Take Screenshot"}
+					title={isPlaying ? (recording ? "Stop recording" : "Record video") : "Take screenshot (paused)"}
+				>
+					{#if recording}
+						<!-- Stop icon (square) -->
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+							<rect x="4" y="4" width="12" height="12" rx="1" />
+						</svg>
+					{:else if isPlaying}
+						<!-- Video camera icon -->
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+							<path d="M3.25 4A2.25 2.25 0 001 6.25v7.5A2.25 2.25 0 003.25 16h7.5A2.25 2.25 0 0013 13.75v-1.956l2.842 1.895A.75.75 0 0017 13.057V6.943a.75.75 0 00-1.158-.632L13 8.206V6.25A2.25 2.25 0 0010.75 4h-7.5z" />
+						</svg>
+					{:else}
+						<!-- Camera/photo icon (when paused) -->
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
+							<path fill-rule="evenodd" d="M1 8a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 018.07 3h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0016.07 6H17a2 2 0 012 2v7a2 2 0 01-2 2H3a2 2 0 01-2-2V8zm9.5 3a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm1.5 0a3 3 0 11-6 0 3 3 0 016 0z" clip-rule="evenodd" />
+						</svg>
+					{/if}
+				</button>
+
+				<!-- Help Button -->
 				<button
 					onclick={startTour}
-					class="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition-all hover:bg-white/10 hover:text-zinc-300"
+					class="header-btn btn-amber"
 					aria-label="Start Tour"
+					title="Take a tour"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
 						<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd" />
 					</svg>
 				</button>
+
+				<!-- Close Button -->
 				<button
 					onclick={togglePanel}
-					class="flex h-6 w-6 items-center justify-center rounded-md text-zinc-400 transition-all hover:bg-white/10 hover:text-zinc-200"
+					class="header-btn btn-neutral"
 					aria-label="Close Settings"
+					title="Close panel"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
 						<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
@@ -846,6 +1112,98 @@
 		transform: scale(0.8);
 	}
 
+	.gear-btn.recording-btn {
+		background: rgba(220, 38, 38, 0.9);
+		border-color: rgba(255, 100, 100, 0.3);
+		box-shadow: 
+			0 0 20px rgba(220, 38, 38, 0.5),
+			0 2px 12px rgba(0, 0, 0, 0.4);
+	}
+	.gear-btn.recording-btn:hover {
+		background: rgba(185, 28, 28, 0.95);
+	}
+
+	.recording-dot {
+		width: 12px;
+		height: 12px;
+		background: #fff;
+		border-radius: 50%;
+		animation: recording-pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes recording-pulse {
+		0%, 100% { opacity: 1; transform: scale(1); }
+		50% { opacity: 0.6; transform: scale(0.85); }
+	}
+
+	.header-btn {
+		display: flex;
+		width: 24px;
+		height: 24px;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		transition: all 0.15s ease;
+	}
+	.header-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	/* Colored button variants */
+	.header-btn.btn-cyan {
+		color: rgba(34, 211, 238, 0.7);
+	}
+	.header-btn.btn-cyan:hover {
+		color: #22d3ee;
+		background: rgba(34, 211, 238, 0.15);
+	}
+	.header-btn.btn-cyan.active {
+		color: #22d3ee;
+		background: rgba(34, 211, 238, 0.2);
+	}
+
+	.header-btn.btn-purple {
+		color: rgba(167, 139, 250, 0.7);
+	}
+	.header-btn.btn-purple:hover {
+		color: #a78bfa;
+		background: rgba(167, 139, 250, 0.15);
+	}
+
+	.header-btn.btn-rose {
+		color: rgba(251, 113, 133, 0.7);
+	}
+	.header-btn.btn-rose:hover {
+		color: #fb7185;
+		background: rgba(251, 113, 133, 0.15);
+	}
+	.header-btn.btn-rose.recording {
+		color: #ef4444;
+		background: rgba(239, 68, 68, 0.2);
+		animation: recording-glow 1.5s ease-in-out infinite;
+	}
+
+	.header-btn.btn-amber {
+		color: rgba(251, 191, 36, 0.7);
+	}
+	.header-btn.btn-amber:hover {
+		color: #fbbf24;
+		background: rgba(251, 191, 36, 0.15);
+	}
+
+	.header-btn.btn-neutral {
+		color: rgb(113 113 122);
+	}
+	.header-btn.btn-neutral:hover {
+		color: rgb(212 212 216);
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	@keyframes recording-glow {
+		0%, 100% { color: #ef4444; }
+		50% { color: #fca5a5; }
+	}
+
 	.brand-title {
 		font-size: 11px;
 		font-weight: 600;
@@ -1021,33 +1379,6 @@
 	.dropdown-item.active {
 		background: rgba(255, 255, 255, 0.1);
 		color: rgb(250 250 250);
-	}
-
-	.btn {
-		flex: 1;
-		height: 20px;
-		border-radius: 4px;
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		background: rgba(255, 255, 255, 0.03);
-		font-size: 9px;
-		color: rgb(113 113 122);
-		cursor: pointer;
-		transition: all 0.1s;
-	}
-	.btn:hover {
-		background: rgba(255, 255, 255, 0.08);
-		color: rgb(161 161 170);
-	}
-	.btn.active {
-		background: rgba(255, 255, 255, 0.12);
-		border-color: rgba(255, 255, 255, 0.15);
-		color: rgb(228 228 231);
-	}
-	.btn.icon-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0;
 	}
 
 	/* Premium Cursor Toggle */

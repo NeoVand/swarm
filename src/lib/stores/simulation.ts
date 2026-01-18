@@ -39,6 +39,12 @@ export const isWebGPUAvailable = writable<boolean | null>(null);
 // Simulation running state
 export const isRunning = writable(true);
 
+// Recording state
+export const isRecording = writable(false);
+
+// Canvas element reference (for screenshot/recording)
+export const canvasElement = writable<HTMLCanvasElement | null>(null);
+
 // FPS counter
 export const fps = writable(0);
 
@@ -144,6 +150,20 @@ export function setPopulation(value: number): void {
 
 export function setAlgorithmMode(value: AlgorithmMode): void {
 	params.update((p) => ({ ...p, algorithmMode: value }));
+}
+
+// Play/pause toggle
+export function togglePlayPause(): void {
+	isRunning.update((running) => !running);
+}
+
+// Recording toggle
+export function toggleRecording(): void {
+	isRecording.update((recording) => !recording);
+}
+
+export function setRecording(value: boolean): void {
+	isRecording.set(value);
 }
 
 // Export enums for use in components

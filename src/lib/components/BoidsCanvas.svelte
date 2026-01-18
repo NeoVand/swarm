@@ -9,9 +9,11 @@
 		cursor,
 		dimensions,
 		isWebGPUAvailable,
+		isRunning,
 		fps,
 		needsBufferReallocation,
-		needsTrailClear
+		needsTrailClear,
+		canvasElement
 	} from '$lib/stores/simulation';
 
 	let canvas: HTMLCanvasElement;
@@ -48,6 +50,17 @@
 		if (needs && simulation) {
 			simulation.clearTrails();
 			needsTrailClear.set(false);
+		}
+	});
+
+	// Play/pause subscription
+	const unsubRunning = isRunning.subscribe((running) => {
+		if (simulation) {
+			if (running) {
+				simulation.start();
+			} else {
+				simulation.stop();
+			}
 		}
 	});
 
@@ -144,6 +157,9 @@
 	let resizeObserver: ResizeObserver | null = null;
 
 	onMount(() => {
+		// Expose canvas element for screenshot/recording
+		canvasElement.set(canvas);
+
 		// Initialize WebGPU (async but we don't return the promise)
 		initWebGPU(canvas).then((ctx) => {
 			gpuContext = ctx;
@@ -163,8 +179,13 @@
 				fps.set(newFps);
 			});
 
-			// Start simulation
-			simulation.start();
+			// Start simulation (respects current isRunning state)
+			let currentRunning = true;
+			const unsub = isRunning.subscribe(v => currentRunning = v);
+			unsub();
+			if (currentRunning) {
+				simulation.start();
+			}
 
 			// Setup resize observers
 			resizeObserver = new ResizeObserver(() => {
@@ -197,6 +218,8 @@
 		unsubCursor();
 		unsubRealloc();
 		unsubTrailClear();
+		unsubRunning();
+		canvasElement.set(null);
 		simulation?.destroy();
 		destroyWebGPU(gpuContext);
 		gpuContext = null;
