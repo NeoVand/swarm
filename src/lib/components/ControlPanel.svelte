@@ -138,11 +138,14 @@
 			const stream = canvas.captureStream(60);
 			
 			// Try to use WebM with VP9, fallback to VP8, then any available codec
+			// Prioritize MP4 for better mobile compatibility (especially iOS)
+			// Safari supports MP4, Chrome/Firefox support WebM
 			const mimeTypes = [
+				'video/mp4;codecs=avc1',
+				'video/mp4',
 				'video/webm;codecs=vp9',
 				'video/webm;codecs=vp8',
-				'video/webm',
-				'video/mp4'
+				'video/webm'
 			];
 			
 			let selectedMimeType = '';
