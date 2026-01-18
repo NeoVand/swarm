@@ -13,6 +13,7 @@
 		fps,
 		needsBufferReallocation,
 		needsTrailClear,
+		needsSimulationReset,
 		canvasElement
 	} from '$lib/stores/simulation';
 
@@ -50,6 +51,13 @@
 		if (needs && simulation) {
 			simulation.clearTrails();
 			needsTrailClear.set(false);
+		}
+	});
+
+	const unsubSimulationReset = needsSimulationReset.subscribe((needs) => {
+		if (needs && simulation) {
+			simulation.resetBoids();
+			needsSimulationReset.set(false);
 		}
 	});
 
@@ -218,6 +226,7 @@
 		unsubCursor();
 		unsubRealloc();
 		unsubTrailClear();
+		unsubSimulationReset();
 		unsubRunning();
 		canvasElement.set(null);
 		simulation?.destroy();

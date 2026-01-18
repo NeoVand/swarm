@@ -194,41 +194,56 @@ fn bounceCoord(val: f32, size: f32) -> f32 {
     return val;
 }
 
+// Boundary inset - keeps bouncy boundaries away from screen edges
+const BOUNDARY_INSET: f32 = 30.0;
+
 fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
     var newPos = pos;
     let w = uniforms.canvasWidth;
     let h = uniforms.canvasHeight;
     
+    // For bouncy boundaries, use inset area
+    let inset = BOUNDARY_INSET;
+    let bw = w - 2.0 * inset;  // Bouncy width
+    let bh = h - 2.0 * inset;  // Bouncy height
+    
     // Safety margin to keep boids slightly inside bounds
     let safeMargin = 1.0;
-    let safeW = w - safeMargin;
-    let safeH = h - safeMargin;
     
     switch (uniforms.boundaryMode) {
         case PLANE: {
-            // Robust bounce with helper function
-            newPos.x = bounceCoord(newPos.x, w);
-            newPos.y = bounceCoord(newPos.y, h);
+            // Bounce within inset area
+            let localX = newPos.x - inset;
+            let localY = newPos.y - inset;
+            newPos.x = bounceCoord(localX, bw) + inset;
+            newPos.y = bounceCoord(localY, bh) + inset;
         }
         case CYLINDER_X: {
+            // Wrap X (full width), bounce Y (inset)
             newPos.x = newPos.x - floor(newPos.x / w) * w;
-            newPos.y = bounceCoord(newPos.y, h);
+            let localY = newPos.y - inset;
+            newPos.y = bounceCoord(localY, bh) + inset;
         }
         case CYLINDER_Y: {
-            newPos.x = bounceCoord(newPos.x, w);
+            // Bounce X (inset), wrap Y (full height)
+            let localX = newPos.x - inset;
+            newPos.x = bounceCoord(localX, bw) + inset;
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
         case TORUS: {
+            // Full wrap, no inset needed
             newPos.x = newPos.x - floor(newPos.x / w) * w;
             newPos.y = newPos.y - floor(newPos.y / h) * h;
         }
         case MOBIUS_X: {
             if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
             else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
-            newPos.y = bounceCoord(newPos.y, h);
+            let localY = newPos.y - inset;
+            newPos.y = bounceCoord(localY, bh) + inset;
         }
         case MOBIUS_Y: {
-            newPos.x = bounceCoord(newPos.x, w);
+            let localX = newPos.x - inset;
+            newPos.x = bounceCoord(localX, bw) + inset;
             if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
             else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
         }
@@ -255,9 +270,20 @@ fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
     }
     
     // HARD CLAMP: Absolute guarantee boids stay inside bounds
-    // This catches any edge cases the above logic might miss
-    newPos.x = clamp(newPos.x, safeMargin, safeW);
-    newPos.y = clamp(newPos.y, safeMargin, safeH);
+    // For bouncy modes, clamp to inset area; for wrapping modes, clamp to full area
+    let hasBounce = uniforms.boundaryMode == PLANE || 
+                    uniforms.boundaryMode == CYLINDER_X || 
+                    uniforms.boundaryMode == CYLINDER_Y ||
+                    uniforms.boundaryMode == MOBIUS_X ||
+                    uniforms.boundaryMode == MOBIUS_Y;
+    
+    if (hasBounce) {
+        newPos.x = clamp(newPos.x, inset + safeMargin, w - inset - safeMargin);
+        newPos.y = clamp(newPos.y, inset + safeMargin, h - inset - safeMargin);
+    } else {
+        newPos.x = clamp(newPos.x, safeMargin, w - safeMargin);
+        newPos.y = clamp(newPos.y, safeMargin, h - safeMargin);
+    }
     
     return newPos;
 }
@@ -267,6 +293,13 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     let w = uniforms.canvasWidth;
     let h = uniforms.canvasHeight;
     
+    // Use inset for bouncy boundary calculations
+    let inset = BOUNDARY_INSET;
+    let minX = inset;
+    let maxX = w - inset;
+    let minY = inset;
+    let maxY = h - inset;
+    
     // Soft avoidance zone - boids start gently turning well before the wall
     let softMargin = 150.0;
     let maxTurnForce = 0.3;
@@ -274,67 +307,110 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     // Helper: smooth cubic falloff for gentle steering (0 at edge of margin, 1 at wall)
     // Uses squared falloff for very gradual force that increases smoothly
     
+    // Emergency zone - very strong force when extremely close to boundary
+    let emergencyZone = 20.0;
+    let emergencyForce = 2.0;
+    
     if (uniforms.boundaryMode == PLANE) {
-        // Soft steering forces with smooth gradient
-        if (pos.x < softMargin) {
-            let t = 1.0 - pos.x / softMargin;  // 0 at margin edge, 1 at wall
-            let force = t * t * maxTurnForce;   // Squared for smooth curve
+        // Soft steering forces with smooth gradient (relative to inset boundary)
+        if (pos.x < minX + softMargin) {
+            let dist = max(0.0, pos.x - minX);  // Distance from boundary (clamped)
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            // Emergency boost when very close
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
             newVel.x += force;
         }
-        if (pos.x > w - softMargin) {
-            let t = 1.0 - (w - pos.x) / softMargin;
-            let force = t * t * maxTurnForce;
+        if (pos.x > maxX - softMargin) {
+            let dist = max(0.0, maxX - pos.x);
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
             newVel.x -= force;
         }
-        if (pos.y < softMargin) {
-            let t = 1.0 - pos.y / softMargin;
-            let force = t * t * maxTurnForce;
+        if (pos.y < minY + softMargin) {
+            let dist = max(0.0, pos.y - minY);
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
             newVel.y += force;
         }
-        if (pos.y > h - softMargin) {
-            let t = 1.0 - (h - pos.y) / softMargin;
-            let force = t * t * maxTurnForce;
+        if (pos.y > maxY - softMargin) {
+            let dist = max(0.0, maxY - pos.y);
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
             newVel.y -= force;
         }
         
-        // Corner avoidance - gentle diagonal push away from corners
+        // Corner avoidance - gentle diagonal push away from corners (using inset coordinates)
         let cornerZone = softMargin * 0.7;
-        let nearLeft = pos.x < cornerZone;
-        let nearRight = pos.x > w - cornerZone;
-        let nearBottom = pos.y < cornerZone;
-        let nearTop = pos.y > h - cornerZone;
+        let nearLeft = pos.x < minX + cornerZone;
+        let nearRight = pos.x > maxX - cornerZone;
+        let nearBottom = pos.y < minY + cornerZone;
+        let nearTop = pos.y > maxY - cornerZone;
         
         if ((nearLeft || nearRight) && (nearBottom || nearTop)) {
             var cornerPoint = vec2<f32>(0.0, 0.0);
-            if (nearLeft && nearBottom) { cornerPoint = vec2<f32>(0.0, 0.0); }
-            else if (nearRight && nearBottom) { cornerPoint = vec2<f32>(w, 0.0); }
-            else if (nearLeft && nearTop) { cornerPoint = vec2<f32>(0.0, h); }
-            else { cornerPoint = vec2<f32>(w, h); }
+            if (nearLeft && nearBottom) { cornerPoint = vec2<f32>(minX, minY); }
+            else if (nearRight && nearBottom) { cornerPoint = vec2<f32>(maxX, minY); }
+            else if (nearLeft && nearTop) { cornerPoint = vec2<f32>(minX, maxY); }
+            else { cornerPoint = vec2<f32>(maxX, maxY); }
             
             let toCenter = normalize(vec2<f32>(w * 0.5, h * 0.5) - cornerPoint);
             let distToCorner = length(pos - cornerPoint);
             let maxDist = cornerZone * 1.414;
-            let t = max(0.0, 1.0 - distToCorner / maxDist);
-            newVel += toCenter * t * t * maxTurnForce * 0.5;
+            let t = clamp(1.0 - distToCorner / maxDist, 0.0, 1.0);
+            newVel += toCenter * t * t * maxTurnForce * 0.8;
         }
         
     } else if (uniforms.boundaryMode == CYLINDER_X || uniforms.boundaryMode == MOBIUS_X) {
-        if (pos.y < softMargin) {
-            let t = 1.0 - pos.y / softMargin;
-            newVel.y += t * t * maxTurnForce;
+        // Y-axis has bouncy boundary with inset
+        if (pos.y < minY + softMargin) {
+            let dist = max(0.0, pos.y - minY);
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
+            newVel.y += force;
         }
-        if (pos.y > h - softMargin) {
-            let t = 1.0 - (h - pos.y) / softMargin;
-            newVel.y -= t * t * maxTurnForce;
+        if (pos.y > maxY - softMargin) {
+            let dist = max(0.0, maxY - pos.y);
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
+            newVel.y -= force;
         }
     } else if (uniforms.boundaryMode == CYLINDER_Y || uniforms.boundaryMode == MOBIUS_Y) {
-        if (pos.x < softMargin) {
-            let t = 1.0 - pos.x / softMargin;
-            newVel.x += t * t * maxTurnForce;
+        // X-axis has bouncy boundary with inset
+        if (pos.x < minX + softMargin) {
+            let dist = max(0.0, pos.x - minX);
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
+            newVel.x += force;
         }
-        if (pos.x > w - softMargin) {
-            let t = 1.0 - (w - pos.x) / softMargin;
-            newVel.x -= t * t * maxTurnForce;
+        if (pos.x > maxX - softMargin) {
+            let dist = max(0.0, maxX - pos.x);
+            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < emergencyZone) {
+                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            }
+            newVel.x -= force;
         }
     }
     
@@ -1005,16 +1081,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     }
                 }
                 case CURSOR_DOT: {
-                    // Dot: small intense point attractor
-                    let dotRange = radius * 3.0;
+                    // Dot: small intense point attractor with tight focused range
+                    let dotRange = radius * 1.5;  // Much tighter than before (was 3.0)
                     if (cursorDist < dotRange) {
-                        // Stronger falloff for more focused effect
-                        let weight = smoothKernel(cursorDist, dotRange);
-                        let intensity = weight * weight; // Squared for sharper falloff
+                        // Sharp falloff for focused, point-like effect
+                        let q = cursorDist / dotRange;
+                        let weight = (1.0 - q) * (1.0 - q) * (1.0 - q);  // Cubic
+                        let intensity = weight * weight; // ^6 for very sharp falloff
                         if (uniforms.cursorMode == 1u) {
-                            cursorForce = towardCenter * intensity * strength * uniforms.cursorForce * 4.0;
+                            cursorForce = towardCenter * intensity * strength * uniforms.cursorForce * 6.0;
                         } else {
-                            cursorForce = awayFromCenter * intensity * strength * uniforms.cursorForce * 4.0;
+                            cursorForce = awayFromCenter * intensity * strength * uniforms.cursorForce * 6.0;
                         }
                     }
                 }

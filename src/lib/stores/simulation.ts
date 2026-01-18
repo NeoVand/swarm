@@ -67,6 +67,9 @@ export const needsBufferReallocation = writable(false);
 // Flag to trigger trail clear
 export const needsTrailClear = writable(false);
 
+// Flag to trigger simulation reset (reinitialize boid positions)
+export const needsSimulationReset = writable(false);
+
 // Helper functions to update specific parameters
 export function setAlignment(value: number): void {
 	params.update((p) => ({ ...p, alignment: value }));

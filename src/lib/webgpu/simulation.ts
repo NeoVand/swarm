@@ -23,6 +23,7 @@ export interface Simulation {
 	resize: (width: number, height: number) => void;
 	reallocateBuffers: () => void;
 	clearTrails: () => void;
+	resetBoids: () => void;
 	isRunning: () => boolean;
 }
 
@@ -237,6 +238,17 @@ export function createSimulation(
 		trailHead = 0;
 	}
 
+	function resetBoids(): void {
+		// Reinitialize boid positions and velocities without reallocating buffers
+		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
+		clearTrails(device, buffers, params.population, params.trailLength);
+		
+		// Reset state
+		readFromA = true;
+		frameCount = 0;
+		trailHead = 0;
+	}
+
 	return {
 		start,
 		stop,
@@ -246,6 +258,7 @@ export function createSimulation(
 		resize,
 		reallocateBuffers,
 		clearTrails: doTrailClear,
+		resetBoids,
 		isRunning: () => running
 	};
 }

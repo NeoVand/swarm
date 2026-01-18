@@ -13,6 +13,7 @@
 		isRunning,
 		isRecording,
 		canvasElement,
+		needsSimulationReset,
 		setAlignment,
 		setCohesion,
 		setSeparation,
@@ -299,51 +300,53 @@
 								<div style="display: flex; gap: 8px; margin-bottom: 12px;">
 									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
 										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
-											<defs>
-												<marker id="arrow1" markerWidth="4" markerHeight="4" refX="2" refY="2" orient="auto">
-													<path d="M0,0 L4,2 L0,4 Z" fill="#22d3ee"/>
-												</marker>
-											</defs>
-											<path d="M10,35 L25,20" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrow1)"/>
-											<path d="M25,40 L40,25" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrow1)"/>
-											<path d="M40,38 L55,23" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrow1)"/>
-											<polygon points="25,17 21,24 29,24" fill="#22d3ee"/>
-											<polygon points="40,22 36,29 44,29" fill="#22d3ee"/>
-											<polygon points="55,20 51,27 59,27" fill="#22d3ee"/>
+											<!-- Alignment: Three boids pointing same direction -->
+											<polygon points="12,38 8,32 16,32" fill="#22d3ee" transform="rotate(-45, 12, 35)"/>
+											<polygon points="30,32 26,26 34,26" fill="#22d3ee" transform="rotate(-45, 30, 29)"/>
+											<polygon points="48,26 44,20 52,20" fill="#22d3ee" transform="rotate(-45, 48, 23)"/>
 										</svg>
 										<div style="font-size: 10px; font-weight: 600; color: #22d3ee;">ALIGNMENT</div>
 										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Match neighbors' direction</div>
 									</div>
 									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
 										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
+											<!-- Cohesion: Boids moving toward center -->
 											<circle cx="30" cy="25" r="4" fill="#a78bfa" opacity="0.3"/>
-											<circle cx="30" cy="25" r="8" stroke="#a78bfa" stroke-width="1" fill="none" stroke-dasharray="2 2" opacity="0.5"/>
-											<polygon points="12,15 8,22 16,22" fill="#a78bfa" transform="rotate(120, 12, 15)"/>
-											<line x1="12" y1="18" x2="24" y2="24" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 1" opacity="0.6"/>
-											<polygon points="48,18 44,25 52,25" fill="#a78bfa" transform="rotate(-120, 48, 18)"/>
-											<line x1="48" y1="21" x2="36" y2="25" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 1" opacity="0.6"/>
-											<polygon points="25,42 21,49 29,49" fill="#a78bfa" transform="rotate(-30, 25, 42)"/>
-											<line x1="26" y1="44" x2="30" y2="32" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 1" opacity="0.6"/>
+											<circle cx="30" cy="25" r="12" stroke="#a78bfa" stroke-width="1" fill="none" stroke-dasharray="3 2" opacity="0.4"/>
+											<!-- Top-left boid pointing to center -->
+											<polygon points="12,12 8,18 16,18" fill="#a78bfa" transform="rotate(135, 12, 15)"/>
+											<line x1="15" y1="18" x2="24" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+											<!-- Top-right boid pointing to center -->
+											<polygon points="48,12 44,18 52,18" fill="#a78bfa" transform="rotate(-135, 48, 15)"/>
+											<line x1="45" y1="18" x2="36" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+											<!-- Bottom boid pointing to center -->
+											<polygon points="30,44 26,38 34,38" fill="#a78bfa" transform="rotate(0, 30, 41)"/>
+											<line x1="30" y1="38" x2="30" y2="30" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
 										</svg>
 										<div style="font-size: 10px; font-weight: 600; color: #a78bfa;">COHESION</div>
 										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Move toward group center</div>
 									</div>
 									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
 										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
-											<polygon points="30,25 26,32 34,32" fill="#fb7185"/>
-											<polygon points="15,20 11,27 19,27" fill="#fb7185" transform="rotate(-45, 15, 20)"/>
-											<line x1="23" y1="24" x2="18" y2="22" stroke="#fb7185" stroke-width="1.5" opacity="0.5"/>
-											<polygon points="45,20 41,27 49,27" fill="#fb7185" transform="rotate(45, 45, 20)"/>
-											<line x1="37" y1="24" x2="42" y2="22" stroke="#fb7185" stroke-width="1.5" opacity="0.5"/>
-											<polygon points="30,42 26,49 34,49" fill="#fb7185"/>
-											<line x1="30" y1="34" x2="30" y2="40" stroke="#fb7185" stroke-width="1.5" opacity="0.5"/>
+											<!-- Separation: Boids avoiding center, pointing outward -->
+											<!-- Center boid -->
+											<polygon points="30,25 26,31 34,31" fill="#fb7185"/>
+											<!-- Top-left boid pointing away -->
+											<polygon points="14,14 10,20 18,20" fill="#fb7185" transform="rotate(-45, 14, 17)"/>
+											<line x1="18" y1="20" x2="24" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+											<!-- Top-right boid pointing away -->
+											<polygon points="46,14 42,20 50,20" fill="#fb7185" transform="rotate(45, 46, 17)"/>
+											<line x1="42" y1="20" x2="36" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+											<!-- Bottom boid pointing away -->
+											<polygon points="30,44 26,38 34,38" fill="#fb7185" transform="rotate(180, 30, 41)"/>
+											<line x1="30" y1="38" x2="30" y2="33" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
 										</svg>
 										<div style="font-size: 10px; font-weight: 600; color: #fb7185;">SEPARATION</div>
 										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Avoid crowding neighbors</div>
 									</div>
 								</div>
 								<p style="font-size: 11px; color: #71717a; text-align: center; margin-bottom: 8px;">These simple rules create complex, lifelike swarm behavior!</p>
-								<a href="https://en.wikipedia.org/wiki/Boids" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10px; color: #a78bfa; text-decoration: none; opacity: 0.8; transition: opacity 0.2s; margin-bottom: 12px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+								<a href="https://en.wikipedia.org/wiki/Boids" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10px; color: #a78bfa; text-decoration: none; opacity: 0.8; transition: opacity 0.2s; margin-bottom: 10px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
 									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 										<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
 										<polyline points="15 3 21 3 21 9"/>
@@ -351,14 +354,12 @@
 									</svg>
 									Learn more on Wikipedia
 								</a>
-								<div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; margin-top: 4px;">
-									<p style="font-size: 10px; color: #52525b; text-align: center; margin: 0;">
-										<span style="color: #22d3ee;">WebGPU</span>-powered simulation · Scales to 50,000+ boids
-									</p>
-									<p style="font-size: 9px; color: #3f3f46; text-align: center; margin-top: 6px;">
-										Developed by Neo Mohsenvand
-									</p>
-								</div>
+								<p style="font-size: 10px; color: #52525b; text-align: center; margin: 0;">
+									<span style="color: #22d3ee;">WebGPU</span>-powered simulation · Scales to 50,000+ boids
+								</p>
+								<p style="font-size: 9px; color: #3f3f46; text-align: center; margin-top: 6px;">
+									Developed by Neo Mohsenvand
+								</p>
 							`,
 							side: 'over',
 							align: 'center'
@@ -387,13 +388,14 @@
 										<div style="font-size: 10px; color: #71717a;">Pause or resume the animation</div>
 									</div>
 									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(167, 139, 250, 0.15); border-radius: 6px;">
-										<svg viewBox="0 0 20 20" fill="#a78bfa" style="width: 14px; height: 14px;">
-											<path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909-4.19-4.19a.75.75 0 00-1.06 0L1.5 11.06zm5.5-3.31a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z" clip-rule="evenodd"/>
+										<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
+											<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+											<path d="M3 3v5h5"/>
 										</svg>
 									</div>
 									<div>
-										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Screenshot</div>
-										<div style="font-size: 10px; color: #71717a;">Save the current view as PNG</div>
+										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Reset</div>
+										<div style="font-size: 10px; color: #71717a;">Reinitialize boid positions</div>
 									</div>
 									<div style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(251, 113, 133, 0.15); border-radius: 6px;">
 										<svg viewBox="0 0 20 20" fill="#fb7185" style="width: 14px; height: 14px;">
@@ -413,8 +415,7 @@
 										<div style="font-weight: 600; font-size: 11px; color: #e4e4e7;">Help Tour</div>
 										<div style="font-size: 10px; color: #71717a;">Take this guided tour again</div>
 									</div>
-								</div>
-								<p style="font-size: 10px; color: #52525b; margin-top: 8px;"><em>Tip: When recording and sidebar is closed, a red indicator shows recording status.</em></p>`,
+								</div>`,
 							side: 'bottom',
 							align: 'end'
 						}
@@ -643,16 +644,17 @@
 					{/if}
 				</button>
 
-				<!-- Screenshot Button -->
+				<!-- Reset Button -->
 				<button
-					onclick={takeScreenshot}
+					onclick={() => needsSimulationReset.set(true)}
 					class="header-btn btn-purple"
-					aria-label="Take Screenshot"
-					title="Take screenshot"
+					aria-label="Reset Simulation"
+					title="Reset boid positions"
 				>
-					<!-- Image/Photo icon -->
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5">
-						<path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 5.81v3.69c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.69l-2.22-2.219a.75.75 0 00-1.06 0l-1.91 1.909-4.19-4.19a.75.75 0 00-1.06 0L1.5 11.06zm5.5-3.31a1.25 1.25 0 100-2.5 1.25 1.25 0 000 2.5z" clip-rule="evenodd" />
+					<!-- Refresh/Reset icon (Lucide: rotate-ccw) -->
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3.5 w-3.5">
+						<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+						<path d="M3 3v5h5"/>
 					</svg>
 				</button>
 

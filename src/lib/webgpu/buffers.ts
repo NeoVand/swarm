@@ -127,8 +127,8 @@ export function initializeBoids(
 	canvasHeight: number
 ): void {
 	// Safe spawn margin - keep boids away from edges and corners
-	// This matches the boundary force margin in simulate.wgsl
-	const safeMargin = 60; // Slightly larger than shader's 50px margin
+	// This matches the BOUNDARY_INSET (30) in simulate.wgsl plus extra padding
+	const safeMargin = 80; // Boundary inset (30) + extra padding (50)
 	
 	// Calculate safe spawn area
 	const safeMinX = safeMargin;

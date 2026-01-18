@@ -55,3 +55,64 @@ body {
 	-ms-user-select: none;
 	user-select: none;
 }
+
+/* Driver.js Tour Styling */
+.driver-popover {
+	background: #18181b !important;
+	border: 1px solid rgba(255, 255, 255, 0.1) !important;
+	color: #e4e4e7 !important;
+}
+
+.driver-popover-title {
+	color: #f4f4f5 !important;
+	font-weight: 600 !important;
+}
+
+.driver-popover-description {
+	color: #a1a1aa !important;
+}
+
+.driver-popover-footer {
+	border-top: none !important;
+}
+
+.driver-popover-progress-text {
+	color: #71717a !important;
+}
+
+/* Fix button styling - remove shadow/duplicate text */
+.driver-popover-prev-btn,
+.driver-popover-next-btn {
+	background: rgba(255, 255, 255, 0.1) !important;
+	color: #e4e4e7 !important;
+	border: none !important;
+	border-radius: 6px !important;
+	padding: 8px 16px !important;
+	font-size: 13px !important;
+	font-weight: 500 !important;
+	text-shadow: none !important;
+	box-shadow: none !important;
+	transition: background 0.2s !important;
+}
+
+.driver-popover-prev-btn:hover,
+.driver-popover-next-btn:hover {
+	background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.driver-popover-next-btn {
+	background: rgba(34, 211, 238, 0.2) !important;
+	color: #22d3ee !important;
+}
+
+.driver-popover-next-btn:hover {
+	background: rgba(34, 211, 238, 0.3) !important;
+}
+
+.driver-popover-close-btn {
+	color: #71717a !important;
+}
+
+.driver-popover-close-btn:hover {
+	color: #a1a1aa !important;
+}
