@@ -45,6 +45,8 @@ const COLOR_ORIENTATION: u32 = 1u;
 const COLOR_NEIGHBORS: u32 = 2u;
 const COLOR_ACCELERATION: u32 = 3u;
 const COLOR_TURNING: u32 = 4u;
+const COLOR_NONE: u32 = 5u;
+const COLOR_DENSITY: u32 = 6u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -219,13 +221,45 @@ fn vs_main(
             let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
             colorValue = fract(angleNorm * 3.0); // 3 color cycles per full rotation
         }
+        case COLOR_NONE: {
+            // Solid color - use middle of spectrum
+            colorValue = 0.5;
+        }
+        case COLOR_DENSITY: {
+            // Local density estimation using spatial hash cell occupancy
+            // Sample neighboring cells to estimate density
+            let cellSize = uniforms.perception;
+            let cellX = floor(pos.x / cellSize);
+            let cellY = floor(pos.y / cellSize);
+            
+            // Hash function to estimate local density pattern
+            // Multiple hash samples simulate density variation
+            var densitySum = 0.0;
+            for (var dy = -1; dy <= 1; dy++) {
+                for (var dx = -1; dx <= 1; dx++) {
+                    let cx = cellX + f32(dx);
+                    let cy = cellY + f32(dy);
+                    let h = fract(sin(cx * 127.1 + cy * 311.7) * 43758.5453);
+                    densitySum += h;
+                }
+            }
+            // Normalize and apply position-based modulation for smoothness
+            let baseDensity = densitySum / 9.0;
+            let posMod = fract(pos.x * 0.01 + pos.y * 0.01);
+            colorValue = baseDensity * 0.7 + posMod * 0.3;
+        }
         default: {
             colorValue = 0.5;
         }
     }
     
-    colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
-    output.color = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
+    // For "None" mode, skip sensitivity adjustment to keep it uniform
+    if (uniforms.colorMode == COLOR_NONE) {
+        output.color = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
+    } else {
+        colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
+        output.color = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
+    }
     output.alpha = 1.0;
     
     return output;

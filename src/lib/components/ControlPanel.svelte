@@ -533,8 +533,10 @@
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Speed, label: 'Speed' },
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
+		{ value: ColorMode.Density, label: 'Density' },
 		{ value: ColorMode.Acceleration, label: 'Acceleration' },
-		{ value: ColorMode.Turning, label: 'Turning' }
+		{ value: ColorMode.Turning, label: 'Turning' },
+		{ value: ColorMode.None, label: 'None' }
 	];
 
 	const spectrumOptions = [
@@ -732,54 +734,66 @@
 									aria-label="Colorize Mode"
 									aria-expanded={colorizeDropdownOpen}
 								>
-									{#if currentParams.colorMode === ColorMode.Orientation}
-										<!-- Lucide: compass -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
-									{:else if currentParams.colorMode === ColorMode.Speed}
-										<!-- Lucide: gauge -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
-									{:else if currentParams.colorMode === ColorMode.Neighbors}
-										<!-- Lucide: users -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-									{:else if currentParams.colorMode === ColorMode.Acceleration}
-										<!-- Lucide: trending-up -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-									{:else if currentParams.colorMode === ColorMode.Turning}
-										<!-- Lucide: rotate-cw -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-									{/if}
+								{#if currentParams.colorMode === ColorMode.None}
+									<!-- Lucide: minus -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+								{:else if currentParams.colorMode === ColorMode.Orientation}
+									<!-- Lucide: compass -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+								{:else if currentParams.colorMode === ColorMode.Speed}
+									<!-- Lucide: gauge -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+								{:else if currentParams.colorMode === ColorMode.Neighbors}
+									<!-- Lucide: users -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+								{:else if currentParams.colorMode === ColorMode.Density}
+									<!-- Lucide: grid-3x3 -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+								{:else if currentParams.colorMode === ColorMode.Acceleration}
+									<!-- Lucide: trending-up -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+								{:else if currentParams.colorMode === ColorMode.Turning}
+									<!-- Lucide: rotate-cw -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+								{/if}
 									<span class="flex-1 truncate">{colorOptions.find(o => o.value === currentParams.colorMode)?.label}</span>
 									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={colorizeDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
 										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
 									</svg>
 								</button>
-								{#if colorizeDropdownOpen}
-									<div 
-										class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 overflow-y-auto rounded-md"
-										transition:slide={{ duration: 150, easing: cubicOut }}
-									>
+							{#if colorizeDropdownOpen}
+								<div 
+									class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
+									transition:slide={{ duration: 150, easing: cubicOut }}
+								>
 										{#each colorOptions as opt}
 											<button
 												class="dropdown-item w-full h-[28px] flex items-center gap-2 px-[10px] text-left text-[10px]"
 												class:active={currentParams.colorMode === opt.value}
 												onclick={() => selectColorize(opt.value)}
 											>
-												{#if opt.value === ColorMode.Orientation}
-													<!-- Lucide: compass -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
-												{:else if opt.value === ColorMode.Speed}
-													<!-- Lucide: gauge -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
-												{:else if opt.value === ColorMode.Neighbors}
-													<!-- Lucide: users -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-												{:else if opt.value === ColorMode.Acceleration}
-													<!-- Lucide: trending-up -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-												{:else if opt.value === ColorMode.Turning}
-													<!-- Lucide: rotate-cw -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-												{/if}
+											{#if opt.value === ColorMode.None}
+												<!-- Lucide: minus -->
+												<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+											{:else if opt.value === ColorMode.Orientation}
+												<!-- Lucide: compass -->
+												<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+											{:else if opt.value === ColorMode.Speed}
+												<!-- Lucide: gauge -->
+												<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+											{:else if opt.value === ColorMode.Neighbors}
+												<!-- Lucide: users -->
+												<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+											{:else if opt.value === ColorMode.Density}
+												<!-- Lucide: grid-3x3 -->
+												<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+											{:else if opt.value === ColorMode.Acceleration}
+												<!-- Lucide: trending-up -->
+												<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+											{:else if opt.value === ColorMode.Turning}
+												<!-- Lucide: rotate-cw -->
+												<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+											{/if}
 												<span>{opt.label}</span>
 											</button>
 										{/each}
@@ -1138,9 +1152,9 @@
 					<!-- Algorithm-specific parameters -->
 					{#if currentParams.algorithmMode === AlgorithmMode.TopologicalKNN}
 						<div class="row">
-							<span class="label">K-Neighbors</span>
+							<span class="label">Neighbors</span>
 							<input type="range" min="4" max="24" step="1" value={currentParams.kNeighbors}
-								oninput={(e) => setKNeighbors(parseInt(e.currentTarget.value))} class="slider" aria-label="K-Neighbors" />
+								oninput={(e) => setKNeighbors(parseInt(e.currentTarget.value))} class="slider" aria-label="Neighbors" />
 							<span class="value">{currentParams.kNeighbors}</span>
 						</div>
 					{:else if currentParams.algorithmMode === AlgorithmMode.StochasticSample}

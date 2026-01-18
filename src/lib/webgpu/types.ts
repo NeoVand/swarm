@@ -17,7 +17,9 @@ export enum ColorMode {
 	Orientation = 1,
 	Neighbors = 2,
 	Acceleration = 3,
-	Turning = 4
+	Turning = 4,
+	None = 5,
+	Density = 6
 }
 
 export enum ColorSpectrum {

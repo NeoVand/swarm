@@ -1035,9 +1035,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
     
-    // Noise
+    // Noise - adds random perturbation for more organic movement
+    // Uses maxSpeed as scale (not maxForce) so the effect is actually visible
     if (uniforms.noise > 0.0) {
-        acceleration += random2(boidIndex * 31u + uniforms.frameCount * 17u) * uniforms.noise * uniforms.maxForce;
+        let noiseVec = random2(boidIndex * 31u + uniforms.frameCount * 17u);
+        // Scale by maxSpeed * 0.15 so noise=1 gives substantial perturbation
+        acceleration += noiseVec * uniforms.noise * uniforms.maxSpeed * 0.15;
     }
     
     // Apply forces
