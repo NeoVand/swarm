@@ -107,6 +107,7 @@ export interface SimulationBuffers {
 	boidCellIndices: GPUBuffer;
 	uniforms: GPUBuffer;
 	trailHead: GPUBuffer;
+	birthColors: GPUBuffer; // Stores initial position-based color per boid
 }
 
 export interface ComputePipelines {

@@ -88,6 +88,12 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
+	// Birth colors: f32 per boid (stores initial position-based color)
+	const birthColors = device.createBuffer({
+		size: boidCount * 4,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+
 	return {
 		positionA,
 		positionB,
@@ -100,7 +106,8 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		sortedIndices,
 		boidCellIndices,
 		uniforms,
-		trailHead
+		trailHead,
+		birthColors
 	};
 }
 
@@ -117,6 +124,7 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.boidCellIndices.destroy();
 	buffers.uniforms.destroy();
 	buffers.trailHead.destroy();
+	buffers.birthColors.destroy();
 }
 
 export function initializeBoids(
@@ -138,11 +146,21 @@ export function initializeBoids(
 	const safeWidth = safeMaxX - safeMinX;
 	const safeHeight = safeMaxY - safeMinY;
 	
-	// Create initial positions (random within safe area)
+	// Create initial positions (random within safe area) and birth colors
 	const positions = new Float32Array(boidCount * 2);
+	const birthColors = new Float32Array(boidCount);
+	const centerX = canvasWidth * 0.5;
+	const centerY = canvasHeight * 0.5;
+	
 	for (let i = 0; i < boidCount; i++) {
-		positions[i * 2] = safeMinX + Math.random() * safeWidth;
-		positions[i * 2 + 1] = safeMinY + Math.random() * safeHeight;
+		const x = safeMinX + Math.random() * safeWidth;
+		const y = safeMinY + Math.random() * safeHeight;
+		positions[i * 2] = x;
+		positions[i * 2 + 1] = y;
+		
+		// Compute birth color based on angle from canvas center (rainbow wheel)
+		const angle = Math.atan2(y - centerY, x - centerX);
+		birthColors[i] = (angle + Math.PI) / (2 * Math.PI); // Normalize to [0, 1]
 	}
 
 	// Create initial velocities (random directions, moderate speed)
@@ -159,6 +177,7 @@ export function initializeBoids(
 	device.queue.writeBuffer(buffers.positionB, 0, positions);
 	device.queue.writeBuffer(buffers.velocityA, 0, velocities);
 	device.queue.writeBuffer(buffers.velocityB, 0, velocities);
+	device.queue.writeBuffer(buffers.birthColors, 0, birthColors);
 }
 
 export function clearTrails(

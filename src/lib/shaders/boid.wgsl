@@ -66,6 +66,7 @@ struct VertexOutput {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> birthColors: array<f32>;
 
 // Triangle vertices for boid shape (pointing right)
 const BOID_VERTICES = array<vec2<f32>, 3>(
@@ -228,27 +229,8 @@ fn vs_main(
             colorValue = 0.5;
         }
         case COLOR_DENSITY: {
-            // Local density estimation using spatial hash cell occupancy
-            // Sample neighboring cells to estimate density
-            let cellSize = uniforms.perception;
-            let cellX = floor(pos.x / cellSize);
-            let cellY = floor(pos.y / cellSize);
-            
-            // Hash function to estimate local density pattern
-            // Multiple hash samples simulate density variation
-            var densitySum = 0.0;
-            for (var dy = -1; dy <= 1; dy++) {
-                for (var dx = -1; dx <= 1; dx++) {
-                    let cx = cellX + f32(dx);
-                    let cy = cellY + f32(dy);
-                    let h = fract(sin(cx * 127.1 + cy * 311.7) * 43758.5453);
-                    densitySum += h;
-                }
-            }
-            // Normalize and apply position-based modulation for smoothness
-            let baseDensity = densitySum / 9.0;
-            let posMod = fract(pos.x * 0.01 + pos.y * 0.01);
-            colorValue = baseDensity * 0.7 + posMod * 0.3;
+            // POSITION MODE - Ultra fast, just read pre-computed birth color
+            colorValue = birthColors[instanceIndex];
         }
         default: {
             colorValue = 0.5;

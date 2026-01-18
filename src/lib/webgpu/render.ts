@@ -34,7 +34,8 @@ export function createRenderPipelines(
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }
+			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // birthColors
 		]
 	});
 
@@ -78,7 +79,8 @@ export function createRenderPipelines(
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionA } },
-			{ binding: 2, resource: { buffer: buffers.velocityA } }
+			{ binding: 2, resource: { buffer: buffers.velocityA } },
+			{ binding: 3, resource: { buffer: buffers.birthColors } }
 		]
 	});
 
@@ -87,7 +89,8 @@ export function createRenderPipelines(
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionB } },
-			{ binding: 2, resource: { buffer: buffers.velocityB } }
+			{ binding: 2, resource: { buffer: buffers.velocityB } },
+			{ binding: 3, resource: { buffer: buffers.birthColors } }
 		]
 	});
 
@@ -97,7 +100,8 @@ export function createRenderPipelines(
 			{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }
+			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // birthColors
 		]
 	});
 
@@ -142,7 +146,8 @@ export function createRenderPipelines(
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionA } },
 			{ binding: 2, resource: { buffer: buffers.velocityA } },
-			{ binding: 3, resource: { buffer: buffers.trails } }
+			{ binding: 3, resource: { buffer: buffers.trails } },
+			{ binding: 4, resource: { buffer: buffers.birthColors } }
 		]
 	});
 
@@ -152,7 +157,8 @@ export function createRenderPipelines(
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionB } },
 			{ binding: 2, resource: { buffer: buffers.velocityB } },
-			{ binding: 3, resource: { buffer: buffers.trails } }
+			{ binding: 3, resource: { buffer: buffers.trails } },
+			{ binding: 4, resource: { buffer: buffers.birthColors } }
 		]
 	});
 

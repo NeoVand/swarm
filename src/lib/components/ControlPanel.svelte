@@ -164,7 +164,7 @@
 			recordedChunks = [];
 			mediaRecorder = new MediaRecorder(stream, {
 				mimeType: selectedMimeType,
-				videoBitsPerSecond: 8000000 // 8 Mbps for good quality
+				videoBitsPerSecond: 16000000 // 16 Mbps for high quality colors
 			});
 			
 			mediaRecorder.ondataavailable = (event) => {
@@ -280,6 +280,7 @@
 		const colorModes = [ColorMode.None, ColorMode.Orientation, ColorMode.Speed, ColorMode.Neighbors, ColorMode.Density, ColorMode.Acceleration, ColorMode.Turning];
 		const algorithmModes = [AlgorithmMode.TopologicalKNN, AlgorithmMode.SmoothMetric, AlgorithmMode.HashFree, AlgorithmMode.StochasticSample, AlgorithmMode.DensityAdaptive];
 		const colorSpectrums = [ColorSpectrum.Rainbow, ColorSpectrum.Sunset, ColorSpectrum.Chrome, ColorSpectrum.Neon, ColorSpectrum.Mono];
+		const cursorShapes = [CursorShape.Dot, CursorShape.Ring, CursorShape.Disk, CursorShape.Vortex];
 
 		switch (event.key.toLowerCase()) {
 			// Playback controls
@@ -374,6 +375,14 @@
 				const paletteIndex = colorSpectrums.indexOf(currentPalette);
 				const nextPalette = colorSpectrums[(paletteIndex + 1) % colorSpectrums.length];
 				setColorSpectrum(nextPalette);
+				break;
+
+			case 't':
+				event.preventDefault();
+				const currentShape = currentParams?.cursorShape ?? CursorShape.Dot;
+				const shapeIndex = cursorShapes.indexOf(currentShape);
+				const nextShape = cursorShapes[(shapeIndex + 1) % cursorShapes.length];
+				setCursorShape(nextShape);
 				break;
 
 			// Flocking parameters: Q/W for Align, E/D for Cohesion, Z/X for Separate
@@ -699,7 +708,7 @@
 								<ul>
 									<li><strong>Bounds</strong> — Topology (Plane, Torus, Möbius...) <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">B</kbd></li>
 									<li><strong>Interaction</strong> — Off / Attract / Repel <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">1</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">2</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">3</kbd></li>
-									<li><strong>Shape</strong> — Dot, Ring, Disk, or Vortex cursor</li>
+									<li><strong>Shape</strong> — Dot, Ring, Disk, or Vortex <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">T</kbd></li>
 									<li><strong>Size & Power</strong> — Cursor influence</li>
 								</ul>`,
 							side: 'left',
@@ -789,46 +798,48 @@
 								<span>Keyboard Shortcuts</span>
 							</div>`,
 							description: `
-								<p style="margin-bottom: 10px; color: #a1a1aa;">Control the simulation without opening the sidebar:</p>
-								<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; font-size: 10px;">
-									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
-										<div style="font-weight: 600; color: #f472b6; margin-bottom: 3px;">Playback</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Space</kbd> Play</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">S</kbd> Photo</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">V</kbd> Video</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">R</kbd> Reset</div>
+								<p style="margin-bottom: 8px; color: #a1a1aa; font-size: 11px;">All keyboard shortcuts:</p>
+								<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 9px;">
+									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+										<div style="font-weight: 600; color: #f472b6; margin-bottom: 2px; font-size: 10px;">Playback</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Space</kbd> Play/Pause</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">S</kbd> Screenshot</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">V</kbd> Record Video</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">R</kbd> Reset Boids</div>
 									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
-										<div style="font-weight: 600; color: #fb7185; margin-bottom: 3px;">Flocking</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Q/W</kbd> Align</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">E/D</kbd> Cohesion</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Z/X</kbd> Separate</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+										<div style="font-weight: 600; color: #fb7185; margin-bottom: 2px; font-size: 10px;">Flocking</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Q</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">W</kbd> Alignment ±</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">E</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">D</kbd> Cohesion ±</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Z</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">X</kbd> Separation ±</div>
 									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
-										<div style="font-weight: 600; color: #22d3ee; margin-bottom: 3px;">Cursor</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">1</kbd> Off</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">2</kbd> Attract</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">3</kbd> Repel</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+										<div style="font-weight: 600; color: #22d3ee; margin-bottom: 2px; font-size: 10px;">Interaction</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">1</kbd> Cursor Off</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">2</kbd> Attract</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">3</kbd> Repel</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Cycle Shape</div>
 									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
-										<div style="font-weight: 600; color: #a78bfa; margin-bottom: 3px;">Cycle</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">B</kbd> Bounds</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">C</kbd> Color</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">P</kbd> Palette</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">A</kbd> Algo</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+										<div style="font-weight: 600; color: #a78bfa; margin-bottom: 2px; font-size: 10px;">Cycle Options</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">B</kbd> Boundary</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">C</kbd> Color Mode</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">P</kbd> Palette</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">A</kbd> Algorithm</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Brush Shape</div>
 									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
-										<div style="font-weight: 600; color: #fbbf24; margin-bottom: 3px;">Adjust</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">+/-</kbd> Pop</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">[]</kbd> Trail</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">↑↓</kbd> Speed</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">←→</kbd> Size</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+										<div style="font-weight: 600; color: #fbbf24; margin-bottom: 2px; font-size: 10px;">Adjustments</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">+</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">-</kbd> Population</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">[</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">]</kbd> Trail Length</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↑</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↓</kbd> Speed</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">←</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">→</kbd> Boid Size</div>
 									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 6px; border-radius: 6px;">
-										<div style="font-weight: 600; color: #34d399; margin-bottom: 3px;">UI</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Tab</kbd> Sidebar</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">H</kbd> Help</div>
-										<div><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;">Esc</kbd> Close</div>
+									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+										<div style="font-weight: 600; color: #34d399; margin-bottom: 2px; font-size: 10px;">Interface</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Tab</kbd> Toggle Sidebar</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">H</kbd> <kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">?</kbd> Help Tour</div>
+										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Esc</kbd> Close/Cancel</div>
 									</div>
 								</div>
 							`,
@@ -859,7 +870,7 @@
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Speed, label: 'Speed' },
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
-		{ value: ColorMode.Density, label: 'Density' },
+		{ value: ColorMode.Density, label: 'Position' },
 		{ value: ColorMode.Acceleration, label: 'Acceleration' },
 		{ value: ColorMode.Turning, label: 'Turning' },
 		{ value: ColorMode.None, label: 'None' }

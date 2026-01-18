@@ -158,7 +158,7 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 		context.configure({
 			device,
 			format,
-			alphaMode: 'premultiplied'
+			alphaMode: 'opaque'
 		});
 
 		// Success - reset failure state
@@ -211,7 +211,7 @@ export function resizeCanvas(gpuContext: GPUContext, width: number, height: numb
 		context.configure({
 			device,
 			format,
-			alphaMode: 'premultiplied'
+			alphaMode: 'opaque'
 		});
 	} catch (e) {
 		console.warn('Failed to reconfigure canvas context:', e);
