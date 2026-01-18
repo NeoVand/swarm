@@ -345,7 +345,7 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
 // SHARED CONSTANTS FOR CONSISTENT BEHAVIOR ACROSS ALL ALGORITHMS
 // ============================================================================
 
-const SEPARATION_RADIUS_FACTOR: f32 = 0.35; // Separation radius = 35% of perception
+const SEPARATION_BASE_RADIUS: f32 = 20.0;   // Fixed base separation radius (independent of perception)
 const SEPARATION_FORCE_MULT: f32 = 1.5;     // Separation force multiplier (reduced for smoothness)
 const OVERLAP_PUSH_STRENGTH: f32 = 1.0;     // Force when boids overlap (gentle)
 
@@ -370,7 +370,8 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     
     var separationSum = vec2<f32>(0.0);
     var separationCount = 0u;
-    let separationRadius = uniforms.perception * SEPARATION_RADIUS_FACTOR;
+    // Fixed separation radius based on boid size, independent of perception
+    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
@@ -476,7 +477,8 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
-    let separationRadius = uniforms.perception * SEPARATION_RADIUS_FACTOR;
+    // Fixed separation radius based on boid size, independent of perception
+    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
@@ -566,7 +568,8 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
     var separationCount = 0u;
     
     let perception = uniforms.perception;
-    let separationRadius = perception * SEPARATION_RADIUS_FACTOR;
+    // Fixed separation radius based on boid size, independent of perception
+    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
     // Search area
     for (var dy = -2i; dy <= 2i; dy++) {
@@ -655,7 +658,8 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     var separationCount = 0u;
     
     let perception = uniforms.perception;
-    let separationRadius = perception * SEPARATION_RADIUS_FACTOR;
+    // Fixed separation radius based on boid size, independent of perception
+    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
     // Sample multiple random points within perception radius
     // For each point, check the cell it falls in
@@ -811,7 +815,8 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     var localDensity = 0.0; // Measure of how crowded this area is
     
     let perception = uniforms.perception;
-    let separationRadius = perception * SEPARATION_RADIUS_FACTOR;
+    // Fixed separation radius based on boid size, independent of perception
+    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
     // Collect neighbor data and measure local density
     for (var dy = -2i; dy <= 2i; dy++) {
@@ -908,13 +913,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let myPos = positionsIn[boidIndex];
     let myVel = velocitiesIn[boidIndex];
     
-    // Rebel behavior
-    let rebelPeriod = 180u;
-    let rebelDuration = 60u;
-    let boidPhase = u32(hash(boidIndex * 12345u) * f32(rebelPeriod));
-    let timeInCycle = (uniforms.frameCount + boidPhase) % rebelPeriod;
-    let isRebel = hash(boidIndex * 7919u) < uniforms.rebels * 5.0 && timeInCycle < rebelDuration;
-    let rebelFactor = select(1.0, 0.2, isRebel);
+    // Rebel behavior - different boids become rebels each cycle
+    let rebelPeriod = 300u;   // ~5 seconds at 60fps per cycle
+    let rebelDuration = 90u;  // ~1.5 seconds of rebel behavior
+    let cycleNumber = uniforms.frameCount / rebelPeriod;
+    let timeInCycle = uniforms.frameCount % rebelPeriod;
+    
+    // Hash includes cycle number so DIFFERENT boids are selected each cycle
+    let rebelHash = hash(boidIndex * 7919u + cycleNumber * 104729u);
+    let isRebel = rebelHash < uniforms.rebels && timeInCycle < rebelDuration;
+    let rebelFactor = select(1.0, 0.1, isRebel);
     
     // Select algorithm
     var acceleration: vec2<f32>;

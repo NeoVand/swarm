@@ -344,22 +344,27 @@ fn vs_main(
         }
     }
     
-    // For "None" mode, skip sensitivity adjustment to keep it uniform
+    // Get the base color from spectrum
+    var baseColor: vec3<f32>;
     if (uniforms.colorMode == COLOR_NONE) {
-        output.color = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
+        baseColor = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
     } else {
         colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
-        output.color = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
+        baseColor = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
     }
-    // Full opacity at head (alpha=1.0), fading to transparent at tail
-    // This creates seamless connection with the boid
-    output.alpha = alpha;
+    
+    // Aggressive fade to dark - squared for faster dropoff
+    // Head (alpha=1): full brightness, Tail (alpha→0): much darker
+    let fadeFactor = alpha * alpha;  // Squared for aggressive fade
+    output.color = baseColor * fadeFactor;
+    output.alpha = 1.0;
     
     return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Premultiplied alpha output for proper blending
-    return vec4<f32>(input.color * input.alpha, input.alpha);
+    // Non-premultiplied output for additive blending
+    // Trails glow brighter where they overlap
+    return vec4<f32>(input.color, input.alpha);
 }

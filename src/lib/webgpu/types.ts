@@ -131,12 +131,12 @@ export interface BindGroups {
 
 export const DEFAULT_PARAMS: SimulationParams = {
 	alignment: 1.0,
-	cohesion: 1.0,
+	cohesion: 0.6,
 	separation: 1.5,
 	perception: 80,
 	maxSpeed: 4,
 	maxForce: 0.1,
-	noise: 0.35,
+	noise: 0.0,
 	rebels: 0.02,
 	boundaryMode: BoundaryMode.Plane,
 	cursorMode: CursorMode.Attract,
