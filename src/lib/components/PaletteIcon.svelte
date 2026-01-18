@@ -61,7 +61,7 @@
 	const grad = $derived(gradients[spectrum]);
 </script>
 
-<svg width={size} height={size} viewBox="0 0 16 16" class="palette-icon">
+<svg width={size} height={size} viewBox="0 0 18 18" class="palette-icon">
 	<defs>
 		<linearGradient id="palette-{grad.id}" x1="0%" y1="0%" x2="100%" y2="100%">
 			{#each grad.stops as stop}
@@ -69,7 +69,7 @@
 			{/each}
 		</linearGradient>
 	</defs>
-	<rect x="1" y="1" width="14" height="14" rx="3" fill="url(#palette-{grad.id})" />
+	<rect x="0" y="0" width="18" height="18" rx="4" fill="url(#palette-{grad.id})" />
 </svg>
 
 <style>

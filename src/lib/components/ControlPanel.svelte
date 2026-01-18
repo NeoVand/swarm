@@ -52,6 +52,8 @@
 	let boundaryDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let paletteDropdownOpen = $state(false);
 	let paletteDropdownRef = $state<HTMLDivElement | undefined>(undefined);
+	let colorizeDropdownOpen = $state(false);
+	let colorizeDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let algorithmDropdownOpen = $state(false);
 	let algorithmDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 
@@ -208,6 +210,11 @@
 		algorithmDropdownOpen = false;
 	}
 
+	function selectColorize(mode: ColorMode) {
+		setColorMode(mode);
+		colorizeDropdownOpen = false;
+	}
+
 	function handleClickOutside(event: MouseEvent) {
 		if (boundaryDropdownOpen && boundaryDropdownRef && !boundaryDropdownRef.contains(event.target as Node)) {
 			boundaryDropdownOpen = false;
@@ -215,13 +222,16 @@
 		if (paletteDropdownOpen && paletteDropdownRef && !paletteDropdownRef.contains(event.target as Node)) {
 			paletteDropdownOpen = false;
 		}
+		if (colorizeDropdownOpen && colorizeDropdownRef && !colorizeDropdownRef.contains(event.target as Node)) {
+			colorizeDropdownOpen = false;
+		}
 		if (algorithmDropdownOpen && algorithmDropdownRef && !algorithmDropdownRef.contains(event.target as Node)) {
 			algorithmDropdownOpen = false;
 		}
 	}
 
 	$effect(() => {
-		if (boundaryDropdownOpen || paletteDropdownOpen || algorithmDropdownOpen) {
+		if (boundaryDropdownOpen || paletteDropdownOpen || colorizeDropdownOpen || algorithmDropdownOpen) {
 			document.addEventListener('click', handleClickOutside);
 			return () => document.removeEventListener('click', handleClickOutside);
 		}
@@ -673,7 +683,7 @@
 		</div>
 
 		<!-- Content -->
-		<div class="content-scroll max-h-[calc(100vh-100px)] px-3 pb-3">
+		<div class="content-scroll max-h-[calc(100vh-100px)]">
 			<!-- Boids -->
 			<div id="section-boids" class="mb-2">
 				<button class="section-header" onclick={() => toggleSection('boids')}>
@@ -709,10 +719,67 @@
 						</div>
 						<div class="row">
 							<span class="label">Colorize</span>
-							<select value={currentParams.colorMode} onchange={(e) => setColorMode(parseInt(e.currentTarget.value))}
-								class="sel flex-1" aria-label="Colorize Mode">
-								{#each colorOptions as opt}<option value={opt.value}>{opt.label}</option>{/each}
-							</select>
+							<div class="relative flex-1" bind:this={colorizeDropdownRef}>
+								<button 
+									class="sel w-full flex items-center gap-2 text-left"
+									onclick={() => colorizeDropdownOpen = !colorizeDropdownOpen}
+									aria-label="Colorize Mode"
+									aria-expanded={colorizeDropdownOpen}
+								>
+									{#if currentParams.colorMode === ColorMode.Orientation}
+										<!-- Lucide: compass -->
+										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+									{:else if currentParams.colorMode === ColorMode.Speed}
+										<!-- Lucide: gauge -->
+										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+									{:else if currentParams.colorMode === ColorMode.Neighbors}
+										<!-- Lucide: users -->
+										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+									{:else if currentParams.colorMode === ColorMode.Acceleration}
+										<!-- Lucide: trending-up -->
+										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+									{:else if currentParams.colorMode === ColorMode.Turning}
+										<!-- Lucide: rotate-cw -->
+										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+									{/if}
+									<span class="flex-1 truncate">{colorOptions.find(o => o.value === currentParams.colorMode)?.label}</span>
+									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={colorizeDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
+										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+									</svg>
+								</button>
+								{#if colorizeDropdownOpen}
+									<div 
+										class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 overflow-y-auto rounded-md"
+										transition:slide={{ duration: 150, easing: cubicOut }}
+									>
+										{#each colorOptions as opt}
+											<button
+												class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
+												class:active={currentParams.colorMode === opt.value}
+												onclick={() => selectColorize(opt.value)}
+											>
+												{#if opt.value === ColorMode.Orientation}
+													<!-- Lucide: compass -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+												{:else if opt.value === ColorMode.Speed}
+													<!-- Lucide: gauge -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+												{:else if opt.value === ColorMode.Neighbors}
+													<!-- Lucide: users -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+												{:else if opt.value === ColorMode.Acceleration}
+													<!-- Lucide: trending-up -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+												{:else if opt.value === ColorMode.Turning}
+													<!-- Lucide: rotate-cw -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+												{/if}
+												<span>{opt.label}</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
 						</div>
 						<div class="row">
 							<span class="label">Palette</span>
@@ -723,7 +790,7 @@
 									aria-label="Palette"
 									aria-expanded={paletteDropdownOpen}
 								>
-									<PaletteIcon spectrum={currentParams.colorSpectrum} size={14} />
+									<PaletteIcon spectrum={currentParams.colorSpectrum} size={18} />
 									<span class="flex-1 truncate">{spectrumOptions.find(o => o.value === currentParams.colorSpectrum)?.label}</span>
 									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={paletteDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
 										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
@@ -736,11 +803,11 @@
 									>
 										{#each spectrumOptions as opt}
 											<button
-												class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
+												class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
 												class:active={currentParams.colorSpectrum === opt.value}
 												onclick={() => selectPalette(opt.value)}
 											>
-												<PaletteIcon spectrum={opt.value} size={14} />
+												<PaletteIcon spectrum={opt.value} size={18} />
 												<span>{opt.label}</span>
 											</button>
 										{/each}
@@ -777,7 +844,7 @@
 								aria-label="Boundary"
 								aria-expanded={boundaryDropdownOpen}
 							>
-								<BoundaryIcon mode={currentParams.boundaryMode} size={14} />
+								<BoundaryIcon mode={currentParams.boundaryMode} size={18} />
 								<span class="flex-1 truncate">{boundaryOptions.find(o => o.value === currentParams.boundaryMode)?.label}</span>
 								<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={boundaryDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
 									<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
@@ -790,11 +857,11 @@
 								>
 									{#each boundaryOptions as opt}
 										<button
-											class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
+											class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
 											class:active={currentParams.boundaryMode === opt.value}
 											onclick={() => selectBoundary(opt.value)}
 										>
-											<BoundaryIcon mode={opt.value} size={14} />
+											<BoundaryIcon mode={opt.value} size={18} />
 											<span>{opt.label}</span>
 										</button>
 									{/each}
@@ -1002,7 +1069,7 @@
 			</div>
 
 			<!-- Algorithm -->
-			<div id="section-algorithm" class="mb-2">
+			<div id="section-algorithm">
 				<button class="section-header" onclick={() => toggleSection('algorithm')}>
 					<div class="section-title">
 						<svg class="section-icon icon-emerald" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1044,7 +1111,7 @@
 							>
 								{#each algorithmOptions as opt}
 									<button
-										class="dropdown-item w-full flex items-center gap-2 px-2 py-1.5 text-left text-[10px]"
+										class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
 										class:active={currentParams.algorithmMode === opt.value}
 										onclick={() => selectAlgorithm(opt.value)}
 									>
@@ -1077,6 +1144,7 @@
 		overflow-y: auto;
 		overflow-x: hidden;
 		scrollbar-gutter: stable;
+		padding: 0 12px 4px 12px;
 	}
 	.content-scroll::-webkit-scrollbar {
 		width: 6px;
@@ -1219,17 +1287,17 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		width: 100%;
-		padding: 8px 6px;
-		margin: 0 -6px;
-		background: rgba(255, 255, 255, 0.02);
+		width: calc(100% + 24px);
+		margin-left: -12px;
+		padding: 10px 12px;
+		background: transparent;
 		border: none;
-		border-radius: 6px;
+		border-radius: 0;
 		cursor: pointer;
 		transition: background 0.15s;
 	}
 	.section-header:hover {
-		background: rgba(255, 255, 255, 0.05);
+		background: rgba(255, 255, 255, 0.04);
 	}
 	.section-title {
 		display: flex;
@@ -1268,8 +1336,8 @@
 	.section-content {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
-		padding: 8px 0 4px 0;
+		gap: 8px;
+		padding: 4px 0 4px 0;
 	}
 
 	.row {
@@ -1329,13 +1397,13 @@
 	}
 
 	.sel {
-		height: 22px;
+		height: 28px;
 		cursor: pointer;
 		appearance: none;
 		border-radius: 5px;
 		border: 1px solid rgba(255, 255, 255, 0.08);
 		background: rgba(255, 255, 255, 0.05);
-		padding: 0 8px;
+		padding: 0 10px;
 		font-size: 10px;
 		color: rgb(161 161 170);
 		outline: none;
@@ -1379,6 +1447,13 @@
 	.dropdown-item.active {
 		background: rgba(255, 255, 255, 0.1);
 		color: rgb(250 250 250);
+	}
+
+	.colorize-icon {
+		width: 18px;
+		height: 18px;
+		flex-shrink: 0;
+		color: rgb(161 161 170);
 	}
 
 	/* Premium Cursor Toggle */
