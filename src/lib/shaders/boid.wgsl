@@ -60,6 +60,7 @@ struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
     @location(1) alpha: f32,
+    @location(2) barycentric: vec3<f32>,  // For edge detection
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -164,8 +165,8 @@ fn vs_main(
     // Get local vertex
     let localVert = BOID_VERTICES[vertexIndex % 3u];
     
-    // Scale by boid size
-    let size = uniforms.boidSize * 6.0;
+    // Scale by boid size (slightly larger to make room for border)
+    let size = uniforms.boidSize * 6.0 * 1.1;  // 10% larger for border
     var scaledVert = localVert * size;
     
     // Rotate to face velocity direction
@@ -263,10 +264,37 @@ fn vs_main(
     }
     output.alpha = 1.0;
     
+    // Barycentric coordinates for edge detection in fragment shader
+    let vertIdx = vertexIndex % 3u;
+    if (vertIdx == 0u) {
+        output.barycentric = vec3<f32>(1.0, 0.0, 0.0);
+    } else if (vertIdx == 1u) {
+        output.barycentric = vec3<f32>(0.0, 1.0, 0.0);
+    } else {
+        output.barycentric = vec3<f32>(0.0, 0.0, 1.0);
+    }
+    
     return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    // Edge detection using barycentric coordinates
+    // barycentric.x = distance from base edge (wing to wing)
+    // barycentric.y = distance from right edge (nose to right wing)  
+    // barycentric.z = distance from left edge (nose to left wing)
+    
+    // Only border the TWO SIDE edges (y and z), NOT the base edge (x)
+    let sideEdgeDist = min(input.barycentric.y, input.barycentric.z);
+    
+    // Thin black stroke on side edges only
+    let strokeWidth = 0.12;
+    if (sideEdgeDist < strokeWidth) {
+        // Smooth transition to black at side edges
+        let strokeFactor = sideEdgeDist / strokeWidth;
+        let strokeColor = mix(vec3<f32>(0.0), input.color, strokeFactor);
+        return vec4<f32>(strokeColor, input.alpha);
+    }
+    
     return vec4<f32>(input.color, input.alpha);
 }

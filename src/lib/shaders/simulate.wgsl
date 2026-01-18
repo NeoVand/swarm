@@ -345,9 +345,9 @@ fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
 // SHARED CONSTANTS FOR CONSISTENT BEHAVIOR ACROSS ALL ALGORITHMS
 // ============================================================================
 
-const SEPARATION_BASE_RADIUS: f32 = 20.0;   // Fixed base separation radius (independent of perception)
-const SEPARATION_FORCE_MULT: f32 = 1.5;     // Separation force multiplier (reduced for smoothness)
-const OVERLAP_PUSH_STRENGTH: f32 = 1.0;     // Force when boids overlap (gentle)
+const SEPARATION_BASE_RADIUS: f32 = 25.0;   // Fixed base separation radius (independent of perception)
+const SEPARATION_FORCE_MULT: f32 = 4.0;     // Separation force multiplier (higher cap for slider range)
+const OVERLAP_PUSH_STRENGTH: f32 = 2.0;     // Force when boids overlap
 
 // ============================================================================
 // ALGORITHM 0: TOPOLOGICAL K-NN

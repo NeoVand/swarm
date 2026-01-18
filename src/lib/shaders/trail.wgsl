@@ -63,6 +63,7 @@ struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
     @location(1) alpha: f32,
+    @location(2) edgeDist: f32,  // 0 at center, 1 at side edges
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -161,6 +162,7 @@ fn vs_main(
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
+        output.edgeDist = 0.0;
         return output;
     }
     
@@ -202,6 +204,7 @@ fn vs_main(
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
+        output.edgeDist = 0.0;
         return output;
     }
     
@@ -217,6 +220,7 @@ fn vs_main(
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
+        output.edgeDist = 0.0;
         return output;
     }
     
@@ -263,13 +267,15 @@ fn vs_main(
         alpha2 = 1.0 - ageRatio - 1.0 / f32(uniforms.trailLength - 1u);
     }
     
+    // edgeDist: +1 on one side, -1 on other side (abs gives 0 at center, 1 at edges)
+    var edgeDist: f32;
     switch (quadVertex) {
-        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; }
-        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
-        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
-        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
-        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
-        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; }
+        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; edgeDist = 1.0; }
+        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; edgeDist = -1.0; }
+        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; edgeDist = 1.0; }
+        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; edgeDist = 1.0; }
+        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; edgeDist = -1.0; }
+        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; edgeDist = -1.0; }
         default: { worldPos = p1; alpha = 0.0; }
     }
     
@@ -358,13 +364,24 @@ fn vs_main(
     let fadeFactor = alpha * alpha;  // Squared for aggressive fade
     output.color = baseColor * fadeFactor;
     output.alpha = 1.0;
+    output.edgeDist = edgeDist;
     
     return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Non-premultiplied output for additive blending
-    // Trails glow brighter where they overlap
-    return vec4<f32>(input.color, input.alpha);
+    // Edge detection: abs(edgeDist) is 1.0 at edges, 0.0 at center
+    let edge = abs(input.edgeDist);
+    
+    // Thin black stroke at side edges
+    let strokeThreshold = 0.75;  // Start darkening at 75% from center
+    var finalColor = input.color;
+    if (edge > strokeThreshold) {
+        // Smooth transition to black at edges
+        let strokeFactor = (edge - strokeThreshold) / (1.0 - strokeThreshold);
+        finalColor = mix(input.color, vec3<f32>(0.0), strokeFactor);
+    }
+    
+    return vec4<f32>(finalColor, input.alpha);
 }
