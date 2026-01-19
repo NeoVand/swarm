@@ -20,20 +20,26 @@
 				{ offset: '100%', color: 'rgb(230, 51, 51)' }
 			]
 		},
-		[ColorSpectrum.Neon]: {
-			id: 'neon',
+		[ColorSpectrum.Ocean]: {
+			id: 'ocean',
 			stops: [
-				{ offset: '0%', color: 'rgb(0, 255, 255)' },
-				{ offset: '50%', color: 'rgb(255, 0, 200)' },
-				{ offset: '100%', color: 'rgb(120, 0, 255)' }
+				{ offset: '0%', color: 'rgb(64, 89, 166)' },
+				{ offset: '20%', color: 'rgb(51, 140, 153)' },
+				{ offset: '40%', color: 'rgb(77, 166, 128)' },
+				{ offset: '60%', color: 'rgb(217, 179, 77)' },
+				{ offset: '80%', color: 'rgb(204, 115, 102)' },
+				{ offset: '100%', color: 'rgb(140, 89, 140)' }
 			]
 		},
-		[ColorSpectrum.Sunset]: {
-			id: 'sunset',
+		[ColorSpectrum.Bands]: {
+			id: 'bands',
 			stops: [
-				{ offset: '0%', color: 'rgb(255, 0, 128)' },
-				{ offset: '50%', color: 'rgb(255, 100, 0)' },
-				{ offset: '100%', color: 'rgb(255, 220, 0)' }
+				{ offset: '0%', color: 'rgb(230, 51, 77)' },
+				{ offset: '20%', color: 'rgb(242, 153, 26)' },
+				{ offset: '40%', color: 'rgb(242, 230, 51)' },
+				{ offset: '60%', color: 'rgb(51, 204, 102)' },
+				{ offset: '80%', color: 'rgb(51, 153, 230)' },
+				{ offset: '100%', color: 'rgb(153, 77, 204)' }
 			]
 		},
 		[ColorSpectrum.Rainbow]: {

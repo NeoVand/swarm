@@ -273,7 +273,7 @@
 		const boundaryModes = [BoundaryMode.Plane, BoundaryMode.Torus, BoundaryMode.CylinderX, BoundaryMode.MobiusX, BoundaryMode.KleinX, BoundaryMode.ProjectivePlane];
 		const colorModes = [ColorMode.None, ColorMode.Orientation, ColorMode.Speed, ColorMode.Neighbors, ColorMode.Density, ColorMode.Acceleration, ColorMode.Turning];
 		const algorithmModes = [AlgorithmMode.TopologicalKNN, AlgorithmMode.SmoothMetric, AlgorithmMode.HashFree, AlgorithmMode.StochasticSample, AlgorithmMode.DensityAdaptive];
-		const colorSpectrums = [ColorSpectrum.Rainbow, ColorSpectrum.Sunset, ColorSpectrum.Chrome, ColorSpectrum.Neon, ColorSpectrum.Mono];
+		const colorSpectrums = [ColorSpectrum.Rainbow, ColorSpectrum.Ocean, ColorSpectrum.Chrome, ColorSpectrum.Bands, ColorSpectrum.Mono];
 		const cursorShapes = [CursorShape.Ring, CursorShape.Disk];
 
 		switch (event.key.toLowerCase()) {
@@ -867,8 +867,8 @@
 
 	const spectrumOptions = [
 		{ value: ColorSpectrum.Chrome, label: 'Chrome' },
-		{ value: ColorSpectrum.Neon, label: 'Neon' },
-		{ value: ColorSpectrum.Sunset, label: 'Sunset' },
+		{ value: ColorSpectrum.Ocean, label: 'Ocean' },
+		{ value: ColorSpectrum.Bands, label: 'Bands' },
 		{ value: ColorSpectrum.Rainbow, label: 'Rainbow' },
 		{ value: ColorSpectrum.Mono, label: 'Mono' }
 	];

@@ -52,8 +52,8 @@ const COLOR_DENSITY: u32 = 6u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
-const SPECTRUM_NEON: u32 = 1u;
-const SPECTRUM_SUNSET: u32 = 2u;
+const SPECTRUM_OCEAN: u32 = 1u;
+const SPECTRUM_BANDS: u32 = 2u;
 const SPECTRUM_RAINBOW: u32 = 3u;
 const SPECTRUM_MONO: u32 = 4u;
 
@@ -116,21 +116,42 @@ fn getColorFromSpectrum(t: f32, spectrum: u32) -> vec3<f32> {
                 return mix(vec3<f32>(0.95, 0.6, 0.2), vec3<f32>(0.9, 0.2, 0.2), (tt - 0.75) * 4.0);
             }
         }
-        case SPECTRUM_NEON: {
-            // Electric cyan to hot pink to purple (synthwave)
-            if (tt < 0.5) {
-                return mix(vec3<f32>(0.0, 1.0, 1.0), vec3<f32>(1.0, 0.0, 0.78), tt * 2.0);
+        case SPECTRUM_OCEAN: {
+            // Sophisticated circular palette - loops back to start
+            // Deep Blue -> Teal -> Seafoam -> Gold -> Coral -> Mauve -> Deep Blue
+            if (tt < 0.167) {
+                return mix(vec3<f32>(0.25, 0.35, 0.65), vec3<f32>(0.2, 0.55, 0.6), tt * 6.0);
+            } else if (tt < 0.333) {
+                return mix(vec3<f32>(0.2, 0.55, 0.6), vec3<f32>(0.3, 0.65, 0.5), (tt - 0.167) * 6.0);
+            } else if (tt < 0.5) {
+                return mix(vec3<f32>(0.3, 0.65, 0.5), vec3<f32>(0.85, 0.7, 0.3), (tt - 0.333) * 6.0);
+            } else if (tt < 0.667) {
+                return mix(vec3<f32>(0.85, 0.7, 0.3), vec3<f32>(0.8, 0.45, 0.4), (tt - 0.5) * 6.0);
+            } else if (tt < 0.833) {
+                return mix(vec3<f32>(0.8, 0.45, 0.4), vec3<f32>(0.55, 0.35, 0.55), (tt - 0.667) * 6.0);
             } else {
-                return mix(vec3<f32>(1.0, 0.0, 0.78), vec3<f32>(0.47, 0.0, 1.0), (tt - 0.5) * 2.0);
+                return mix(vec3<f32>(0.55, 0.35, 0.55), vec3<f32>(0.25, 0.35, 0.65), (tt - 0.833) * 6.0);
             }
         }
-        case SPECTRUM_SUNSET: {
-            // Magenta to orange to gold (dramatic sunset)
-            if (tt < 0.5) {
-                return mix(vec3<f32>(1.0, 0.0, 0.5), vec3<f32>(1.0, 0.4, 0.0), tt * 2.0);
-            } else {
-                return mix(vec3<f32>(1.0, 0.4, 0.0), vec3<f32>(1.0, 0.86, 0.0), (tt - 0.5) * 2.0);
+        case SPECTRUM_BANDS: {
+            // Distinct color bands - sharp transitions for maximum contrast
+            // 6 distinct colors with minimal blending
+            let band = u32(tt * 6.0);
+            let bandT = fract(tt * 6.0);
+            // Quick transition only at band edges (last 15%)
+            let blend = smoothstep(0.85, 1.0, bandT);
+            
+            var c1: vec3<f32>;
+            var c2: vec3<f32>;
+            switch (band) {
+                case 0u: { c1 = vec3<f32>(0.9, 0.2, 0.3); c2 = vec3<f32>(0.95, 0.6, 0.1); }  // Red -> Orange
+                case 1u: { c1 = vec3<f32>(0.95, 0.6, 0.1); c2 = vec3<f32>(0.95, 0.9, 0.2); } // Orange -> Yellow
+                case 2u: { c1 = vec3<f32>(0.95, 0.9, 0.2); c2 = vec3<f32>(0.2, 0.8, 0.4); }  // Yellow -> Green
+                case 3u: { c1 = vec3<f32>(0.2, 0.8, 0.4); c2 = vec3<f32>(0.2, 0.6, 0.9); }   // Green -> Blue
+                case 4u: { c1 = vec3<f32>(0.2, 0.6, 0.9); c2 = vec3<f32>(0.6, 0.3, 0.8); }   // Blue -> Purple
+                default: { c1 = vec3<f32>(0.6, 0.3, 0.8); c2 = vec3<f32>(0.9, 0.2, 0.3); }   // Purple -> Red
             }
+            return mix(c1, c2, blend);
         }
         case SPECTRUM_RAINBOW: {
             // Full rainbow

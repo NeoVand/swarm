@@ -24,8 +24,8 @@ export enum ColorMode {
 
 export enum ColorSpectrum {
 	Chrome = 0,
-	Neon = 1,
-	Sunset = 2,
+	Ocean = 1,
+	Bands = 2,
 	Rainbow = 3,
 	Mono = 4
 }
