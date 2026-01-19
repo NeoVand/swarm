@@ -159,8 +159,10 @@
 		}
 	}
 
-	function handleTouchEnd(): void {
-		cursor.update((c) => ({ ...c, isPressed: false, isActive: false }));
+	function handleTouchEnd(e: TouchEvent): void {
+		e.preventDefault();
+		// Fully reset cursor state when touch ends
+		cursor.set({ x: -9999, y: -9999, isPressed: false, isActive: false });
 	}
 
 	let resizeObserver: ResizeObserver | null = null;
@@ -260,8 +262,8 @@
 		onmouseleave={handleMouseLeave}
 		ontouchstart={handleTouchStart}
 		ontouchmove={handleTouchMove}
-		ontouchend={handleTouchEnd}
-		ontouchcancel={handleTouchEnd}
+		ontouchend={(e) => handleTouchEnd(e)}
+		ontouchcancel={(e) => handleTouchEnd(e)}
 		oncontextmenu={(e) => e.preventDefault()}
 	></canvas>
 	

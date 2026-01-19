@@ -22,7 +22,7 @@
 </script>
 
 <svelte:head>
-	<title>Boids - Flocking Simulation</title>
+	<title>Swarm</title>
 	<meta name="description" content="High-performance WebGPU boids flocking simulation with spatial hash grid acceleration" />
 </svelte:head>
 
