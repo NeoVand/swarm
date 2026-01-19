@@ -1083,7 +1083,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let radius = uniforms.cursorRadius * dpr;
         let influenceRange = radius * 2.0;
         
-        let strength = select(0.5, 1.0, uniforms.cursorPressed != 0u);
+        // When pressed: stronger force AND extended soft falloff beyond normal range
+        let isPressed = uniforms.cursorPressed != 0u;
+        let strength = select(0.5, 1.0, isPressed);
+        
+        // Extended falloff multiplier when pressed (force extends further with decay)
+        let extendedRange = select(1.0, 2.0, isPressed);  // 2x range when pressed
         var cursorForce = vec2<f32>(0.0);
         
         if (cursorDist > 0.5) {
@@ -1170,6 +1175,30 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     if (cursorDist < influenceRange) {
                         let weight = smoothKernel(cursorDist, influenceRange);
                         cursorForce = towardCenter * weight * strength * uniforms.cursorForce * 2.0;
+                    }
+                }
+            }
+            
+            // Step 1.5: When pressed, add extended soft falloff beyond normal range
+            if (isPressed && length(cursorForce) < 0.01) {
+                // Boid is outside normal range - apply gradual decay force
+                let maxExtendedRange = influenceRange * extendedRange;
+                if (cursorDist < maxExtendedRange) {
+                    // Smooth cubic falloff from normal range edge to extended range
+                    let normalEdge = radius + influenceRange * 0.5;
+                    if (cursorDist > normalEdge) {
+                        let extendedDist = cursorDist - normalEdge;
+                        let extendedWidth = maxExtendedRange - normalEdge;
+                        let t = 1.0 - (extendedDist / extendedWidth);
+                        let falloff = t * t * t;  // Cubic falloff for smooth decay
+                        
+                        if (uniforms.cursorMode == 1u) {
+                            // Attract: gentle pull
+                            cursorForce = towardCenter * falloff * strength * uniforms.cursorForce * 1.5;
+                        } else {
+                            // Repel: gentle push
+                            cursorForce = awayFromCenter * falloff * strength * uniforms.cursorForce * 2.0;
+                        }
                     }
                 }
             }
