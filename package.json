@@ -38,6 +38,8 @@
 		"vite": "^7.2.6"
 	},
 	"dependencies": {
-		"driver.js": "^1.4.0"
+		"@types/three": "^0.182.0",
+		"driver.js": "^1.4.0",
+		"three": "^0.182.0"
 	}
 }

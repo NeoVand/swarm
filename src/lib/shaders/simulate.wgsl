@@ -67,11 +67,103 @@ const ALG_HASH_FREE: u32 = 2u;
 const ALG_STOCHASTIC: u32 = 3u;
 const ALG_DENSITY_ADAPTIVE: u32 = 4u;
 
-const MAX_K_NEIGHBORS: u32 = 24u;  // Maximum supported (for array sizing)
+const MAX_K_NEIGHBORS: u32 = 24u;
 const MAX_CANDIDATES: u32 = 128u;
-
-// Maximum trail length for buffer stride (must match CPU-side MAX_TRAIL_LENGTH)
 const MAX_TRAIL_LENGTH: u32 = 100u;
+
+// ============================================================================
+// BOUNDARY SYSTEM - Modular configuration for all topology types
+// ============================================================================
+// 
+// Boundary Configuration:
+//   wrapX/wrapY     - axis wraps around (no hard edge)
+//   flipOnWrapX     - when X wraps, Y coordinate and velocity flip
+//   flipOnWrapY     - when Y wraps, X coordinate and velocity flip
+//   bounceX/bounceY - axis has soft bouncy boundary (with inset)
+//
+// Topology Summary:
+//   PLANE:      bounce both axes
+//   CYLINDER_X: wrap X, bounce Y
+//   CYLINDER_Y: bounce X, wrap Y  
+//   TORUS:      wrap both axes
+//   MOBIUS_X:   wrap X with Y-flip, bounce Y
+//   MOBIUS_Y:   bounce X, wrap Y with X-flip
+//   KLEIN_X:    wrap X with Y-flip, wrap Y (no flip)
+//   KLEIN_Y:    wrap X (no flip), wrap Y with X-flip
+//   PROJECTIVE: wrap X with Y-flip, wrap Y with X-flip
+// ============================================================================
+
+struct BoundaryConfig {
+    wrapX: bool,
+    wrapY: bool,
+    flipOnWrapX: bool,  // Y flips when X wraps
+    flipOnWrapY: bool,  // X flips when Y wraps
+    bounceX: bool,
+    bounceY: bool,
+}
+
+fn getBoundaryConfig() -> BoundaryConfig {
+    var cfg: BoundaryConfig;
+    
+    switch (uniforms.boundaryMode) {
+        case PLANE: {
+            cfg.wrapX = false; cfg.wrapY = false;
+            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
+            cfg.bounceX = true; cfg.bounceY = true;
+        }
+        case CYLINDER_X: {
+            cfg.wrapX = true; cfg.wrapY = false;
+            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
+            cfg.bounceX = false; cfg.bounceY = true;
+        }
+        case CYLINDER_Y: {
+            cfg.wrapX = false; cfg.wrapY = true;
+            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
+            cfg.bounceX = true; cfg.bounceY = false;
+        }
+        case TORUS: {
+            cfg.wrapX = true; cfg.wrapY = true;
+            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
+            cfg.bounceX = false; cfg.bounceY = false;
+        }
+        case MOBIUS_X: {
+            cfg.wrapX = true; cfg.wrapY = false;
+            cfg.flipOnWrapX = true; cfg.flipOnWrapY = false;
+            cfg.bounceX = false; cfg.bounceY = true;
+        }
+        case MOBIUS_Y: {
+            cfg.wrapX = false; cfg.wrapY = true;
+            cfg.flipOnWrapX = false; cfg.flipOnWrapY = true;
+            cfg.bounceX = true; cfg.bounceY = false;
+        }
+        case KLEIN_X: {
+            cfg.wrapX = true; cfg.wrapY = true;
+            cfg.flipOnWrapX = true; cfg.flipOnWrapY = false;
+            cfg.bounceX = false; cfg.bounceY = false;
+        }
+        case KLEIN_Y: {
+            cfg.wrapX = true; cfg.wrapY = true;
+            cfg.flipOnWrapX = false; cfg.flipOnWrapY = true;
+            cfg.bounceX = false; cfg.bounceY = false;
+        }
+        case PROJECTIVE_PLANE: {
+            cfg.wrapX = true; cfg.wrapY = true;
+            cfg.flipOnWrapX = true; cfg.flipOnWrapY = true;
+            cfg.bounceX = false; cfg.bounceY = false;
+        }
+        default: {
+            cfg.wrapX = true; cfg.wrapY = true;
+            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
+            cfg.bounceX = false; cfg.bounceY = false;
+        }
+    }
+    return cfg;
+}
+
+// Boundary inset for bouncy edges
+const BOUNDARY_INSET: f32 = 30.0;
+const SOFT_MARGIN: f32 = 120.0;
+const EMERGENCY_ZONE: f32 = 15.0;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positionsIn: array<vec2<f32>>;
@@ -82,6 +174,10 @@ const MAX_TRAIL_LENGTH: u32 = 100u;
 @group(0) @binding(6) var<storage, read> cellCounts: array<u32>;
 @group(0) @binding(7) var<storage, read> sortedIndices: array<u32>;
 @group(0) @binding(8) var<storage, read_write> trails: array<vec2<f32>>;
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -104,313 +200,329 @@ fn hash2(n: u32) -> u32 {
 }
 
 fn random2(seed: u32) -> vec2<f32> {
-    return vec2<f32>(
-        hash(seed) * 2.0 - 1.0,
-        hash(seed + 1u) * 2.0 - 1.0
-    );
+    return vec2<f32>(hash(seed) * 2.0 - 1.0, hash(seed + 1u) * 2.0 - 1.0);
 }
 
 fn limitMagnitude(v: vec2<f32>, maxMag: f32) -> vec2<f32> {
     let mag = length(v);
-    if (mag > maxMag && mag > 0.0) {
-        return v * (maxMag / mag);
-    }
+    if (mag > maxMag && mag > 0.0) { return v * (maxMag / mag); }
     return v;
 }
 
-// Smooth cubic kernel
 fn smoothKernel(dist: f32, radius: f32) -> f32 {
     if (dist >= radius) { return 0.0; }
-    let q = dist / radius;
-    let t = 1.0 - q;
+    let t = 1.0 - dist / radius;
     return t * t * t;
 }
 
-// Smooth separation kernel - gentler falloff for less jitter
 fn separationKernel(dist: f32, radius: f32) -> f32 {
     if (dist >= radius || dist < 0.001) { return 0.0; }
     let q = dist / radius;
     let t = 1.0 - q;
-    // Quadratic falloff with soft cap - max value around 4.0 at very close range
     return t * t * (2.0 / (q + 0.5));
 }
 
-fn wrappedDelta(delta: f32, size: f32, wrap: bool) -> f32 {
-    if (!wrap) { return delta; }
-    let halfSize = size * 0.5;
-    if (delta > halfSize) { return delta - size; }
-    else if (delta < -halfSize) { return delta + size; }
-    return delta;
+// ============================================================================
+// BOUNDARY FUNCTIONS - Clean, modular boundary handling
+// ============================================================================
+
+// Simple modulo wrap for a coordinate
+fn wrapCoord(val: f32, size: f32) -> f32 {
+    return val - floor(val / size) * size;
 }
 
-fn getWrapFlags() -> vec2<bool> {
-    let wrapX = uniforms.boundaryMode == TORUS || 
-                uniforms.boundaryMode == CYLINDER_X || 
-                uniforms.boundaryMode == MOBIUS_X ||
-                uniforms.boundaryMode == KLEIN_X ||
-                uniforms.boundaryMode == PROJECTIVE_PLANE;
-    let wrapY = uniforms.boundaryMode == TORUS || 
-                uniforms.boundaryMode == CYLINDER_Y || 
-                uniforms.boundaryMode == MOBIUS_Y ||
-                uniforms.boundaryMode == KLEIN_Y ||
-                uniforms.boundaryMode == PROJECTIVE_PLANE;
-    return vec2<bool>(wrapX, wrapY);
+// Bounce coordinate within [0, size) - reflects off boundaries
+fn bounceCoord(val: f32, size: f32) -> f32 {
+    if (val < 0.0) {
+        let reflected = -val;
+        if (reflected >= size) { return size - 0.5 - (reflected % size); }
+        return reflected;
+    } else if (val >= size) {
+        let overshoot = val - size;
+        let reflected = size - 0.5 - overshoot;
+        if (reflected < 0.0) { return (-reflected) % size; }
+        return reflected;
+    }
+    return val;
 }
 
+// Get the effective bounds for a given axis (with inset if bouncy)
+fn getBounds(cfg: BoundaryConfig) -> vec4<f32> {
+    let w = uniforms.canvasWidth;
+    let h = uniforms.canvasHeight;
+    let inset = BOUNDARY_INSET;
+    
+    var minX = 0.0; var maxX = w;
+    var minY = 0.0; var maxY = h;
+    
+    if (cfg.bounceX) { minX = inset; maxX = w - inset; }
+    if (cfg.bounceY) { minY = inset; maxY = h - inset; }
+    
+    return vec4<f32>(minX, minY, maxX, maxY);
+}
+
+// Apply position wrapping/bouncing with proper flip handling
+// Returns: (newPosition, velocityMultiplier) where velocityMultiplier.x/y is -1 if that axis flipped
+fn applyBoundaryWithVelFix(pos: vec2<f32>, vel: vec2<f32>) -> vec4<f32> {
+    let cfg = getBoundaryConfig();
+    let w = uniforms.canvasWidth;
+    let h = uniforms.canvasHeight;
+    let bounds = getBounds(cfg);
+    let inset = BOUNDARY_INSET;
+    
+    var newPos = pos;
+    var velMult = vec2<f32>(1.0, 1.0);  // Track velocity flips
+    
+    // Handle X axis
+    if (cfg.wrapX) {
+        if (newPos.x < 0.0) {
+            newPos.x += w;
+            if (cfg.flipOnWrapX) { 
+                newPos.y = h - newPos.y; 
+                velMult.y = -1.0;
+            }
+        } else if (newPos.x >= w) {
+            newPos.x -= w;
+            if (cfg.flipOnWrapX) { 
+                newPos.y = h - newPos.y; 
+                velMult.y = -1.0;
+            }
+        }
+    } else if (cfg.bounceX) {
+        let localX = newPos.x - inset;
+        let bounceW = w - 2.0 * inset;
+        newPos.x = bounceCoord(localX, bounceW) + inset;
+    }
+    
+    // Handle Y axis (after X, so flipped Y is processed correctly)
+    if (cfg.wrapY) {
+        if (newPos.y < 0.0) {
+            newPos.y += h;
+            if (cfg.flipOnWrapY) { 
+                newPos.x = w - newPos.x; 
+                velMult.x = -1.0;
+            }
+        } else if (newPos.y >= h) {
+            newPos.y -= h;
+            if (cfg.flipOnWrapY) { 
+                newPos.x = w - newPos.x; 
+                velMult.x = -1.0;
+            }
+        }
+    } else if (cfg.bounceY) {
+        let localY = newPos.y - inset;
+        let bounceH = h - 2.0 * inset;
+        newPos.y = bounceCoord(localY, bounceH) + inset;
+    }
+    
+    // Safety clamp
+    let safeMargin = 1.0;
+    newPos.x = clamp(newPos.x, bounds.x + safeMargin, bounds.z - safeMargin);
+    newPos.y = clamp(newPos.y, bounds.y + safeMargin, bounds.w - safeMargin);
+    
+    return vec4<f32>(newPos, velMult);
+}
+
+// Compute shortest delta between two positions, accounting for wrapping AND flipping
+// This is critical for correct neighbor detection on Möbius/Klein/Projective
 fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
+    let cfg = getBoundaryConfig();
+    let w = uniforms.canvasWidth;
+    let h = uniforms.canvasHeight;
+    
     var delta = otherPos - myPos;
-    let wrap = getWrapFlags();
-    delta.x = wrappedDelta(delta.x, uniforms.canvasWidth, wrap.x);
-    delta.y = wrappedDelta(delta.y, uniforms.canvasHeight, wrap.y);
+    
+    // For simple wrap (no flip), use standard toroidal distance
+    if (cfg.wrapX && !cfg.flipOnWrapX) {
+        if (delta.x > w * 0.5) { delta.x -= w; }
+        else if (delta.x < -w * 0.5) { delta.x += w; }
+    }
+    
+    if (cfg.wrapY && !cfg.flipOnWrapY) {
+        if (delta.y > h * 0.5) { delta.y -= h; }
+        else if (delta.y < -h * 0.5) { delta.y += h; }
+    }
+    
+    // For flip-wrap boundaries, we need to check both direct path and flipped path
+    if (cfg.flipOnWrapX) {
+        // Direct delta
+        let directDist = abs(delta.x);
+        // Flipped path: go through edge, flip Y
+        let flippedOtherY = h - otherPos.y;
+        let flippedDeltaX = (w - myPos.x) + otherPos.x;  // Distance going right through edge
+        let flippedDeltaX2 = myPos.x + (w - otherPos.x); // Distance going left through edge
+        let flippedDeltaY = flippedOtherY - myPos.y;
+        
+        // Check if going through the X edge (with Y flip) is shorter
+        if (flippedDeltaX < directDist) {
+            delta.x = flippedDeltaX;
+            delta.y = flippedDeltaY;
+        } else if (flippedDeltaX2 < directDist) {
+            delta.x = -flippedDeltaX2;
+            delta.y = flippedDeltaY;
+        }
+    }
+    
+    if (cfg.flipOnWrapY) {
+        // Direct delta (possibly already modified by X flip)
+        let directDist = abs(delta.y);
+        // Flipped path: go through edge, flip X
+        let flippedOtherX = w - otherPos.x;
+        let flippedDeltaY = (h - myPos.y) + otherPos.y;
+        let flippedDeltaY2 = myPos.y + (h - otherPos.y);
+        let flippedDeltaX = flippedOtherX - myPos.x;
+        
+        if (flippedDeltaY < directDist) {
+            delta.y = flippedDeltaY;
+            delta.x = flippedDeltaX;
+        } else if (flippedDeltaY2 < directDist) {
+            delta.y = -flippedDeltaY2;
+            delta.x = flippedDeltaX;
+        }
+    }
+    
     return delta;
 }
 
+// Transform a neighbor's velocity to our reference frame (for alignment across flip boundaries)
+fn transformNeighborVelocity(myPos: vec2<f32>, otherPos: vec2<f32>, otherVel: vec2<f32>) -> vec2<f32> {
+    let cfg = getBoundaryConfig();
+    let w = uniforms.canvasWidth;
+    let h = uniforms.canvasHeight;
+    
+    var vel = otherVel;
+    
+    // Check if the shortest path goes through a flip boundary
+    if (cfg.flipOnWrapX) {
+        let directDistX = abs(otherPos.x - myPos.x);
+        let wrappedDistX = w - directDistX;
+        if (wrappedDistX < directDistX) {
+            // Neighbor is "across" the flip boundary - flip their Y velocity
+            vel.y = -vel.y;
+        }
+    }
+    
+    if (cfg.flipOnWrapY) {
+        let directDistY = abs(otherPos.y - myPos.y);
+        let wrappedDistY = h - directDistY;
+        if (wrappedDistY < directDistY) {
+            // Neighbor is "across" the flip boundary - flip their X velocity
+            vel.x = -vel.x;
+        }
+    }
+    
+    return vel;
+}
+
+// Get cell index with proper wrapping (for spatial hash grid)
 fn getCellIndex(cx: i32, cy: i32) -> u32 {
     let wcx = ((cx % i32(uniforms.gridWidth)) + i32(uniforms.gridWidth)) % i32(uniforms.gridWidth);
     let wcy = ((cy % i32(uniforms.gridHeight)) + i32(uniforms.gridHeight)) % i32(uniforms.gridHeight);
     return u32(wcy) * uniforms.gridWidth + u32(wcx);
 }
 
-// Helper: robust bounce that handles any position, even far outside bounds
-fn bounceCoord(val: f32, size: f32) -> f32 {
-    if (val < 0.0) {
-        // Reflect back into bounds
-        let reflected = -val;
-        // If still out of bounds (went very far), use modulo
-        if (reflected >= size) {
-            return size - 1.0 - (reflected % size);
-        }
-        return reflected;
-    } else if (val >= size) {
-        // Reflect back into bounds
-        let overshoot = val - size;
-        let reflected = size - 1.0 - overshoot;
-        // If still out of bounds, use modulo
-        if (reflected < 0.0) {
-            return (-reflected) % size;
-        }
-        return reflected;
-    }
-    return val;
-}
-
-// Boundary inset - keeps bouncy boundaries away from screen edges
-const BOUNDARY_INSET: f32 = 30.0;
-
-fn applyBoundary(pos: vec2<f32>) -> vec2<f32> {
-    var newPos = pos;
-    let w = uniforms.canvasWidth;
-    let h = uniforms.canvasHeight;
+// Get cell index accounting for flip boundaries
+// When looking across a flip boundary, we need to look at the mirrored cell
+fn getCellIndexWithFlip(cx: i32, cy: i32, myCellY: i32) -> u32 {
+    let cfg = getBoundaryConfig();
+    var wcx = cx;
+    var wcy = cy;
+    let gw = i32(uniforms.gridWidth);
+    let gh = i32(uniforms.gridHeight);
     
-    // For bouncy boundaries, use inset area
-    let inset = BOUNDARY_INSET;
-    let bw = w - 2.0 * inset;  // Bouncy width
-    let bh = h - 2.0 * inset;  // Bouncy height
-    
-    // Safety margin to keep boids slightly inside bounds
-    let safeMargin = 1.0;
-    
-    switch (uniforms.boundaryMode) {
-        case PLANE: {
-            // Bounce within inset area
-            let localX = newPos.x - inset;
-            let localY = newPos.y - inset;
-            newPos.x = bounceCoord(localX, bw) + inset;
-            newPos.y = bounceCoord(localY, bh) + inset;
-        }
-        case CYLINDER_X: {
-            // Wrap X (full width), bounce Y (inset)
-            newPos.x = newPos.x - floor(newPos.x / w) * w;
-            let localY = newPos.y - inset;
-            newPos.y = bounceCoord(localY, bh) + inset;
-        }
-        case CYLINDER_Y: {
-            // Bounce X (inset), wrap Y (full height)
-            let localX = newPos.x - inset;
-            newPos.x = bounceCoord(localX, bw) + inset;
-            newPos.y = newPos.y - floor(newPos.y / h) * h;
-        }
-        case TORUS: {
-            // Full wrap, no inset needed
-            newPos.x = newPos.x - floor(newPos.x / w) * w;
-            newPos.y = newPos.y - floor(newPos.y / h) * h;
-        }
-        case MOBIUS_X: {
-            if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
-            else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
-            let localY = newPos.y - inset;
-            newPos.y = bounceCoord(localY, bh) + inset;
-        }
-        case MOBIUS_Y: {
-            let localX = newPos.x - inset;
-            newPos.x = bounceCoord(localX, bw) + inset;
-            if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
-            else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
-        }
-        case KLEIN_X: {
-            if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
-            else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
-            newPos.y = newPos.y - floor(newPos.y / h) * h;
-        }
-        case KLEIN_Y: {
-            newPos.x = newPos.x - floor(newPos.x / w) * w;
-            if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
-            else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
-        }
-        case PROJECTIVE_PLANE: {
-            if (newPos.x < 0.0) { newPos.x += w; newPos.y = h - newPos.y; }
-            else if (newPos.x >= w) { newPos.x -= w; newPos.y = h - newPos.y; }
-            if (newPos.y < 0.0) { newPos.y += h; newPos.x = w - newPos.x; }
-            else if (newPos.y >= h) { newPos.y -= h; newPos.x = w - newPos.x; }
-        }
-        default: {
-            newPos.x = newPos.x - floor(newPos.x / w) * w;
-            newPos.y = newPos.y - floor(newPos.y / h) * h;
-        }
-    }
-    
-    // HARD CLAMP: Absolute guarantee boids stay inside bounds
-    // For bouncy modes, clamp to inset area; for wrapping modes, clamp to full area
-    let hasBounce = uniforms.boundaryMode == PLANE || 
-                    uniforms.boundaryMode == CYLINDER_X || 
-                    uniforms.boundaryMode == CYLINDER_Y ||
-                    uniforms.boundaryMode == MOBIUS_X ||
-                    uniforms.boundaryMode == MOBIUS_Y;
-    
-    if (hasBounce) {
-        newPos.x = clamp(newPos.x, inset + safeMargin, w - inset - safeMargin);
-        newPos.y = clamp(newPos.y, inset + safeMargin, h - inset - safeMargin);
+    // Check if X wrapped and if flip is needed
+    if (cfg.flipOnWrapX && (cx < 0 || cx >= gw)) {
+        wcx = ((cx % gw) + gw) % gw;
+        // Flip Y cell coordinate
+        wcy = gh - 1 - wcy;
     } else {
-        newPos.x = clamp(newPos.x, safeMargin, w - safeMargin);
-        newPos.y = clamp(newPos.y, safeMargin, h - safeMargin);
+        wcx = ((cx % gw) + gw) % gw;
     }
     
-    return newPos;
+    // Check if Y wrapped and if flip is needed
+    if (cfg.flipOnWrapY && (cy < 0 || cy >= gh)) {
+        wcy = ((wcy % gh) + gh) % gh;
+        // Flip X cell coordinate  
+        wcx = gw - 1 - wcx;
+    } else {
+        wcy = ((wcy % gh) + gh) % gh;
+    }
+    
+    return u32(wcy) * uniforms.gridWidth + u32(wcx);
 }
 
-fn applyBoundaryVelocity(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
+// Check if we should search this neighboring cell (respects boundary config)
+fn shouldSearchCell(cx: i32, cy: i32) -> bool {
+    let cfg = getBoundaryConfig();
+    let gw = i32(uniforms.gridWidth);
+    let gh = i32(uniforms.gridHeight);
+    
+    // If axis doesn't wrap and cell is out of bounds, skip
+    if (!cfg.wrapX && (cx < 0 || cx >= gw)) { return false; }
+    if (!cfg.wrapY && (cy < 0 || cy >= gh)) { return false; }
+    
+    return true;
+}
+
+// Soft steering force for bouncy boundaries
+fn applySoftSteering(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
+    let cfg = getBoundaryConfig();
     var newVel = vel;
-    let w = uniforms.canvasWidth;
-    let h = uniforms.canvasHeight;
     
-    // Use inset for bouncy boundary calculations
-    let inset = BOUNDARY_INSET;
-    let minX = inset;
-    let maxX = w - inset;
-    let minY = inset;
-    let maxY = h - inset;
+    let bounds = getBounds(cfg);
+    let minX = bounds.x;
+    let minY = bounds.y;
+    let maxX = bounds.z;
+    let maxY = bounds.w;
     
-    // Soft avoidance zone - boids start gently turning well before the wall
-    let softMargin = 150.0;
-    let maxTurnForce = 0.3;
+    let maxTurnForce = 0.25;
+    let emergencyForce = 1.5;
     
-    // Helper: smooth cubic falloff for gentle steering (0 at edge of margin, 1 at wall)
-    // Uses squared falloff for very gradual force that increases smoothly
-    
-    // Emergency zone - very strong force when extremely close to boundary
-    let emergencyZone = 20.0;
-    let emergencyForce = 2.0;
-    
-    if (uniforms.boundaryMode == PLANE) {
-        // Soft steering forces with smooth gradient (relative to inset boundary)
-        if (pos.x < minX + softMargin) {
-            let dist = max(0.0, pos.x - minX);  // Distance from boundary (clamped)
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
-            var force = t * t * maxTurnForce;
-            // Emergency boost when very close
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
-            }
-            newVel.x += force;
-        }
-        if (pos.x > maxX - softMargin) {
-            let dist = max(0.0, maxX - pos.x);
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
-            var force = t * t * maxTurnForce;
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
-            }
-            newVel.x -= force;
-        }
-        if (pos.y < minY + softMargin) {
-            let dist = max(0.0, pos.y - minY);
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
-            var force = t * t * maxTurnForce;
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
-            }
-            newVel.y += force;
-        }
-        if (pos.y > maxY - softMargin) {
-            let dist = max(0.0, maxY - pos.y);
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
-            var force = t * t * maxTurnForce;
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
-            }
-            newVel.y -= force;
-        }
-        
-        // Corner avoidance - gentle diagonal push away from corners (using inset coordinates)
-        let cornerZone = softMargin * 0.7;
-        let nearLeft = pos.x < minX + cornerZone;
-        let nearRight = pos.x > maxX - cornerZone;
-        let nearBottom = pos.y < minY + cornerZone;
-        let nearTop = pos.y > maxY - cornerZone;
-        
-        if ((nearLeft || nearRight) && (nearBottom || nearTop)) {
-            var cornerPoint = vec2<f32>(0.0, 0.0);
-            if (nearLeft && nearBottom) { cornerPoint = vec2<f32>(minX, minY); }
-            else if (nearRight && nearBottom) { cornerPoint = vec2<f32>(maxX, minY); }
-            else if (nearLeft && nearTop) { cornerPoint = vec2<f32>(minX, maxY); }
-            else { cornerPoint = vec2<f32>(maxX, maxY); }
-            
-            let toCenter = normalize(vec2<f32>(w * 0.5, h * 0.5) - cornerPoint);
-            let distToCorner = length(pos - cornerPoint);
-            let maxDist = cornerZone * 1.414;
-            let t = clamp(1.0 - distToCorner / maxDist, 0.0, 1.0);
-            newVel += toCenter * t * t * maxTurnForce * 0.8;
-        }
-        
-    } else if (uniforms.boundaryMode == CYLINDER_X || uniforms.boundaryMode == MOBIUS_X) {
-        // Y-axis has bouncy boundary with inset
-        if (pos.y < minY + softMargin) {
-            let dist = max(0.0, pos.y - minY);
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
-            var force = t * t * maxTurnForce;
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
-            }
-            newVel.y += force;
-        }
-        if (pos.y > maxY - softMargin) {
-            let dist = max(0.0, maxY - pos.y);
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
-            var force = t * t * maxTurnForce;
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
-            }
-            newVel.y -= force;
-        }
-    } else if (uniforms.boundaryMode == CYLINDER_Y || uniforms.boundaryMode == MOBIUS_Y) {
-        // X-axis has bouncy boundary with inset
-        if (pos.x < minX + softMargin) {
+    // X-axis soft steering (only if bouncy)
+    if (cfg.bounceX) {
+        // Left boundary
+        if (pos.x < minX + SOFT_MARGIN) {
             let dist = max(0.0, pos.x - minX);
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            let t = clamp(1.0 - dist / SOFT_MARGIN, 0.0, 1.0);
             var force = t * t * maxTurnForce;
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            if (dist < EMERGENCY_ZONE) {
+                force += (1.0 - dist / EMERGENCY_ZONE) * emergencyForce;
             }
             newVel.x += force;
         }
-        if (pos.x > maxX - softMargin) {
+        // Right boundary
+        if (pos.x > maxX - SOFT_MARGIN) {
             let dist = max(0.0, maxX - pos.x);
-            let t = clamp(1.0 - dist / softMargin, 0.0, 1.0);
+            let t = clamp(1.0 - dist / SOFT_MARGIN, 0.0, 1.0);
             var force = t * t * maxTurnForce;
-            if (dist < emergencyZone) {
-                force += (1.0 - dist / emergencyZone) * emergencyForce;
+            if (dist < EMERGENCY_ZONE) {
+                force += (1.0 - dist / EMERGENCY_ZONE) * emergencyForce;
             }
             newVel.x -= force;
+        }
+    }
+    
+    // Y-axis soft steering (only if bouncy)
+    if (cfg.bounceY) {
+        // Bottom boundary
+        if (pos.y < minY + SOFT_MARGIN) {
+            let dist = max(0.0, pos.y - minY);
+            let t = clamp(1.0 - dist / SOFT_MARGIN, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < EMERGENCY_ZONE) {
+                force += (1.0 - dist / EMERGENCY_ZONE) * emergencyForce;
+            }
+            newVel.y += force;
+        }
+        // Top boundary
+        if (pos.y > maxY - SOFT_MARGIN) {
+            let dist = max(0.0, maxY - pos.y);
+            let t = clamp(1.0 - dist / SOFT_MARGIN, 0.0, 1.0);
+            var force = t * t * maxTurnForce;
+            if (dist < EMERGENCY_ZONE) {
+                force += (1.0 - dist / EMERGENCY_ZONE) * emergencyForce;
+            }
+            newVel.y -= force;
         }
     }
     
@@ -430,14 +542,11 @@ const OVERLAP_PUSH_STRENGTH: f32 = 2.0;     // Force when boids overlap
 // ============================================================================
 
 fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
-    let wrap = getWrapFlags();
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
-    
-    // Use configurable k, capped at MAX_K_NEIGHBORS for array bounds
     let k = min(uniforms.kNeighbors, MAX_K_NEIGHBORS);
     
-    var knnDistSq: array<f32, 24>;  // MAX_K_NEIGHBORS
+    var knnDistSq: array<f32, 24>;
     var knnIndex: array<u32, 24>;
     for (var i = 0u; i < MAX_K_NEIGHBORS; i++) {
         knnDistSq[i] = 1e10;
@@ -446,7 +555,6 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     
     var separationSum = vec2<f32>(0.0);
     var separationCount = 0u;
-    // Fixed separation radius based on boid size, independent of perception
     let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
     for (var dy = -2i; dy <= 2i; dy++) {
@@ -454,14 +562,13 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
-            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
-            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            if (!shouldSearchCell(cx, cy)) { continue; }
             
-            let cellIdx = getCellIndex(cx, cy);
+            let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
+            let maxPerCell = min(cellCount, 64u);
             
-            let maxPerCell = min(cellCount, 64u); // Cap iterations per cell
             for (var i = 0u; i < maxPerCell; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
@@ -471,7 +578,6 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
                 let distSq = dot(delta, delta);
                 
                 if (distSq < 1.0) {
-                    // Deterministic push direction for overlapping boids
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
                     separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
@@ -507,11 +613,15 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     
     for (var i = 0u; i < k; i++) {
         if (knnIndex[i] == 0xFFFFFFFFu) { continue; }
+        let otherIdx = knnIndex[i];
+        let otherPos = positionsIn[otherIdx];
         let dist = sqrt(knnDistSq[i]);
         let weight = smoothKernel(dist, uniforms.perception);
         if (weight > 0.0) {
-            alignmentSum += velocitiesIn[knnIndex[i]] * weight;
-            cohesionSum += getNeighborDelta(myPos, positionsIn[knnIndex[i]]) * weight;
+            // Transform neighbor velocity for alignment across flip boundaries
+            let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+            alignmentSum += otherVel * weight;
+            cohesionSum += getNeighborDelta(myPos, otherPos) * weight;
             totalWeight += weight;
         }
     }
@@ -539,8 +649,6 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
 // ============================================================================
 
 fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
-    let wrap = getWrapFlags();
-    
     let jitterSeed = uniforms.frameCount * 7u;
     let jitterX = (hash(jitterSeed) - 0.5) * uniforms.cellSize * 0.3;
     let jitterY = (hash(jitterSeed + 1u) - 0.5) * uniforms.cellSize * 0.3;
@@ -553,7 +661,6 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
-    // Fixed separation radius based on boid size, independent of perception
     let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
     for (var dy = -1i; dy <= 1i; dy++) {
@@ -561,10 +668,9 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
-            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
-            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            if (!shouldSearchCell(cx, cy)) { continue; }
             
-            let cellIdx = getCellIndex(cx, cy);
+            let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
             
@@ -577,7 +683,6 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
                 let distSq = dot(delta, delta);
                 
                 if (distSq < 1.0) {
-                    // Deterministic push direction for overlapping boids
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
                     separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
@@ -589,7 +694,9 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
                 let weight = smoothKernel(dist, uniforms.perception);
                 
                 if (weight > 0.0) {
-                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    // Transform neighbor velocity for alignment across flip boundaries
+                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                     
@@ -622,17 +729,11 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
 
 // ============================================================================
 // ALGORITHM 2: HASH-FREE (Per-boid randomized grid - no global seams)
-// Each boid has its own random offset to the grid, so cell boundaries
-// are different for every boid - eliminating coherent grid artifacts
 // ============================================================================
 
 fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
-    let wrap = getWrapFlags();
-    
-    // Each boid gets a unique, stable grid offset based on its index
     let offsetX = hash(boidIndex * 73856093u) * uniforms.cellSize;
     let offsetY = hash(boidIndex * 19349663u) * uniforms.cellSize;
-    
     let shiftedPos = myPos + vec2<f32>(offsetX, offsetY);
     let myCellX = i32(shiftedPos.x / uniforms.cellSize);
     let myCellY = i32(shiftedPos.y / uniforms.cellSize);
@@ -642,26 +743,22 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
-    
     let perception = uniforms.perception;
-    // Fixed separation radius based on boid size, independent of perception
     let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
-    // Search area
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
-            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
-            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            if (!shouldSearchCell(cx, cy)) { continue; }
             
-            let cellIdx = getCellIndex(cx, cy);
+            let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
-            let maxPerCell2 = min(cellCount, 64u); // Cap iterations per cell
+            let maxPerCell = min(cellCount, 64u);
             
-            for (var i = 0u; i < maxPerCell2; i++) {
+            for (var i = 0u; i < maxPerCell; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
                 
@@ -669,7 +766,6 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
-                // Handle overlapping boids with deterministic push
                 if (distSq < 1.0) {
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
@@ -679,17 +775,15 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
                 }
                 
                 let dist = sqrt(distSq);
-                
-                // Smooth kernel weight
                 let weight = smoothKernel(dist, perception);
                 
                 if (weight > 0.0) {
-                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                 }
                 
-                // Separation using consistent kernel
                 if (dist < separationRadius) {
                     separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                     separationCount++;
@@ -702,12 +796,10 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
     
     if (totalWeight > 0.0) {
         if (uniforms.alignment > 0.0) {
-            let alignForce = limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce);
-            acceleration += alignForce * uniforms.alignment * rebelFactor;
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
         }
         if (uniforms.cohesion > 0.0) {
-            let cohesionForce = limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce);
-            acceleration += cohesionForce * uniforms.cohesion * rebelFactor;
+            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
         }
     }
     
@@ -720,13 +812,10 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
 
 // ============================================================================
 // ALGORITHM 3: STOCHASTIC SAMPLING
-// Randomly sample cells around the boid with distance-weighted probability
-// No fixed cell boundaries - samples from random positions around the boid
 // ============================================================================
 
 fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
-    let wrap = getWrapFlags();
-    
+    let cfg = getBoundaryConfig();
     var alignmentSum = vec2<f32>(0.0);
     var cohesionSum = vec2<f32>(0.0);
     var separationSum = vec2<f32>(0.0);
@@ -734,33 +823,26 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     var separationCount = 0u;
     
     let perception = uniforms.perception;
-    // Fixed separation radius based on boid size, independent of perception
     let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
-    
-    // Sample multiple random points within perception radius
-    // For each point, check the cell it falls in
     let numSamples = uniforms.sampleCount;
     var baseSeed = boidIndex * 1000003u + uniforms.frameCount * 31337u;
     
-    // Also check immediate neighbors to ensure we don't miss close boids
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
     
-    // First pass: check immediate vicinity (3x3) for close neighbors
+    // First pass: check immediate vicinity (3x3)
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
-            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
-            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            if (!shouldSearchCell(cx, cy)) { continue; }
             
-            let cellIdx = getCellIndex(cx, cy);
+            let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
-            
-            // Sample up to 3 boids from each nearby cell
             let sampleCount = min(cellCount, 3u);
+            
             for (var i = 0u; i < sampleCount; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
@@ -770,7 +852,6 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
                 let distSq = dot(delta, delta);
                 
                 if (distSq < 1.0) {
-                    // Deterministic push direction for overlapping boids
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
                     separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
@@ -782,7 +863,8 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
                 let weight = smoothKernel(dist, perception);
                 
                 if (weight > 0.0) {
-                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                 }
@@ -797,19 +879,17 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     
     // Second pass: random sampling from perception area
     for (var s = 0u; s < numSamples; s++) {
-        // Generate random point within perception radius using rejection sampling
         let seed = baseSeed + s * 7u;
         let angle = hash(seed) * 6.283185307;
-        let r = sqrt(hash(seed + 1u)) * perception; // sqrt for uniform disk distribution
+        let r = sqrt(hash(seed + 1u)) * perception;
         
         let sampleOffset = vec2<f32>(cos(angle), sin(angle)) * r;
         var samplePos = myPos + sampleOffset;
         
-        // Wrap sample position
-        if (wrap.x) { samplePos.x = samplePos.x - floor(samplePos.x / uniforms.canvasWidth) * uniforms.canvasWidth; }
-        if (wrap.y) { samplePos.y = samplePos.y - floor(samplePos.y / uniforms.canvasHeight) * uniforms.canvasHeight; }
+        // Simple wrap for sample position
+        if (cfg.wrapX) { samplePos.x = wrapCoord(samplePos.x, uniforms.canvasWidth); }
+        if (cfg.wrapY) { samplePos.y = wrapCoord(samplePos.y, uniforms.canvasHeight); }
         
-        // Clamp to valid range
         samplePos.x = clamp(samplePos.x, 0.0, uniforms.canvasWidth - 1.0);
         samplePos.y = clamp(samplePos.y, 0.0, uniforms.canvasHeight - 1.0);
         
@@ -822,7 +902,6 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
         
         if (cellCount == 0u) { continue; }
         
-        // Pick a random boid from this cell
         let pickIdx = hash2(seed + 2u) % cellCount;
         let otherIdx = sortedIndices[cellStart + pickIdx];
         
@@ -838,7 +917,8 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
         let weight = smoothKernel(dist, perception);
         
         if (weight > 0.0) {
-            alignmentSum += velocitiesIn[otherIdx] * weight;
+            let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+            alignmentSum += otherVel * weight;
             cohesionSum += delta * weight;
             totalWeight += weight;
         }
@@ -869,14 +949,9 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
 
 // ============================================================================
 // ALGORITHM 4: DENSITY ADAPTIVE
-// Combines hash-free approach with density-based force adaptation
-// High density areas get slightly reduced cohesion to prevent over-crowding
 // ============================================================================
 
 fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
-    let wrap = getWrapFlags();
-    
-    // Per-boid grid offset for hash-free behavior
     let offsetX = hash(boidIndex * 73856093u) * uniforms.cellSize;
     let offsetY = hash(boidIndex * 19349663u) * uniforms.cellSize;
     let shiftedPos = myPos + vec2<f32>(offsetX, offsetY);
@@ -888,27 +963,24 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
-    var localDensity = 0.0; // Measure of how crowded this area is
+    var localDensity = 0.0;
     
     let perception = uniforms.perception;
-    // Fixed separation radius based on boid size, independent of perception
     let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
     
-    // Collect neighbor data and measure local density
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
-            if (!wrap.x && (cx < 0i || cx >= i32(uniforms.gridWidth))) { continue; }
-            if (!wrap.y && (cy < 0i || cy >= i32(uniforms.gridHeight))) { continue; }
+            if (!shouldSearchCell(cx, cy)) { continue; }
             
-            let cellIdx = getCellIndex(cx, cy);
+            let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
-            let maxPerCell3 = min(cellCount, 64u); // Cap iterations per cell
+            let maxPerCell = min(cellCount, 64u);
             
-            for (var i = 0u; i < maxPerCell3; i++) {
+            for (var i = 0u; i < maxPerCell; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
                 
@@ -919,12 +991,9 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                 if (distSq > perception * perception) { continue; }
                 
                 let dist = sqrt(distSq);
-                
-                // Density contribution - closer boids contribute more
                 let densityWeight = smoothKernel(dist, perception);
                 localDensity += densityWeight;
                 
-                // Handle overlapping boids with deterministic push
                 if (dist < 1.0) {
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
@@ -933,15 +1002,14 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                     continue;
                 }
                 
-                // Alignment and cohesion with smooth weights
                 let weight = smoothKernel(dist, perception);
                 if (weight > 0.0) {
-                    alignmentSum += velocitiesIn[otherIdx] * weight;
+                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                 }
                 
-                // Separation using consistent kernel
                 if (dist < separationRadius) {
                     separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                     separationCount++;
@@ -950,8 +1018,6 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
         }
     }
     
-    // Mild density-adaptive cohesion scaling (unique to this algorithm)
-    // High density: slightly reduce cohesion to prevent over-crowding
     let densityRatio = localDensity / uniforms.idealDensity;
     let cohesionMod = 1.0 / (1.0 + max(0.0, densityRatio - 1.0) * 0.3);
     
@@ -959,14 +1025,10 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     
     if (totalWeight > 0.0) {
         if (uniforms.alignment > 0.0) {
-            let alignForce = limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce);
-            acceleration += alignForce * uniforms.alignment * rebelFactor;
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
         }
-        
         if (uniforms.cohesion > 0.0) {
-            let cohesionForce = limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce);
-            // Apply mild density-based cohesion reduction
-            acceleration += cohesionForce * uniforms.cohesion * rebelFactor * cohesionMod;
+            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor * cohesionMod;
         }
     }
     
@@ -1143,8 +1205,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         acceleration += noiseVec * uniforms.noise * uniforms.maxSpeed * 0.15;
     }
     
-    // Apply forces
-    var newVel = applyBoundaryVelocity(myPos, myVel + acceleration);
+    // Apply soft steering for bouncy boundaries
+    var newVel = applySoftSteering(myPos, myVel + acceleration);
     newVel = limitMagnitude(newVel, uniforms.maxSpeed);
     
     // Minimum speed
@@ -1159,7 +1221,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Update position (timeScale controls simulation speed)
     var newPos = myPos + newVel * uniforms.deltaTime * 60.0 * uniforms.timeScale;
-    newPos = applyBoundary(newPos);
+    
+    // Apply boundary wrapping/bouncing with velocity correction for flip boundaries
+    let boundaryResult = applyBoundaryWithVelFix(newPos, newVel);
+    newPos = boundaryResult.xy;
+    let velMult = boundaryResult.zw;
+    newVel = newVel * velMult;  // Flip velocity components when crossing flip boundaries
     
     // Write output
     positionsOut[boidIndex] = newPos;

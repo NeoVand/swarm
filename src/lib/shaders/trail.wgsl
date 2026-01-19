@@ -140,11 +140,91 @@ fn getColorFromSpectrum(t: f32, spectrum: u32) -> vec3<f32> {
     }
 }
 
-// Check if two positions are too far apart (boundary wrap detection)
+// Boundary modes (must match simulate.wgsl)
+const PLANE: u32 = 0u;
+const CYLINDER_X: u32 = 1u;
+const CYLINDER_Y: u32 = 2u;
+const TORUS: u32 = 3u;
+const MOBIUS_X: u32 = 4u;
+const MOBIUS_Y: u32 = 5u;
+const KLEIN_X: u32 = 6u;
+const KLEIN_Y: u32 = 7u;
+const PROJECTIVE_PLANE: u32 = 8u;
+
+// Check if X axis wraps for current boundary mode
+fn wrapsX() -> bool {
+    return uniforms.boundaryMode == TORUS || 
+           uniforms.boundaryMode == CYLINDER_X || 
+           uniforms.boundaryMode == MOBIUS_X ||
+           uniforms.boundaryMode == KLEIN_X ||
+           uniforms.boundaryMode == KLEIN_Y ||
+           uniforms.boundaryMode == PROJECTIVE_PLANE;
+}
+
+// Check if Y axis wraps for current boundary mode
+fn wrapsY() -> bool {
+    return uniforms.boundaryMode == TORUS || 
+           uniforms.boundaryMode == CYLINDER_Y || 
+           uniforms.boundaryMode == MOBIUS_Y ||
+           uniforms.boundaryMode == KLEIN_X ||
+           uniforms.boundaryMode == KLEIN_Y ||
+           uniforms.boundaryMode == PROJECTIVE_PLANE;
+}
+
+// Check if a segment wraps across boundary and calculate edge intersection
+// Returns: (isWrapped, clampedP2) - if wrapped, p2 is clamped to edge
+fn handleWrap(p1: vec2<f32>, p2: vec2<f32>) -> vec2<f32> {
+    let dx = p2.x - p1.x;
+    let dy = p2.y - p1.y;
+    
+    var clampedP2 = p2;
+    let threshold = 0.4; // Threshold for detecting wrap (40% of canvas)
+    
+    // Check for X wrap
+    if (wrapsX() && abs(dx) > uniforms.canvasWidth * threshold) {
+        // Segment wraps in X - clamp to edge
+        if (dx > 0.0) {
+            // p1 is on the right, p2 wrapped to left - clamp p2 to left edge
+            // Actually p1 is leaving through right edge
+            let t = (uniforms.canvasWidth - p1.x) / (p1.x + uniforms.canvasWidth - p2.x);
+            clampedP2.x = uniforms.canvasWidth;
+            clampedP2.y = p1.y + t * (p2.y - p1.y + select(0.0, uniforms.canvasHeight, abs(dy) > uniforms.canvasHeight * threshold));
+        } else {
+            // p1 is on the left, p2 wrapped to right - clamp p2 to right edge
+            let t = p1.x / (p1.x + uniforms.canvasWidth - p2.x);
+            clampedP2.x = 0.0;
+            clampedP2.y = p1.y + t * (p2.y - p1.y);
+        }
+    }
+    
+    // Check for Y wrap
+    if (wrapsY() && abs(dy) > uniforms.canvasHeight * threshold) {
+        // Segment wraps in Y - clamp to edge
+        if (dy > 0.0) {
+            // p1 is at bottom, p2 wrapped to top
+            let t = (uniforms.canvasHeight - p1.y) / (p1.y + uniforms.canvasHeight - p2.y);
+            clampedP2.y = uniforms.canvasHeight;
+            if (abs(dx) <= uniforms.canvasWidth * threshold) {
+                clampedP2.x = p1.x + t * dx;
+            }
+        } else {
+            // p1 is at top, p2 wrapped to bottom
+            let t = p1.y / (p1.y + uniforms.canvasHeight - p2.y);
+            clampedP2.y = 0.0;
+            if (abs(dx) <= uniforms.canvasWidth * threshold) {
+                clampedP2.x = p1.x + t * dx;
+            }
+        }
+    }
+    
+    return clampedP2;
+}
+
+// Check if two positions are too far apart (indicates boundary wrap)
 fn isWrapped(p1: vec2<f32>, p2: vec2<f32>) -> bool {
     let dx = abs(p1.x - p2.x);
     let dy = abs(p1.y - p2.y);
-    return dx > uniforms.canvasWidth * 0.5 || dy > uniforms.canvasHeight * 0.5;
+    return dx > uniforms.canvasWidth * 0.4 || dy > uniforms.canvasHeight * 0.4;
 }
 
 @vertex
@@ -200,13 +280,26 @@ fn vs_main(
         }
     }
     
-    // Skip if points are at origin (uninitialized) or wrapped across boundary
-    if ((p1.x == 0.0 && p1.y == 0.0) || (p2.x == 0.0 && p2.y == 0.0) || isWrapped(p1, p2)) {
+    // Skip if points are at origin (uninitialized)
+    if ((p1.x == 0.0 && p1.y == 0.0) || (p2.x == 0.0 && p2.y == 0.0)) {
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
         output.edgeDist = 0.0;
         return output;
+    }
+    
+    // Handle boundary wrapping - clamp p2 to edge if segment crosses boundary
+    if (isWrapped(p1, p2)) {
+        p2 = handleWrap(p1, p2);
+        // If still wrapped after handling (shouldn't happen), skip
+        if (isWrapped(p1, p2)) {
+            output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            output.color = vec3<f32>(0.0);
+            output.alpha = 0.0;
+            output.edgeDist = 0.0;
+            return output;
+        }
     }
     
     // Each segment is a quad (2 triangles, 6 vertices)

@@ -5,8 +5,8 @@
 	import { driver } from 'driver.js';
 	import 'driver.js/dist/driver.css';
 	import { base } from '$app/paths';
-	import BoundaryIcon from './BoundaryIcon.svelte';
 	import PaletteIcon from './PaletteIcon.svelte';
+	import TopologySelector from './TopologySelector.svelte';
 	import {
 		params,
 		isPanelOpen,
@@ -53,8 +53,6 @@
 	let recording = $derived($isRecording);
 	let canvas = $derived($canvasElement);
 	
-	let boundaryDropdownOpen = $state(false);
-	let boundaryDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let paletteDropdownOpen = $state(false);
 	let paletteDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let colorizeDropdownOpen = $state(false);
@@ -216,15 +214,10 @@
 	});
 
 	// Accordion - only one section open at a time
-	let openSection = $state<'boids' | 'world' | 'flocking' | 'dynamics' | 'algorithm'>('boids');
+	let openSection = $state<'boids' | 'world' | 'interaction' | 'flocking' | 'dynamics' | 'algorithm'>('boids');
 
 	function toggleSection(section: typeof openSection) {
 		openSection = openSection === section ? section : section; // Always open clicked section
-	}
-
-	function selectBoundary(mode: BoundaryMode) {
-		setBoundaryMode(mode);
-		boundaryDropdownOpen = false;
 	}
 
 	function selectPalette(spectrum: ColorSpectrum) {
@@ -243,9 +236,6 @@
 	}
 
 	function handleClickOutside(event: MouseEvent) {
-		if (boundaryDropdownOpen && boundaryDropdownRef && !boundaryDropdownRef.contains(event.target as Node)) {
-			boundaryDropdownOpen = false;
-		}
 		if (paletteDropdownOpen && paletteDropdownRef && !paletteDropdownRef.contains(event.target as Node)) {
 			paletteDropdownOpen = false;
 		}
@@ -258,7 +248,7 @@
 	}
 
 	$effect(() => {
-		if (boundaryDropdownOpen || paletteDropdownOpen || colorizeDropdownOpen || algorithmDropdownOpen) {
+		if (paletteDropdownOpen || colorizeDropdownOpen || algorithmDropdownOpen) {
 			document.addEventListener('click', handleClickOutside);
 			return () => document.removeEventListener('click', handleClickOutside);
 		}
@@ -854,18 +844,6 @@
 		}, 250);
 	}
 
-	const boundaryOptions = [
-		{ value: BoundaryMode.Plane, label: 'Plane (bounce)' },
-		{ value: BoundaryMode.Torus, label: 'Torus' },
-		{ value: BoundaryMode.CylinderX, label: 'Cylinder X' },
-		{ value: BoundaryMode.CylinderY, label: 'Cylinder Y' },
-		{ value: BoundaryMode.MobiusX, label: 'Möbius X' },
-		{ value: BoundaryMode.MobiusY, label: 'Möbius Y' },
-		{ value: BoundaryMode.KleinX, label: 'Klein X' },
-		{ value: BoundaryMode.KleinY, label: 'Klein Y' },
-		{ value: BoundaryMode.ProjectivePlane, label: 'Projective Plane' }
-	];
-
 	const colorOptions = [
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Speed, label: 'Speed' },
@@ -1178,7 +1156,7 @@
 			</div>
 
 			<div class="section-divider"></div>
-			<!-- World -->
+			<!-- World - 3D Topology Selector -->
 			<div id="section-world">
 				<button class="section-header" onclick={() => toggleSection('world')}>
 					<div class="section-title">
@@ -1193,43 +1171,39 @@
 					</svg>
 				</button>
 				{#if openSection === 'world'}
+				<div class="section-content topology-section" transition:slide={{ duration: 150, easing: cubicOut }}>
+					<TopologySelector currentMode={currentParams.boundaryMode} />
+				</div>
+				{/if}
+			</div>
+
+			<div class="section-divider"></div>
+			<!-- Interaction - Cursor Controls -->
+			<div id="section-interaction">
+				<button class="section-header" onclick={() => toggleSection('interaction')}>
+					<div class="section-title">
+						<svg class="section-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<!-- Magic Wand Icon -->
+							<path d="M15 4V2"/>
+							<path d="M15 16v-2"/>
+							<path d="M8 9h2"/>
+							<path d="M20 9h2"/>
+							<path d="M17.8 11.8L19 13"/>
+							<path d="M15 9h0"/>
+							<path d="M17.8 6.2L19 5"/>
+							<path d="M3 21l9-9"/>
+							<path d="M12.2 6.2L11 5"/>
+						</svg>
+						<span class="section-label">Interaction</span>
+					</div>
+					<svg class="section-chevron" class:open={openSection === 'interaction'} viewBox="0 0 20 20" fill="currentColor">
+						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+					</svg>
+				</button>
+				{#if openSection === 'interaction'}
 				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 					<div class="row">
-						<span class="label">Bounds</span>
-						<div class="relative flex-1" bind:this={boundaryDropdownRef}>
-							<button 
-								class="sel w-full flex items-center gap-2 text-left"
-								onclick={() => boundaryDropdownOpen = !boundaryDropdownOpen}
-								aria-label="Boundary"
-								aria-expanded={boundaryDropdownOpen}
-							>
-								<BoundaryIcon mode={currentParams.boundaryMode} size={18} />
-								<span class="flex-1 truncate">{boundaryOptions.find(o => o.value === currentParams.boundaryMode)?.label}</span>
-								<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={boundaryDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
-									<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-								</svg>
-							</button>
-							{#if boundaryDropdownOpen}
-								<div 
-									class="dropdown-menu absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md"
-									transition:slide={{ duration: 150, easing: cubicOut }}
-								>
-									{#each boundaryOptions as opt}
-										<button
-											class="dropdown-item w-full flex items-center gap-2 px-3 py-2 text-left text-[10px]"
-											class:active={currentParams.boundaryMode === opt.value}
-											onclick={() => selectBoundary(opt.value)}
-										>
-											<BoundaryIcon mode={opt.value} size={18} />
-											<span>{opt.label}</span>
-										</button>
-									{/each}
-								</div>
-							{/if}
-						</div>
-					</div>
-					<div class="row">
-						<span class="label">Interaction</span>
+						<span class="label">Mode</span>
 						<!-- Premium segmented control with sliding indicator -->
 						<div class="cursor-toggle">
 							<!-- Sliding indicator -->
@@ -1344,7 +1318,7 @@
 			<div id="section-flocking">
 				<button class="section-header" onclick={() => toggleSection('flocking')}>
 					<div class="section-title">
-						<svg class="section-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<svg class="section-icon icon-pink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
 							<circle cx="9" cy="7" r="4"/>
 							<path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -1720,8 +1694,13 @@
 	.section-icon.icon-purple { color: #a78bfa; }
 	.section-icon.icon-cyan { color: #22d3ee; }
 	.section-icon.icon-rose { color: #fb7185; }
+	.section-icon.icon-pink { color: #f472b6; }
 	.section-icon.icon-amber { color: #fbbf24; }
 	.section-icon.icon-emerald { color: #34d399; }
+
+	.topology-section {
+	padding: 0;
+	}
 
 	.section-label {
 		font-size: 10px;
