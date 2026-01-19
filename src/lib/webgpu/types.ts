@@ -130,7 +130,7 @@ export interface BindGroups {
 }
 
 export const DEFAULT_PARAMS: SimulationParams = {
-	alignment: 1.0,
+	alignment: 1.3,
 	cohesion: 0.6,
 	separation: 1.5,
 	perception: 80,
@@ -139,7 +139,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	noise: 0.0,
 	rebels: 0.02,
 	boundaryMode: BoundaryMode.Plane,
-	cursorMode: CursorMode.Attract,
+	cursorMode: CursorMode.Repel,
 	cursorShape: CursorShape.Disk,
 	cursorVortex: false,
 	cursorForce: 0.5,
@@ -170,9 +170,9 @@ export const DEFAULT_PARAMS: SimulationParams = {
 export function calculateOptimalPopulation(width: number, height: number): number {
 	const area = width * height;
 	
-	// Target density: roughly 1 boid per 250 square pixels
+	// Target density: roughly 1 boid per 300 square pixels
 	// This gives a nice balance - not too sparse, not too crowded
-	const density = 250;
+	const density = 300;
 	let population = Math.floor(area / density);
 	
 	// Clamp to reasonable bounds

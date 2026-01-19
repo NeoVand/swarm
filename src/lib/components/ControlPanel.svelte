@@ -60,6 +60,9 @@
 	let colorizeDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let algorithmDropdownOpen = $state(false);
 	let algorithmDropdownRef = $state<HTMLDivElement | undefined>(undefined);
+	
+	// Population preview (for live display while dragging slider)
+	let populationPreview = $state<number | null>(null);
 
 	// Recording state
 	let mediaRecorder: MediaRecorder | null = null;
@@ -1032,8 +1035,10 @@
 						<div class="row">
 							<span class="label">Population</span>
 							<input type="range" min="500" max="50000" step="500" value={currentParams.population}
-								oninput={(e) => setPopulation(parseInt(e.currentTarget.value))} class="slider" aria-label="Population" />
-							<span class="value">{(currentParams.population / 1000).toFixed(1)}k</span>
+								oninput={(e) => populationPreview = parseInt(e.currentTarget.value)}
+								onchange={(e) => { setPopulation(parseInt(e.currentTarget.value)); populationPreview = null; }} 
+								class="slider" aria-label="Population" />
+							<span class="value">{((populationPreview ?? currentParams.population) / 1000).toFixed(1)}k</span>
 						</div>
 						<div class="row">
 							<span class="label">Size</span>

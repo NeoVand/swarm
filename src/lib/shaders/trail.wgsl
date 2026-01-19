@@ -64,7 +64,6 @@ struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
     @location(1) alpha: f32,
-    @location(2) edgeDist: f32,  // 0 at center, 1 at side edges
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -244,7 +243,6 @@ fn vs_main(
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
-        output.edgeDist = 0.0;
         return output;
     }
     
@@ -286,7 +284,6 @@ fn vs_main(
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
-        output.edgeDist = 0.0;
         return output;
     }
     
@@ -298,7 +295,6 @@ fn vs_main(
             output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
             output.color = vec3<f32>(0.0);
             output.alpha = 0.0;
-            output.edgeDist = 0.0;
             return output;
         }
     }
@@ -315,7 +311,6 @@ fn vs_main(
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
-        output.edgeDist = 0.0;
         return output;
     }
     
@@ -335,13 +330,12 @@ fn vs_main(
     }
     
     // Width tapers from head (thick) to tail (thin)
-    // Match boid triangle base: vertices at (-0.7, ±0.5), scaled by boidSize * 6.0 * 1.1
-    // Half-width at base = 0.5 * boidSize * 6.0 * 1.1 = 3.3 * boidSize
+    // Slightly narrower than triangle base to fit inside the dark edge shading
     let ageRatio = f32(age) / f32(uniforms.trailLength - 1u);
-    let baseWidth = uniforms.boidSize * 3.3; // Match enlarged boid (includes 1.1x border scale)
-    let width1 = baseWidth * (1.0 - ageRatio * 0.9); // Don't fully taper to zero
+    let baseWidth = uniforms.boidSize * 2.4;  // Narrower to fit within triangle's bright center
+    let width1 = baseWidth * (1.0 - ageRatio * 0.95);
     
-    // For newest segment, width2 should match triangle base exactly
+    // For newest segment, width2 connects to triangle
     var width2: f32;
     if (age == 0u) {
         width2 = baseWidth;
@@ -362,15 +356,13 @@ fn vs_main(
         alpha2 = 1.0 - ageRatio - 1.0 / f32(uniforms.trailLength - 1u);
     }
     
-    // edgeDist: +1 on one side, -1 on other side (abs gives 0 at center, 1 at edges)
-    var edgeDist: f32;
     switch (quadVertex) {
-        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; edgeDist = 1.0; }
-        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; edgeDist = -1.0; }
-        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; edgeDist = 1.0; }
-        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; edgeDist = 1.0; }
-        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; edgeDist = -1.0; }
-        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; edgeDist = -1.0; }
+        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; }
+        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
+        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
+        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
+        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
+        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; }
         default: { worldPos = p1; alpha = 0.0; }
     }
     
@@ -443,26 +435,13 @@ fn vs_main(
     // Use linear fade for color (less aggressive than squared)
     let fadeFactor = 0.3 + alpha * 0.7;  // Range: 0.3 to 1.0 (not too dark at tail)
     output.color = baseColor * fadeFactor;
-    // Higher base alpha for better visibility
-    output.alpha = 0.7 + alpha * 0.3;  // Range: 0.7 to 1.0
-    output.edgeDist = edgeDist;
+    // Alpha fades with age for smooth trail effect
+    output.alpha = 0.6 + alpha * 0.4;  // Range: 0.6 to 1.0
     
     return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Edge detection: abs(edgeDist) is 1.0 at edges, 0.0 at center
-    let edge = abs(input.edgeDist);
-    
-    // Thin black stroke at side edges
-    let strokeThreshold = 0.75;  // Start darkening at 75% from center
-    var finalColor = input.color;
-    if (edge > strokeThreshold) {
-        // Smooth transition to black at edges
-        let strokeFactor = (edge - strokeThreshold) / (1.0 - strokeThreshold);
-        finalColor = mix(input.color, vec3<f32>(0.0), strokeFactor);
-    }
-    
-    return vec4<f32>(finalColor, input.alpha);
+    return vec4<f32>(input.color, input.alpha);
 }

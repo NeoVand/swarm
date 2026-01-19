@@ -185,9 +185,11 @@
 
 			// Calculate optimal population based on screen size
 			const optimalPopulation = calculateOptimalPopulation(canvas.width, canvas.height);
-			setPopulation(optimalPopulation);
 			
-			// Get updated params with optimal population
+			// Update params with optimal population directly (without triggering reallocation flag)
+			params.update(p => ({ ...p, population: optimalPopulation }));
+			
+			// Get params for simulation init
 			let initParams: SimulationParams;
 			const unsub0 = params.subscribe(p => initParams = p);
 			unsub0();
@@ -196,6 +198,9 @@
 			simulation = createSimulation(gpuContext, initParams!, (newFps) => {
 				fps.set(newFps);
 			});
+			
+			// Ensure reallocation flag is clean after init
+			needsBufferReallocation.set(false);
 
 			// Start simulation (respects current isRunning state)
 			let currentRunning = true;
