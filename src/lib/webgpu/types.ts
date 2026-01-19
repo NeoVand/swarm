@@ -38,9 +38,7 @@ export enum CursorMode {
 
 export enum CursorShape {
 	Ring = 0,        // Boids attracted to the circumference
-	Disk = 1,        // Filled circle - point attractor at center
-	Dot = 2,         // Small intense point attractor
-	Vortex = 3,      // Swirling force - boids orbit tangentially
+	Disk = 1,        // Filled circle - attraction/repulsion area
 }
 
 export enum AlgorithmMode {
@@ -63,6 +61,7 @@ export interface SimulationParams {
 	boundaryMode: BoundaryMode;
 	cursorMode: CursorMode;
 	cursorShape: CursorShape;
+	cursorVortex: boolean;      // Independent vortex toggle (adds rotation)
 	cursorForce: number;
 	cursorRadius: number;
 	boidSize: number;
@@ -141,7 +140,8 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	rebels: 0.02,
 	boundaryMode: BoundaryMode.Plane,
 	cursorMode: CursorMode.Attract,
-	cursorShape: CursorShape.Dot,
+	cursorShape: CursorShape.Disk,
+	cursorVortex: false,
 	cursorForce: 0.5,
 	cursorRadius: 50,
 	boidSize: 1.5,
@@ -158,6 +158,34 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	// Simulation timing
 	timeScale: 1.0       // Normal speed
 };
+
+/**
+ * Calculate optimal boid population based on canvas dimensions.
+ * Aims for a comfortable density that looks good on any screen size.
+ * 
+ * @param width Canvas width in pixels
+ * @param height Canvas height in pixels
+ * @returns Optimal population count
+ */
+export function calculateOptimalPopulation(width: number, height: number): number {
+	const area = width * height;
+	
+	// Target density: roughly 1 boid per 250 square pixels
+	// This gives a nice balance - not too sparse, not too crowded
+	const density = 250;
+	let population = Math.floor(area / density);
+	
+	// Clamp to reasonable bounds
+	const MIN_POPULATION = 800;   // Minimum for visual interest
+	const MAX_POPULATION = 15000; // Maximum for performance
+	
+	population = Math.max(MIN_POPULATION, Math.min(MAX_POPULATION, population));
+	
+	// Round to nearest 500 for cleaner numbers
+	population = Math.round(population / 500) * 500;
+	
+	return population;
+}
 
 // Uniform buffer layout (must match WGSL struct)
 export const UNIFORM_BUFFER_SIZE = 256; // Padded for alignment

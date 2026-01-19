@@ -25,6 +25,7 @@
 		setBoundaryMode,
 		setCursorMode,
 		setCursorShape,
+		setCursorVortex,
 		setCursorForce,
 		setCursorRadius,
 		setBoidSize,
@@ -270,7 +271,7 @@
 		const colorModes = [ColorMode.None, ColorMode.Orientation, ColorMode.Speed, ColorMode.Neighbors, ColorMode.Density, ColorMode.Acceleration, ColorMode.Turning];
 		const algorithmModes = [AlgorithmMode.TopologicalKNN, AlgorithmMode.SmoothMetric, AlgorithmMode.HashFree, AlgorithmMode.StochasticSample, AlgorithmMode.DensityAdaptive];
 		const colorSpectrums = [ColorSpectrum.Rainbow, ColorSpectrum.Sunset, ColorSpectrum.Chrome, ColorSpectrum.Neon, ColorSpectrum.Mono];
-		const cursorShapes = [CursorShape.Dot, CursorShape.Ring, CursorShape.Disk, CursorShape.Vortex];
+		const cursorShapes = [CursorShape.Ring, CursorShape.Disk];
 
 		switch (event.key.toLowerCase()) {
 			// Playback controls
@@ -334,6 +335,13 @@
 				setCursorMode(CursorMode.Repel);
 				break;
 
+			case '4':
+				event.preventDefault();
+				if (currentParams) {
+					setCursorVortex(!currentParams.cursorVortex);
+				}
+				break;
+
 			// Cycle through options
 			case 'b':
 				event.preventDefault();
@@ -369,7 +377,7 @@
 
 			case 't':
 				event.preventDefault();
-				const currentShape = currentParams?.cursorShape ?? CursorShape.Dot;
+				const currentShape = currentParams?.cursorShape ?? CursorShape.Disk;
 				const shapeIndex = cursorShapes.indexOf(currentShape);
 				const nextShape = cursorShapes[(shapeIndex + 1) % cursorShapes.length];
 				setCursorShape(nextShape);
@@ -871,10 +879,8 @@
 	];
 
 	const cursorShapeOptions = [
-		{ value: CursorShape.Dot, label: 'Dot' },
 		{ value: CursorShape.Ring, label: 'Ring' },
-		{ value: CursorShape.Disk, label: 'Disk' },
-		{ value: CursorShape.Vortex, label: 'Vortex' }
+		{ value: CursorShape.Disk, label: 'Disk' }
 	];
 
 	// Cursor toggle indicator position
@@ -1160,7 +1166,7 @@
 			<div id="section-world">
 				<button class="section-header" onclick={() => toggleSection('world')}>
 					<div class="section-title">
-						<svg class="section-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<svg class="section-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<circle cx="12" cy="12" r="10"/>
 							<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
 						</svg>
@@ -1182,7 +1188,7 @@
 			<div id="section-interaction">
 				<button class="section-header" onclick={() => toggleSection('interaction')}>
 					<div class="section-title">
-						<svg class="section-icon icon-rose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<svg class="section-icon icon-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 							<!-- Magic Wand Icon -->
 							<path d="M15 4V2"/>
 							<path d="M15 16v-2"/>
@@ -1204,9 +1210,9 @@
 				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 					<div class="row">
 						<span class="label">Mode</span>
-						<!-- Premium segmented control with sliding indicator -->
-						<div class="cursor-toggle">
-							<!-- Sliding indicator -->
+						<!-- Mode buttons: Attract, Repel, Vortex -->
+						<div class="cursor-toggle cursor-toggle-4">
+							<!-- Sliding indicator for attract/repel -->
 							<div class="cursor-toggle-indicator" style="transform: translateX({cursorModeIndex * 100}%)"></div>
 							
 							<button 
@@ -1214,9 +1220,9 @@
 								class:active={currentParams.cursorMode !== CursorMode.Off}
 								onclick={() => setCursorMode(currentParams.cursorMode === CursorMode.Off ? CursorMode.Attract : CursorMode.Off)}
 								aria-label="Toggle Cursor"
+								title="Toggle interaction on/off"
 							>
 								<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-									<!-- Proper power icon -->
 									<path d="M12 3 L12 11"/>
 									<path d="M6.3 6.3 A8.5 8.5 0 1 0 17.7 6.3"/>
 								</svg>
@@ -1226,18 +1232,14 @@
 								class:active={currentParams.cursorMode === CursorMode.Attract}
 								onclick={() => setCursorMode(CursorMode.Attract)}
 								aria-label="Attract"
+								title="Attract boids"
 							>
 								<svg viewBox="0 0 24 24" class="h-5 w-5">
-									<!-- 3 arrows pointing inward to center -->
 									<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-										<!-- Top -->
 										<path d="M12 1 L12 8 M9 5 L12 8 L15 5"/>
-										<!-- Bottom-left -->
 										<path d="M1.5 19.5 L7.5 13.5 M2 14.5 L7.5 13.5 L6.5 19"/>
-										<!-- Bottom-right -->
 										<path d="M22.5 19.5 L16.5 13.5 M22 14.5 L16.5 13.5 L17.5 19"/>
 									</g>
-									<!-- Center dot -->
 									<circle cx="12" cy="12" r="2.5" fill="currentColor"/>
 								</svg>
 							</button>
@@ -1246,32 +1248,36 @@
 								class:active={currentParams.cursorMode === CursorMode.Repel}
 								onclick={() => setCursorMode(CursorMode.Repel)}
 								aria-label="Repel"
+								title="Repel boids"
 							>
 								<svg viewBox="0 0 24 24" class="h-5 w-5">
-									<!-- 3 arrows pointing outward from center -->
 									<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-										<!-- Top -->
 										<path d="M12 8 L12 1 M9 4 L12 1 L15 4"/>
-										<!-- Bottom-left -->
 										<path d="M7.5 13.5 L1.5 19.5 M5 19.5 L1.5 19.5 L1.5 16"/>
-										<!-- Bottom-right -->
 										<path d="M16.5 13.5 L22.5 19.5 M19 19.5 L22.5 19.5 L22.5 16"/>
 									</g>
-									<!-- Center dot -->
 									<circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+								</svg>
+							</button>
+							<button 
+								class="cursor-toggle-btn vortex"
+								class:active={currentParams.cursorVortex}
+								onclick={() => setCursorVortex(!currentParams.cursorVortex)}
+								aria-label="Vortex"
+								title="Add rotation (can combine with attract/repel)"
+							>
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5">
+									<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+									<path d="M21 3v5h-5"/>
+									<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+									<path d="M3 21v-5h5"/>
 								</svg>
 							</button>
 						</div>
 					</div>
 					<div class="row">
 						<span class="label">Shape</span>
-						<div class="shape-toggle">
-							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Dot}
-								onclick={() => setCursorShape(CursorShape.Dot)} aria-label="Dot" title="Dot">
-								<svg viewBox="0 0 24 24" class="h-5 w-5">
-									<circle cx="12" cy="12" r="4" fill="currentColor" />
-								</svg>
-							</button>
+						<div class="shape-toggle shape-toggle-2">
 							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Ring}
 								onclick={() => setCursorShape(CursorShape.Ring)} aria-label="Ring" title="Ring">
 								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
@@ -1283,16 +1289,6 @@
 								<svg viewBox="0 0 24 24" class="h-5 w-5">
 									<circle cx="12" cy="12" r="7" fill="currentColor" opacity="0.4" />
 									<circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2" />
-								</svg>
-							</button>
-							<button class="shape-btn" class:active={currentParams.cursorShape === CursorShape.Vortex}
-								onclick={() => setCursorShape(CursorShape.Vortex)} aria-label="Vortex" title="Vortex">
-								<!-- Lucide: refresh-cw -->
-								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
-									<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-									<path d="M21 3v5h-5"/>
-									<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-									<path d="M3 21v-5h5"/>
 								</svg>
 							</button>
 						</div>
@@ -1865,6 +1861,9 @@
 		gap: 2px;
 		border: 1px solid rgba(255, 255, 255, 0.06);
 	}
+	.cursor-toggle.cursor-toggle-4 {
+		grid-template-columns: repeat(4, 1fr);
+	}
 	.cursor-toggle-indicator {
 		position: absolute;
 		top: 3px;
@@ -1875,6 +1874,9 @@
 		border-radius: 6px;
 		transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 		pointer-events: none;
+	}
+	.cursor-toggle-4 .cursor-toggle-indicator {
+		width: calc(25% - 2px);
 	}
 	.cursor-toggle-btn {
 		position: relative;
@@ -1915,6 +1917,19 @@
 		background: rgba(251, 113, 133, 0.15);
 		box-shadow: 0 0 12px rgba(251, 113, 133, 0.2);
 	}
+	/* Vortex button - orange when active (independent toggle) */
+	.cursor-toggle-btn.vortex {
+		color: rgb(113 113 122);
+	}
+	.cursor-toggle-btn.vortex:hover {
+		color: rgb(161 161 170);
+	}
+	.cursor-toggle-btn.vortex.active {
+		color: rgb(249 115 22);
+		background: rgba(249, 115, 22, 0.15);
+		box-shadow: 0 0 12px rgba(249, 115, 22, 0.2);
+		border-radius: 6px;
+	}
 
 	/* Shape Toggle - square buttons */
 	.shape-toggle {
@@ -1927,6 +1942,9 @@
 		padding: 3px;
 		gap: 2px;
 		border: 1px solid rgba(255, 255, 255, 0.06);
+	}
+	.shape-toggle.shape-toggle-2 {
+		grid-template-columns: repeat(2, 1fr);
 	}
 	.shape-btn {
 		display: flex;

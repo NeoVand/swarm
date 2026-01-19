@@ -21,6 +21,7 @@ struct Uniforms {
     boundaryMode: u32,
     cursorMode: u32,
     cursorShape: u32,
+    cursorVortex: u32,
     cursorForce: f32,
     cursorRadius: f32,
     cursorX: f32,
@@ -46,8 +47,6 @@ struct Uniforms {
 // Cursor shapes
 const CURSOR_RING: u32 = 0u;
 const CURSOR_DISK: u32 = 1u;
-const CURSOR_DOT: u32 = 2u;
-const CURSOR_VORTEX: u32 = 3u;
 
 // Boundary modes
 const PLANE: u32 = 0u;
@@ -1073,7 +1072,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         default: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
     }
     
-    // Cursor interaction - Multiple cursor shapes
+    // Cursor interaction - Shape determines radial force, Vortex adds rotation
     if (uniforms.cursorMode != 0u && uniforms.cursorActive != 0u) {
         let cursorPos = vec2<f32>(uniforms.cursorX, uniforms.cursorY);
         let toCursor = getNeighborDelta(myPos, cursorPos);
@@ -1094,10 +1093,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             // Perpendicular vector for vortex (tangential) - clockwise rotation
             let tangent = vec2<f32>(towardCenter.y, -towardCenter.x);
             
+            // Step 1: Calculate radial force based on shape (Ring or Disk)
             switch (uniforms.cursorShape) {
                 case CURSOR_RING: {
                     // Ring attractor: boids orbit the circumference
-                    if (cursorDist < radius + influenceRange) {
+                    let totalRadius = radius + influenceRange;
+                    if (cursorDist < totalRadius) {
                         let distFromRing = cursorDist - radius;
                         
                         if (uniforms.cursorMode == 1u) {
@@ -1111,9 +1112,19 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                                 cursorForce = awayFromCenter * push * strength * uniforms.cursorForce * 3.0;
                             }
                         } else {
-                            // Repel: push away from entire area
-                            let repel = smoothKernel(cursorDist, radius + influenceRange);
-                            cursorForce = awayFromCenter * repel * strength * uniforms.cursorForce * 3.0;
+                            // Repel: push away from entire ring area
+                            // Strong uniform push inside, smooth falloff only at outer edge
+                            var repelWeight: f32;
+                            if (cursorDist < radius) {
+                                // Inside the ring radius: full strength
+                                repelWeight = 1.0;
+                            } else {
+                                // Outside ring but in influence zone: smooth falloff
+                                let outerDist = cursorDist - radius;
+                                repelWeight = 1.0 - (outerDist / influenceRange);
+                                repelWeight = repelWeight * repelWeight;
+                            }
+                            cursorForce = awayFromCenter * repelWeight * strength * uniforms.cursorForce * 4.0;
                         }
                     }
                 }
@@ -1136,51 +1147,21 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         }
                     } else {
                         // Repel: clear boids from disk area
-                        if (cursorDist < diskRadius + edgeWidth) {
-                            let weight = smoothKernel(cursorDist, diskRadius + edgeWidth);
-                            cursorForce = awayFromCenter * weight * strength * uniforms.cursorForce * 3.0;
-                        }
-                    }
-                }
-                case CURSOR_DOT: {
-                    // Dot: small intense point attractor with tight focused range
-                    let dotRange = radius * 1.5;  // Much tighter than before (was 3.0)
-                    if (cursorDist < dotRange) {
-                        // Sharp falloff for focused, point-like effect
-                        let q = cursorDist / dotRange;
-                        let weight = (1.0 - q) * (1.0 - q) * (1.0 - q);  // Cubic
-                        let intensity = weight * weight; // ^6 for very sharp falloff
-                        if (uniforms.cursorMode == 1u) {
-                            cursorForce = towardCenter * intensity * strength * uniforms.cursorForce * 6.0;
-                        } else {
-                            cursorForce = awayFromCenter * intensity * strength * uniforms.cursorForce * 6.0;
-                        }
-                    }
-                }
-                case CURSOR_VORTEX: {
-                    // Vortex: swirling force - boids rotate around cursor
-                    if (cursorDist < influenceRange) {
-                        let weight = smoothKernel(cursorDist, influenceRange);
-                        
-                        // Tangential force creates rotation
-                        let rotationForce = tangent * weight * strength * uniforms.cursorForce * 3.0;
-                        
-                        // Small radial component to maintain orbit distance
-                        var radialForce = vec2<f32>(0.0);
-                        let targetOrbit = radius;
-                        let orbitDiff = cursorDist - targetOrbit;
-                        
-                        if (uniforms.cursorMode == 1u) {
-                            // Attract mode: spiral inward (clockwise)
-                            if (orbitDiff > 0.0) {
-                                radialForce = towardCenter * smoothKernel(orbitDiff, influenceRange) * strength * uniforms.cursorForce;
+                        // Use inverted falloff - strongest at the edge, still strong at center
+                        let totalRadius = diskRadius + edgeWidth;
+                        if (cursorDist < totalRadius) {
+                            // Base repulsion that's strong across the entire disk
+                            var weight: f32;
+                            if (cursorDist < diskRadius) {
+                                // Inside disk: strong uniform push
+                                weight = 1.0;
                             } else {
-                                radialForce = awayFromCenter * smoothKernel(-orbitDiff, targetOrbit) * strength * uniforms.cursorForce * 0.5;
+                                // In edge zone: smooth falloff only at outer boundary
+                                let edgeDist = cursorDist - diskRadius;
+                                weight = 1.0 - (edgeDist / edgeWidth);
+                                weight = weight * weight; // Quadratic falloff at edge
                             }
-                            cursorForce = rotationForce + radialForce;
-                        } else {
-                            // Repel mode: spiral outward (counter-clockwise)
-                            cursorForce = -rotationForce + awayFromCenter * weight * strength * uniforms.cursorForce;
+                            cursorForce = awayFromCenter * weight * strength * uniforms.cursorForce * 4.0;
                         }
                     }
                 }
@@ -1189,6 +1170,38 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     if (cursorDist < influenceRange) {
                         let weight = smoothKernel(cursorDist, influenceRange);
                         cursorForce = towardCenter * weight * strength * uniforms.cursorForce * 2.0;
+                    }
+                }
+            }
+            
+            // Step 2: Add vortex (rotation) force if enabled - independent of shape
+            if (uniforms.cursorVortex != 0u) {
+                // Attract mode: vortex applies INSIDE - boids spiral inward
+                // Repel mode: vortex applies OUTSIDE - boids spiral around the perimeter
+                if (uniforms.cursorMode == 1u) {
+                    // Attract + vortex: rotate inside the influence area
+                    if (cursorDist < influenceRange) {
+                        let vortexWeight = smoothKernel(cursorDist, influenceRange);
+                        cursorForce += tangent * vortexWeight * strength * uniforms.cursorForce * 3.0;
+                    }
+                } else {
+                    // Repel + vortex: rotate OUTSIDE the cursor area
+                    // Apply rotation to boids that are outside the main radius but within an outer ring
+                    let innerRadius = radius;
+                    let outerRadius = radius + influenceRange * 1.5;
+                    if (cursorDist > innerRadius * 0.5 && cursorDist < outerRadius) {
+                        var vortexWeight: f32;
+                        if (cursorDist < innerRadius) {
+                            // Inside: weaker rotation (they're being pushed out anyway)
+                            vortexWeight = cursorDist / innerRadius;
+                        } else {
+                            // Outside: strong rotation that fades at outer edge
+                            let outerDist = cursorDist - innerRadius;
+                            let outerRange = outerRadius - innerRadius;
+                            vortexWeight = 1.0 - (outerDist / outerRange);
+                            vortexWeight = vortexWeight * vortexWeight; // Quadratic falloff
+                        }
+                        cursorForce += -tangent * vortexWeight * strength * uniforms.cursorForce * 4.0;
                     }
                 }
             }

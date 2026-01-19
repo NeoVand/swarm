@@ -121,6 +121,10 @@ export function setCursorShape(value: CursorShape): void {
 	params.update((p) => ({ ...p, cursorShape: value }));
 }
 
+export function setCursorVortex(value: boolean): void {
+	params.update((p) => ({ ...p, cursorVortex: value }));
+}
+
 export function setCursorRadius(value: number): void {
 	params.update((p) => ({ ...p, cursorRadius: value }));
 }

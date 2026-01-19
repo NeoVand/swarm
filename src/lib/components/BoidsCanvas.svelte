@@ -3,7 +3,7 @@
 	import { initWebGPU, resizeCanvas, destroyWebGPU } from '$lib/webgpu/context';
 	import { createSimulation, type Simulation } from '$lib/webgpu/simulation';
 	import type { GPUContext, SimulationParams, CursorState } from '$lib/webgpu/types';
-	import { CursorMode, CursorShape } from '$lib/webgpu/types';
+	import { CursorMode, CursorShape, calculateOptimalPopulation } from '$lib/webgpu/types';
 	import {
 		params,
 		cursor,
@@ -14,7 +14,8 @@
 		needsBufferReallocation,
 		needsTrailClear,
 		needsSimulationReset,
-		canvasElement
+		canvasElement,
+		setPopulation
 	} from '$lib/stores/simulation';
 
 	let canvas: HTMLCanvasElement;
@@ -182,8 +183,17 @@
 			// Set initial dimensions
 			updateDimensions();
 
+			// Calculate optimal population based on screen size
+			const optimalPopulation = calculateOptimalPopulation(canvas.width, canvas.height);
+			setPopulation(optimalPopulation);
+			
+			// Get updated params with optimal population
+			let initParams: SimulationParams;
+			const unsub0 = params.subscribe(p => initParams = p);
+			unsub0();
+
 			// Create simulation
-			simulation = createSimulation(gpuContext, currentParams, (newFps) => {
+			simulation = createSimulation(gpuContext, initParams!, (newFps) => {
 				fps.set(newFps);
 			});
 
@@ -254,10 +264,11 @@
 	{#if currentCursor?.isActive && currentParams?.cursorMode !== CursorMode.Off}
 		{@const radius = currentParams?.cursorRadius ?? 50}
 		{@const isAttract = currentParams?.cursorMode === CursorMode.Attract}
-		{@const shape = currentParams?.cursorShape ?? CursorShape.Ring}
+		{@const shape = currentParams?.cursorShape ?? CursorShape.Disk}
+		{@const hasVortex = currentParams?.cursorVortex ?? false}
 		{@const color = isAttract ? '6, 182, 212' : '244, 63, 94'}
 		{@const baseOpacity = currentCursor.isPressed ? 0.9 : 0.6}
-		{@const dotSize = Math.max(radius * 0.25, 8)}
+		{@const spinClass = hasVortex ? (isAttract ? 'animate-spin-vortex' : 'animate-spin-vortex-reverse') : ''}
 		
 		<div
 			class="pointer-events-none absolute"
@@ -265,7 +276,7 @@
 		>
 			<!-- Ring Shape -->
 			{#if shape === CursorShape.Ring}
-				<svg width="{radius * 2}" height="{radius * 2}" class="animate-spin-slow">
+				<svg width="{radius * 2}" height="{radius * 2}" class={spinClass}>
 					<circle
 						cx={radius}
 						cy={radius}
@@ -273,20 +284,21 @@
 						fill="none"
 						stroke="rgba({color}, {baseOpacity})"
 						stroke-width={currentCursor.isPressed ? 2.5 : 1.5}
-						stroke-dasharray={currentCursor.isPressed ? "8 4" : "6 6"}
+						stroke-dasharray={hasVortex ? "8 6" : "none"}
 					/>
 				</svg>
 			
-			<!-- Disk Shape -->
-			{:else if shape === CursorShape.Disk}
-				<svg width="{radius * 2}" height="{radius * 2}">
+			<!-- Disk Shape (default) -->
+			{:else}
+				<svg width="{radius * 2}" height="{radius * 2}" class={spinClass}>
 					<circle
 						cx={radius}
 						cy={radius}
 						r={radius - 1}
 						fill="rgba({color}, {baseOpacity * 0.15})"
 						stroke="rgba({color}, {baseOpacity})"
-						stroke-width={currentCursor.isPressed ? 2 : 1}
+						stroke-width={currentCursor.isPressed ? 2 : 1.5}
+						stroke-dasharray={hasVortex ? "8 6" : "none"}
 					/>
 					<!-- Center dot -->
 					<circle
@@ -295,61 +307,6 @@
 						r="3"
 						fill="rgba({color}, {baseOpacity})"
 					/>
-				</svg>
-			
-			<!-- Dot Shape -->
-			{:else if shape === CursorShape.Dot}
-				<svg width="{dotSize * 2 + 10}" height="{dotSize * 2 + 10}">
-					<circle
-						cx={dotSize + 5}
-						cy={dotSize + 5}
-						r={dotSize - 1}
-						fill="rgba({color}, {baseOpacity})"
-					/>
-					<!-- Glow ring -->
-					<circle
-						cx={dotSize + 5}
-						cy={dotSize + 5}
-						r={dotSize + 4}
-						fill="none"
-						stroke="rgba({color}, {baseOpacity * 0.4})"
-						stroke-width="1"
-					/>
-				</svg>
-			
-			<!-- Vortex Shape -->
-			{:else if shape === CursorShape.Vortex}
-				<svg width="{radius * 2}" height="{radius * 2}" class={isAttract ? 'animate-spin-vortex' : 'animate-spin-vortex-reverse'}>
-					<!-- Spiral arms -->
-					<g transform="translate({radius}, {radius})">
-						{#each [0, 45, 90, 135, 180, 225, 270, 315] as angle, i}
-							<path
-								d="M 0 0 Q {radius * 0.35} {radius * 0.15} {radius * 0.65} {radius * 0.4}"
-								fill="none"
-								stroke="rgba({color}, {baseOpacity * (0.5 + (i % 2) * 0.3)})"
-								stroke-width={currentCursor.isPressed ? 2 : 1.2}
-								stroke-linecap="round"
-								transform="rotate({angle})"
-							/>
-						{/each}
-						<!-- Center -->
-						<circle
-							cx="0"
-							cy="0"
-							r="3"
-							fill="rgba({color}, {baseOpacity})"
-						/>
-						<!-- Outer dashed ring -->
-						<circle
-							cx="0"
-							cy="0"
-							r={radius - 4}
-							fill="none"
-							stroke="rgba({color}, {baseOpacity * 0.3})"
-							stroke-width="1"
-							stroke-dasharray="3 3"
-						/>
-					</g>
 				</svg>
 			{/if}
 		</div>
@@ -361,20 +318,12 @@
 		cursor: none;
 	}
 	
-	@keyframes spin-slow {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-	.animate-spin-slow {
-		animation: spin-slow 10s linear infinite;
-	}
-	
 	@keyframes spin-vortex {
 		from { transform: rotate(0deg); }
 		to { transform: rotate(360deg); }
 	}
 	.animate-spin-vortex {
-		animation: spin-vortex 3s linear infinite;
+		animation: spin-vortex 1.5s linear infinite;
 	}
 	
 	@keyframes spin-vortex-reverse {
@@ -382,6 +331,6 @@
 		to { transform: rotate(0deg); }
 	}
 	.animate-spin-vortex-reverse {
-		animation: spin-vortex-reverse 3s linear infinite;
+		animation: spin-vortex-reverse 1.5s linear infinite;
 	}
 </style>

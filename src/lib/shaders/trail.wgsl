@@ -20,6 +20,7 @@ struct Uniforms {
     boundaryMode: u32,
     cursorMode: u32,
     cursorShape: u32,
+    cursorVortex: u32,
     cursorForce: f32,
     cursorRadius: f32,
     cursorX: f32,
