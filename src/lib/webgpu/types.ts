@@ -147,7 +147,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	boidSize: 1.5,
 	trailLength: 30,
 	colorMode: ColorMode.Orientation,
-	colorSpectrum: ColorSpectrum.Ocean,
+	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
 	population: 7000,
 	algorithmMode: AlgorithmMode.SmoothMetric,
