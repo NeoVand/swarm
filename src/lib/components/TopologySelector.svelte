@@ -457,10 +457,6 @@
 			</button>
 		</div>
 
-		<!-- Topology name -->
-		<div class="topology-name">
-			{TOPOLOGY_NAMES[currentMode] ?? 'Unknown'}
-		</div>
 	</div>
 </div>
 
@@ -469,77 +465,87 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 2px;
-	padding: 2px;
-	width: 100%;
-	--canvas-size: min(240px, 100%);
+		gap: 0;
+		padding: 0;
+		width: 100%;
 	}
 
-.topology-stage {
-	position: relative;
-	width: 100%;
-	aspect-ratio: 1 / 1;
-	height: auto;
-	}
-
-	.edge-group.left {
-	position: absolute;
-	left: 4px;
-	top: 50%;
-	transform: translateY(-50%);
+	.topology-stage {
+		position: relative;
+		width: 100%;
+		aspect-ratio: 1.1 / 1;
+		height: auto;
+		padding-left: 36px;
+		padding-bottom: 34px;
+		box-sizing: border-box;
 	}
 
 	.canvas-container {
-	width: 100%;
-	height: 100%;
-	display: block;
+		width: 100%;
+		height: 100%;
+		display: block;
+		border-radius: 8px;
+		overflow: hidden;
+		pointer-events: none;
+		user-select: none;
+		touch-action: none;
+		background: transparent;
+		border: none;
+		box-shadow: none;
+	}
+
+	.edge-group.left {
+		position: absolute;
+		left: 0;
+		top: 0;
+		height: calc(100% - 36px);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 4px;
 	}
 
 	.edge-group.bottom {
-	position: absolute;
-	left: 50%;
-	bottom: 4px;
-	transform: translateX(-50%);
-	justify-content: center;
-	gap: 6px;
+		position: absolute;
+		left: 36px;
+		right: 0;
+		bottom: 0;
+		height: 36px;
+		display: flex;
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+		gap: 4px;
 	}
 
 	/* Edge button groups */
 	.edge-group {
 		display: flex;
-		gap: 6px;
-	}
-
-	.edge-group.horizontal {
-		flex-direction: row;
-	}
-
-	.edge-group.vertical {
-		flex-direction: column;
 	}
 
 	.edge-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 30px;
-		height: 30px;
-		background: transparent;
-		border: none;
+		width: 28px;
+		height: 28px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1.5px solid transparent;
 		border-radius: 6px;
 		cursor: pointer;
 		transition: all 0.15s ease;
-		color: rgba(255, 255, 255, 0.35);
-		padding: 3px;
+		color: rgba(255, 255, 255, 0.4);
+		padding: 4px;
 	}
 
 	.edge-btn:hover {
-		background: transparent;
-		color: rgba(255, 255, 255, 0.65);
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.7);
 	}
 
 	.edge-btn.active {
-		background: transparent;
+		background: rgba(185, 199, 255, 0.1);
+		border-color: rgba(185, 199, 255, 0.5);
 		color: #b9c7ff;
 	}
 
@@ -548,26 +554,4 @@
 		height: 100%;
 	}
 
-	/* 3D Canvas */
-	.canvas-container {
-		border-radius: 12px;
-		overflow: hidden;
-	pointer-events: none;
-		user-select: none;
-		touch-action: none;
-	background: transparent;
-	border: none;
-	box-shadow: none;
-	}
-
-	.topology-name {
-		position: absolute;
-	top: 4px;
-	left: 50%;
-	transform: translateX(-50%);
-		font-size: 10px;
-		font-weight: 600;
-		letter-spacing: 0.04em;
-		color: rgba(255, 255, 255, 0.75);
-	}
 </style>

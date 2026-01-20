@@ -1073,7 +1073,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     // Cursor interaction - Shape determines radial force, Vortex adds rotation
-    if (uniforms.cursorMode != 0u && uniforms.cursorActive != 0u) {
+    // Allow interaction if mode is Attract/Repel OR if Vortex is enabled independently
+    if ((uniforms.cursorMode != 0u || uniforms.cursorVortex != 0u) && uniforms.cursorActive != 0u) {
         let cursorPos = vec2<f32>(uniforms.cursorX, uniforms.cursorY);
         let toCursor = getNeighborDelta(myPos, cursorPos);
         let cursorDist = length(toCursor);
@@ -1099,6 +1100,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let tangent = vec2<f32>(towardCenter.y, -towardCenter.x);
             
             // Step 1: Calculate radial force based on shape (Ring or Disk)
+            // Only apply radial forces if mode is Attract or Repel (not Off)
+            if (uniforms.cursorMode != 0u) {
             switch (uniforms.cursorShape) {
                 case CURSOR_RING: {
                     // Ring attractor: boids orbit the circumference
@@ -1202,18 +1205,21 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     }
                 }
             }
+            } // End of cursorMode != 0 check for radial forces
             
             // Step 2: Add vortex (rotation) force if enabled - independent of shape
             if (uniforms.cursorVortex != 0u) {
-                // Attract mode: vortex applies INSIDE - boids spiral inward
-                // Repel mode: vortex applies OUTSIDE - boids spiral around the perimeter
+                // Different behavior based on cursor mode:
+                // - Attract (1): vortex applies INSIDE - boids spiral inward
+                // - Repel (2): vortex applies OUTSIDE - boids spiral around the perimeter
+                // - Off (0): pure vortex - rotation around cursor with smooth falloff
                 if (uniforms.cursorMode == 1u) {
                     // Attract + vortex: rotate inside the influence area
                     if (cursorDist < influenceRange) {
                         let vortexWeight = smoothKernel(cursorDist, influenceRange);
                         cursorForce += tangent * vortexWeight * strength * uniforms.cursorForce * 3.0;
                     }
-                } else {
+                } else if (uniforms.cursorMode == 2u) {
                     // Repel + vortex: rotate OUTSIDE the cursor area
                     // Apply rotation to boids that are outside the main radius but within an outer ring
                     let innerRadius = radius;
@@ -1231,6 +1237,27 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                             vortexWeight = vortexWeight * vortexWeight; // Quadratic falloff
                         }
                         cursorForce += -tangent * vortexWeight * strength * uniforms.cursorForce * 4.0;
+                    }
+                } else {
+                    // Vortex only (mode Off): pure rotation around cursor
+                    // Full strength inside, smooth falloff outside
+                    // When pressed: extend range and boost force significantly
+                    let vortexRadius = radius + influenceRange * extendedRange;
+                    if (cursorDist < vortexRadius) {
+                        var vortexWeight: f32;
+                        if (cursorDist < radius) {
+                            // Inside: full strength rotation (no hole)
+                            vortexWeight = 1.0;
+                        } else {
+                            // Outside: smooth falloff to extended range
+                            let outerDist = cursorDist - radius;
+                            let outerRange = influenceRange * extendedRange;
+                            vortexWeight = 1.0 - (outerDist / outerRange);
+                            vortexWeight = vortexWeight * vortexWeight;
+                        }
+                        // Stronger force when pressed: 4.0 normal, 8.0 when pressed
+                        let pressedBoost = select(1.0, 2.0, isPressed);
+                        cursorForce += tangent * vortexWeight * strength * uniforms.cursorForce * 4.0 * pressedBoost;
                     }
                 }
             }

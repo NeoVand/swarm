@@ -7,6 +7,7 @@
 	import { base } from '$app/paths';
 	import PaletteIcon from './PaletteIcon.svelte';
 	import TopologySelector from './TopologySelector.svelte';
+	import { TOPOLOGY_NAMES } from '$lib/utils/topologyMeshes';
 	import {
 		params,
 		isPanelOpen,
@@ -63,6 +64,44 @@
 	
 	// Population preview (for live display while dragging slider)
 	let populationPreview = $state<number | null>(null);
+
+	// Remember last cursor mode for toggle behavior (default to Repel to match DEFAULT_PARAMS)
+	let lastCursorMode = $state<typeof CursorMode.Attract | typeof CursorMode.Repel>(CursorMode.Repel);
+
+	// Remember last vortex state for restoring
+	let lastVortexState = $state<boolean>(false);
+
+	// Handle cursor mode toggle with memory
+	function handleCursorModeToggle(mode: typeof CursorMode.Off | typeof CursorMode.Attract | typeof CursorMode.Repel) {
+		if (mode === CursorMode.Off) {
+			// Power button: toggle all interaction on/off
+			const isAnyActive = currentParams.cursorMode !== CursorMode.Off || currentParams.cursorVortex;
+			if (isAnyActive) {
+				// Turn everything off, but remember states
+				if (currentParams.cursorMode !== CursorMode.Off) {
+					lastCursorMode = currentParams.cursorMode as typeof CursorMode.Attract | typeof CursorMode.Repel;
+				}
+				lastVortexState = currentParams.cursorVortex;
+				setCursorMode(CursorMode.Off);
+				setCursorVortex(false);
+			} else {
+				// Restore previous state
+				setCursorMode(lastCursorMode);
+				setCursorVortex(lastVortexState);
+			}
+		} else {
+			// Attract/Repel button: toggle self off, or switch to this mode
+			if (currentParams.cursorMode === mode) {
+				// Same mode clicked: turn off (but remember this mode)
+				lastCursorMode = mode;
+				setCursorMode(CursorMode.Off);
+			} else {
+				// Different mode: switch to it
+				lastCursorMode = mode;
+				setCursorMode(mode);
+			}
+		}
+	}
 
 	// Recording state
 	let mediaRecorder: MediaRecorder | null = null;
@@ -325,17 +364,17 @@
 			// Cursor interaction modes (1-3)
 			case '1':
 				event.preventDefault();
-				setCursorMode(CursorMode.Off);
+				handleCursorModeToggle(CursorMode.Off);
 				break;
 
 			case '2':
 				event.preventDefault();
-				setCursorMode(CursorMode.Attract);
+				handleCursorModeToggle(CursorMode.Attract);
 				break;
 
 			case '3':
 				event.preventDefault();
-				setCursorMode(CursorMode.Repel);
+				handleCursorModeToggle(CursorMode.Repel);
 				break;
 
 			case '4':
@@ -517,6 +556,21 @@
 		return () => window.removeEventListener('keydown', handleKeyboard);
 	});
 
+	// Detect if device is touch-only (mobile/tablet without keyboard)
+	function isTouchDevice(): boolean {
+		if (typeof window === 'undefined') return false;
+		return (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)) 
+			&& !window.matchMedia('(pointer: fine)').matches;
+	}
+
+	// Helper to create keyboard shortcut badges (only on desktop)
+	function kbd(keys: string, isTouch: boolean): string {
+		if (isTouch) return '';
+		return keys.split(' ').map(k => 
+			`<kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">${k}</kbd>`
+		).join('');
+	}
+
 	// Driver.js tour configuration
 	function startTour(): void {
 		// Ensure panel is open before starting tour
@@ -526,6 +580,397 @@
 
 		// Small delay to let panel animate open
 		setTimeout(() => {
+			const isTouch = isTouchDevice();
+			
+			// Build tour steps dynamically based on device type
+			const tourSteps: any[] = [
+				// Step 0: Welcome
+				{
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 10px;">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" style="width: 28px; height: 28px;">
+								<defs><linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>
+								<rect width="32" height="32" rx="6" fill="#0a0a0f"/>
+								<g fill="url(#fg)"><path d="M16 6 L20 14 L12 14 Z"/><path d="M8 14 L12 22 L4 22 Z" opacity="0.7"/><path d="M24 14 L28 22 L20 22 Z" opacity="0.7"/></g>
+							</svg>
+							<span>Welcome to Swarm</span>
+						</div>`,
+						description: `
+							<p style="margin-bottom: 12px; color: #a1a1aa;">Boids simulate flocking behavior using three simple rules, discovered by Craig Reynolds in 1986:</p>
+							<div style="display: flex; gap: 8px; margin-bottom: 12px;">
+								<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
+									<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
+										<polygon points="12,38 8,32 16,32" fill="#22d3ee" transform="rotate(-45, 12, 35)"/>
+										<polygon points="30,32 26,26 34,26" fill="#22d3ee" transform="rotate(-45, 30, 29)"/>
+										<polygon points="48,26 44,20 52,20" fill="#22d3ee" transform="rotate(-45, 48, 23)"/>
+									</svg>
+									<div style="font-size: 10px; font-weight: 600; color: #22d3ee;">ALIGNMENT</div>
+									<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Match neighbors' direction</div>
+								</div>
+								<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
+									<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
+										<circle cx="30" cy="25" r="4" fill="#a78bfa" opacity="0.3"/>
+										<circle cx="30" cy="25" r="12" stroke="#a78bfa" stroke-width="1" fill="none" stroke-dasharray="3 2" opacity="0.4"/>
+										<polygon points="12,12 8,18 16,18" fill="#a78bfa" transform="rotate(135, 12, 15)"/>
+										<line x1="15" y1="18" x2="24" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+										<polygon points="48,12 44,18 52,18" fill="#a78bfa" transform="rotate(-135, 48, 15)"/>
+										<line x1="45" y1="18" x2="36" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+										<polygon points="30,44 26,38 34,38" fill="#a78bfa" transform="rotate(180, 30, 41)"/>
+										<line x1="30" y1="38" x2="30" y2="30" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+									</svg>
+									<div style="font-size: 10px; font-weight: 600; color: #a78bfa;">COHESION</div>
+									<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Move toward group center</div>
+								</div>
+								<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
+									<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
+										<polygon points="30,25 26,31 34,31" fill="#fb7185"/>
+										<polygon points="14,14 10,20 18,20" fill="#fb7185" transform="rotate(-45, 14, 17)"/>
+										<line x1="18" y1="20" x2="24" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+										<polygon points="46,14 42,20 50,20" fill="#fb7185" transform="rotate(45, 46, 17)"/>
+										<line x1="42" y1="20" x2="36" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+										<polygon points="30,44 26,38 34,38" fill="#fb7185" transform="rotate(0, 30, 41)"/>
+										<line x1="30" y1="38" x2="30" y2="33" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+									</svg>
+									<div style="font-size: 10px; font-weight: 600; color: #fb7185;">SEPARATION</div>
+									<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Avoid crowding neighbors</div>
+								</div>
+							</div>
+							<p style="font-size: 11px; color: #71717a; text-align: center; margin-bottom: 8px;">These simple rules create complex, lifelike swarm behavior!</p>
+							<a href="https://en.wikipedia.org/wiki/Boids" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10px; color: #a78bfa; text-decoration: none; opacity: 0.8; transition: opacity 0.2s; margin-bottom: 10px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+								<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+									<polyline points="15 3 21 3 21 9"/>
+									<line x1="10" y1="14" x2="21" y2="3"/>
+								</svg>
+								Learn more on Wikipedia
+							</a>
+							<p style="font-size: 10px; color: #52525b; text-align: center; margin: 0;">
+								<span style="color: #22d3ee;">WebGPU</span>-powered simulation · Scales to 50,000+ boids
+							</p>
+							<p style="font-size: 9px; color: #3f3f46; text-align: center; margin-top: 6px;">
+								Developed by Neo Mohsenvand
+							</p>
+						`,
+						side: 'over',
+						align: 'center'
+					}
+				},
+				// Step 1: Controls
+				{
+					element: '#header-controls',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+								<path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+								<line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+							</svg>
+							<span>Controls</span>
+						</div>`,
+						description: `<p>Quick access to media and navigation:</p>
+							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 8px;">
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 20 20" fill="#22d3ee" style="width: 14px; height: 14px; flex-shrink: 0;">
+										<path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+									</svg>
+									<span><strong>Play/Pause</strong> — Pause or resume${kbd('Space', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; flex-shrink: 0;">
+										<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+									</svg>
+									<span><strong>Reset</strong> — Reinitialize boids${kbd('R', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 20 20" fill="#fb7185" style="width: 14px; height: 14px; flex-shrink: 0;">
+										<path d="M3.25 4A2.25 2.25 0 001 6.25v7.5A2.25 2.25 0 003.25 16h7.5A2.25 2.25 0 0013 13.75v-1.956l2.842 1.895A.75.75 0 0017 13.057V6.943a.75.75 0 00-1.158-.632L13 8.206V6.25A2.25 2.25 0 0010.75 4h-7.5z"/>
+									</svg>
+									<span><strong>Record</strong> — Capture video${kbd('V', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 20 20" fill="#fb7185" style="width: 14px; height: 14px; flex-shrink: 0;">
+										<path fill-rule="evenodd" d="M1 8a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 018.07 3h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0016.07 6H17a2 2 0 012 2v7a2 2 0 01-2 2H3a2 2 0 01-2-2V8zm9.5 3a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm1.5 0a3 3 0 11-6 0 3 3 0 016 0z" clip-rule="evenodd"/>
+									</svg>
+									<span><strong>Photo</strong> — Take screenshot${kbd('S', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 20 20" fill="#fbbf24" style="width: 14px; height: 14px; flex-shrink: 0;">
+										<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+									</svg>
+									<span><strong>Help</strong> — This tour${kbd('H', isTouch)}</span>
+								</div>
+							</div>`,
+						side: 'bottom',
+						align: 'end'
+					}
+				},
+				// Step 2: Boids
+				{
+					element: '#section-boids',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<polygon points="12 2 19 21 12 17 5 21 12 2"/>
+							</svg>
+							<span>Boids</span>
+						</div>`,
+						description: `<p>Control the swarm population and appearance:</p>
+							<ul>
+								<li><strong>Population</strong> — Number of boids${kbd('+ -', isTouch)}</li>
+								<li><strong>Size</strong> — Scale of each boid${kbd('← →', isTouch)}</li>
+								<li><strong>Trail</strong> — Motion trail length${kbd('[ ]', isTouch)}</li>
+								<li><strong>Colorize</strong> — Color property${kbd('C', isTouch)}</li>
+								<li><strong>Palette</strong> — Color spectrum${kbd('P', isTouch)}</li>
+							</ul>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => { openSection = 'boids'; }
+				},
+				// Step 3: World (topology via edge behaviors)
+				{
+					element: '#section-world',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+							</svg>
+							<span>World</span>
+						</div>`,
+						description: `<p>Set edge behavior for each axis:${kbd('B', isTouch)}</p>
+							<div style="display: flex; flex-direction: column; gap: 6px; margin: 8px 0;">
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" style="width: 20px; height: 20px; flex-shrink: 0;">
+										<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.18"/>
+										<rect x="5" y="5" width="7" height="14" fill="currentColor" opacity="0.6"/>
+									</svg>
+									<span><strong>Bounce</strong> — Boids reflect off walls</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" style="width: 20px; height: 20px; flex-shrink: 0;">
+										<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.35"/>
+										<line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/>
+									</svg>
+									<span><strong>Stitch</strong> — Edges wrap to opposite side</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" style="width: 20px; height: 20px; flex-shrink: 0;">
+										<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.55"/>
+										<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.55"/>
+										<line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="currentColor" stroke-width="1.4"/>
+										<line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="currentColor" stroke-width="1.4"/>
+									</svg>
+									<span><strong>Flip</strong> — Wrap + mirror orientation</span>
+								</div>
+							</div>
+							<p style="font-size: 10px; color: #71717a; margin-top: 6px;">Combine left/bottom edges to create Torus, Möbius, Klein Bottle, and more!</p>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => { openSection = 'world'; }
+				},
+				// Step 4: Interaction
+				{
+					element: '#section-interaction',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/>
+								<path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/>
+								<path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/>
+							</svg>
+							<span>Interaction</span>
+						</div>`,
+						description: `<p>${isTouch ? 'Touch' : 'Move your cursor over'} the canvas to interact:</p>
+							<div style="display: flex; flex-direction: column; gap: 5px; margin-top: 8px;">
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
+										<g stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+											<path d="M12 1 L12 8 M9 5 L12 8 L15 5"/>
+											<path d="M1.5 19.5 L7.5 13.5 M2 14.5 L7.5 13.5 L6.5 19"/>
+											<path d="M22.5 19.5 L16.5 13.5 M22 14.5 L16.5 13.5 L17.5 19"/>
+										</g>
+										<circle cx="12" cy="12" r="2.5" fill="#22d3ee"/>
+									</svg>
+									<span><strong>Attract</strong> — Pull boids toward cursor${kbd('2', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
+										<g stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+											<path d="M12 8 L12 1 M9 4 L12 1 L15 4"/>
+											<path d="M7.5 13.5 L1.5 19.5 M5 19.5 L1.5 19.5 L1.5 16"/>
+											<path d="M16.5 13.5 L22.5 19.5 M19 19.5 L22.5 19.5 L22.5 16"/>
+										</g>
+										<circle cx="12" cy="12" r="2.5" fill="#fb7185"/>
+									</svg>
+									<span><strong>Repel</strong> — Push boids away${kbd('3', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; flex-shrink: 0;">
+										<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+										<path d="M21 3v5h-5"/>
+										<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+										<path d="M3 21v-5h5"/>
+									</svg>
+									<span><strong>Vortex</strong> — Spin (works alone or combined)${kbd('4', isTouch)}</span>
+								</div>
+							</div>
+							<p style="margin-top: 8px; font-size: 11px; color: #a1a1aa;">Click active mode again to turn off. Use <strong style="color: #f97316;">Vortex alone</strong> for pure rotation!</p>
+							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 8px;">
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0; opacity: 0.6;">
+										<circle cx="12" cy="12" r="7"/>
+									</svg>
+									<span><strong>Shape</strong> — Ring or Disk${kbd('T', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0; opacity: 0.6;">
+										<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>
+									</svg>
+									<span><strong>Size/Power</strong> — Adjust influence</span>
+								</div>
+							</div>
+							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">${isTouch ? 'Press and hold' : 'Click'} canvas to boost force and range!</p>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => { openSection = 'interaction'; }
+				},
+				// Step 5: Flocking
+				{
+					element: '#section-flocking',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+							</svg>
+							<span>Flocking</span>
+						</div>`,
+						description: `<p>The three classic rules of boids:</p>
+							<ul>
+								<li><strong>Align</strong> — Match neighbors' heading${kbd('Q W', isTouch)}</li>
+								<li><strong>Cohesion</strong> — Move toward group center${kbd('E D', isTouch)}</li>
+								<li><strong>Separate</strong> — Avoid crowding${kbd('Z X', isTouch)}</li>
+								<li><strong>Range</strong> — Perception distance</li>
+							</ul>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => { openSection = 'flocking'; }
+				},
+				// Step 6: Dynamics
+				{
+					element: '#section-dynamics',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+							</svg>
+							<span>Dynamics</span>
+						</div>`,
+						description: `<p>Control the physics of movement:</p>
+							<ul>
+								<li><strong>Speed</strong> — Maximum velocity${kbd('↑ ↓', isTouch)}</li>
+								<li><strong>Force</strong> — Turning agility</li>
+								<li><strong>Noise</strong> — Random perturbation</li>
+								<li><strong>Rebels</strong> — Boids ignoring rules</li>
+								<li><strong>Time</strong> — Simulation speed</li>
+							</ul>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => { openSection = 'dynamics'; }
+				},
+				// Step 7: Algorithm
+				{
+					element: '#section-algorithm',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+							</svg>
+							<span>Algorithm</span>
+						</div>`,
+						description: `<p>Choose the neighbor detection algorithm${kbd('A', isTouch)}</p>
+							<ul>
+								<li><strong>Smooth Metric</strong> — Smooth kernel weighting</li>
+								<li><strong>Topological k-NN</strong> — Fixed k neighbors</li>
+								<li><strong>Hash-Free</strong> — No grid artifacts</li>
+								<li><strong>Stochastic</strong> — Random sampling</li>
+								<li><strong>Density Adaptive</strong> — Crowding-aware</li>
+							</ul>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => { openSection = 'algorithm'; }
+				}
+			];
+
+			// Only add keyboard shortcuts card on desktop
+			if (!isTouch) {
+				tourSteps.push({
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
+								<path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/>
+								<path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/>
+								<path d="M7 16h10"/>
+							</svg>
+							<span>Keyboard Shortcuts</span>
+						</div>`,
+						description: `
+							<p style="margin-bottom: 8px; color: #a1a1aa; font-size: 11px;">All keyboard shortcuts:</p>
+							<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 9px;">
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #f472b6; margin-bottom: 2px; font-size: 10px;">Playback</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Space</kbd> Play/Pause</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">S</kbd> Screenshot</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">V</kbd> Record Video</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">R</kbd> Reset Boids</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #fb7185; margin-bottom: 2px; font-size: 10px;">Flocking</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Q</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">W</kbd> Alignment ±</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">E</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">D</kbd> Cohesion ±</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Z</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">X</kbd> Separation ±</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #22d3ee; margin-bottom: 2px; font-size: 10px;">Interaction</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">1</kbd> Toggle On/Off</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">2</kbd> Attract (toggle)</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">3</kbd> Repel (toggle)</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">4</kbd> Vortex (toggle)</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #a78bfa; margin-bottom: 2px; font-size: 10px;">Cycle Options</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">B</kbd> Boundary</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">C</kbd> Color Mode</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">P</kbd> Palette</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">A</kbd> Algorithm</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Brush Shape</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #fbbf24; margin-bottom: 2px; font-size: 10px;">Adjustments</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">+</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">-</kbd> Population</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">[</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">]</kbd> Trail Length</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↑</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↓</kbd> Speed</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">←</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">→</kbd> Boid Size</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #34d399; margin-bottom: 2px; font-size: 10px;">Interface</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Tab</kbd> Toggle Sidebar</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">H</kbd> <kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">?</kbd> Help Tour</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Esc</kbd> Close/Cancel</div>
+								</div>
+							</div>
+						`,
+						side: 'left',
+						align: 'center'
+					}
+				});
+			}
+
 			const driverObj = driver({
 				showProgress: true,
 				animate: true,
@@ -537,7 +982,7 @@
 				popoverClass: 'tour-popover',
 				popoverOffset: 12,
 				onPopoverRender: (popover, { state }) => {
-					// On the first step, replace the disabled Previous button with GitHub link and add keyboard shortcut button
+					// On the first step, replace the disabled Previous button with GitHub link
 					if (state.activeIndex === 0) {
 						const prevBtn = popover.previousButton;
 						const footer = popover.footer;
@@ -552,303 +997,29 @@
 							githubLink.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>`;
 							githubLink.title = 'Star on GitHub';
 							
-							// Create keyboard shortcuts button
-							const keyboardBtn = document.createElement('button');
-							keyboardBtn.className = 'driver-popover-prev-btn';
-							keyboardBtn.style.cssText = 'display: flex; align-items: center; justify-content: center; padding: 8px !important; cursor: pointer; border: none;';
-							keyboardBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>`;
-							keyboardBtn.title = 'View Keyboard Shortcuts';
-							keyboardBtn.onclick = () => {
-								driverObj.moveTo(7); // Jump to keyboard shortcuts card (index 7)
-							};
-							
-							// Replace previous button with a container holding both buttons
-							const btnContainer = document.createElement('div');
-							btnContainer.style.cssText = 'display: flex; gap: 6px;';
-							btnContainer.appendChild(githubLink);
-							btnContainer.appendChild(keyboardBtn);
-							prevBtn.replaceWith(btnContainer);
+							// On desktop, also add keyboard shortcuts jump button
+							if (!isTouch) {
+								const keyboardBtn = document.createElement('button');
+								keyboardBtn.className = 'driver-popover-prev-btn';
+								keyboardBtn.style.cssText = 'display: flex; align-items: center; justify-content: center; padding: 8px !important; cursor: pointer; border: none;';
+								keyboardBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>`;
+								keyboardBtn.title = 'View Keyboard Shortcuts';
+								keyboardBtn.onclick = () => {
+									driverObj.moveTo(tourSteps.length - 1); // Jump to last card (keyboard shortcuts)
+								};
+								
+								const btnContainer = document.createElement('div');
+								btnContainer.style.cssText = 'display: flex; gap: 6px;';
+								btnContainer.appendChild(githubLink);
+								btnContainer.appendChild(keyboardBtn);
+								prevBtn.replaceWith(btnContainer);
+							} else {
+								prevBtn.replaceWith(githubLink);
+							}
 						}
 					}
 				},
-				steps: [
-					{
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 10px;">
-								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" style="width: 28px; height: 28px;">
-									<defs><linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>
-									<rect width="32" height="32" rx="6" fill="#0a0a0f"/>
-									<g fill="url(#fg)"><path d="M16 6 L20 14 L12 14 Z"/><path d="M8 14 L12 22 L4 22 Z" opacity="0.7"/><path d="M24 14 L28 22 L20 22 Z" opacity="0.7"/></g>
-								</svg>
-								<span>Welcome to Swarm</span>
-							</div>`,
-							description: `
-								<p style="margin-bottom: 12px; color: #a1a1aa;">Boids simulate flocking behavior using three simple rules, discovered by Craig Reynolds in 1986:</p>
-								<div style="display: flex; gap: 8px; margin-bottom: 12px;">
-									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
-										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
-											<!-- Alignment: Three boids pointing same direction -->
-											<polygon points="12,38 8,32 16,32" fill="#22d3ee" transform="rotate(-45, 12, 35)"/>
-											<polygon points="30,32 26,26 34,26" fill="#22d3ee" transform="rotate(-45, 30, 29)"/>
-											<polygon points="48,26 44,20 52,20" fill="#22d3ee" transform="rotate(-45, 48, 23)"/>
-										</svg>
-										<div style="font-size: 10px; font-weight: 600; color: #22d3ee;">ALIGNMENT</div>
-										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Match neighbors' direction</div>
-									</div>
-									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
-										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
-											<!-- Cohesion: Boids moving toward center -->
-											<circle cx="30" cy="25" r="4" fill="#a78bfa" opacity="0.3"/>
-											<circle cx="30" cy="25" r="12" stroke="#a78bfa" stroke-width="1" fill="none" stroke-dasharray="3 2" opacity="0.4"/>
-											<!-- Top-left boid pointing to center -->
-											<polygon points="12,12 8,18 16,18" fill="#a78bfa" transform="rotate(135, 12, 15)"/>
-											<line x1="15" y1="18" x2="24" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
-											<!-- Top-right boid pointing to center -->
-											<polygon points="48,12 44,18 52,18" fill="#a78bfa" transform="rotate(-135, 48, 15)"/>
-											<line x1="45" y1="18" x2="36" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
-											<!-- Bottom boid pointing to center (upward) -->
-											<polygon points="30,44 26,38 34,38" fill="#a78bfa" transform="rotate(180, 30, 41)"/>
-											<line x1="30" y1="38" x2="30" y2="30" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
-										</svg>
-										<div style="font-size: 10px; font-weight: 600; color: #a78bfa;">COHESION</div>
-										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Move toward group center</div>
-									</div>
-									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
-										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
-											<!-- Separation: Boids avoiding center, pointing outward -->
-											<!-- Center boid -->
-											<polygon points="30,25 26,31 34,31" fill="#fb7185"/>
-											<!-- Top-left boid pointing away -->
-											<polygon points="14,14 10,20 18,20" fill="#fb7185" transform="rotate(-45, 14, 17)"/>
-											<line x1="18" y1="20" x2="24" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
-											<!-- Top-right boid pointing away -->
-											<polygon points="46,14 42,20 50,20" fill="#fb7185" transform="rotate(45, 46, 17)"/>
-											<line x1="42" y1="20" x2="36" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
-											<!-- Bottom boid pointing away (downward) -->
-											<polygon points="30,44 26,38 34,38" fill="#fb7185" transform="rotate(0, 30, 41)"/>
-											<line x1="30" y1="38" x2="30" y2="33" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
-										</svg>
-										<div style="font-size: 10px; font-weight: 600; color: #fb7185;">SEPARATION</div>
-										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Avoid crowding neighbors</div>
-									</div>
-								</div>
-								<p style="font-size: 11px; color: #71717a; text-align: center; margin-bottom: 8px;">These simple rules create complex, lifelike swarm behavior!</p>
-								<a href="https://en.wikipedia.org/wiki/Boids" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 10px; color: #a78bfa; text-decoration: none; opacity: 0.8; transition: opacity 0.2s; margin-bottom: 10px;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-										<polyline points="15 3 21 3 21 9"/>
-										<line x1="10" y1="14" x2="21" y2="3"/>
-									</svg>
-									Learn more on Wikipedia
-								</a>
-								<p style="font-size: 10px; color: #52525b; text-align: center; margin: 0;">
-									<span style="color: #22d3ee;">WebGPU</span>-powered simulation · Scales to 50,000+ boids
-								</p>
-								<p style="font-size: 9px; color: #3f3f46; text-align: center; margin-top: 6px;">
-									Developed by Neo Mohsenvand
-								</p>
-							`,
-							side: 'over',
-							align: 'center'
-						}
-					},
-					{
-						element: '#header-controls',
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 8px;">
-								<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-									<rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-									<path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-									<line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-								</svg>
-								<span>Controls</span>
-							</div>`,
-							description: `<p>Quick access to media and navigation:</p>
-								<ul>
-									<li><strong>Play/Pause</strong> — Pause or resume <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">Space</kbd></li>
-									<li><strong>Reset</strong> — Reinitialize boids <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">R</kbd></li>
-									<li><strong>Record/Photo</strong> — Video or screenshot <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">V</kbd> <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">S</kbd></li>
-									<li><strong>Help</strong> — This tour <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">H</kbd></li>
-								</ul>`,
-							side: 'bottom',
-							align: 'end'
-						}
-					},
-					{
-						element: '#section-boids',
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 8px;">
-								<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-									<polygon points="12 2 19 21 12 17 5 21 12 2"/>
-								</svg>
-								<span>Boids</span>
-							</div>`,
-							description: `<p>Control the swarm population and appearance:</p>
-								<ul>
-									<li><strong>Population</strong> — Number of boids <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">+</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">-</kbd></li>
-									<li><strong>Size</strong> — Scale of each boid <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">←</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">→</kbd></li>
-									<li><strong>Trail</strong> — Motion trail length <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">[</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">]</kbd></li>
-									<li><strong>Colorize</strong> — Color property <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">C</kbd></li>
-									<li><strong>Palette</strong> — Color spectrum <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">P</kbd></li>
-								</ul>`,
-							side: 'left',
-							align: 'start'
-						},
-						onHighlightStarted: () => { openSection = 'boids'; }
-					},
-					{
-						element: '#section-world',
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 8px;">
-								<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-									<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-								</svg>
-								<span>World</span>
-							</div>`,
-							description: `<p>Define the simulation space and your interaction:</p>
-								<ul>
-									<li><strong>Bounds</strong> — Topology (Plane, Torus, Möbius...) <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">B</kbd></li>
-									<li><strong>Interaction</strong> — Off / Attract / Repel <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">1</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">2</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">3</kbd></li>
-									<li><strong>Shape</strong> — Dot, Ring, Disk, or Vortex <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">T</kbd></li>
-									<li><strong>Size & Power</strong> — Cursor influence</li>
-								</ul>`,
-							side: 'left',
-							align: 'start'
-						},
-						onHighlightStarted: () => { openSection = 'world'; }
-					},
-					{
-						element: '#section-flocking',
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 8px;">
-								<svg viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-									<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-								</svg>
-								<span>Flocking</span>
-							</div>`,
-							description: `<p>The three classic rules of boids (Craig Reynolds, 1986):</p>
-								<ul>
-									<li><strong>Align</strong> — Match neighbors' heading <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">Q</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">W</kbd></li>
-									<li><strong>Cohesion</strong> — Move toward group center <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">E</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">D</kbd></li>
-									<li><strong>Separate</strong> — Avoid crowding <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">Z</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">X</kbd></li>
-									<li><strong>Range</strong> — Perception distance</li>
-								</ul>`,
-							side: 'left',
-							align: 'start'
-						},
-						onHighlightStarted: () => { openSection = 'flocking'; }
-					},
-					{
-						element: '#section-dynamics',
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 8px;">
-								<svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-									<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-								</svg>
-								<span>Dynamics</span>
-							</div>`,
-							description: `<p>Control the physics of movement:</p>
-								<ul>
-									<li><strong>Speed</strong> — Maximum velocity <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">↑</kbd><kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;">↓</kbd></li>
-									<li><strong>Force</strong> — Turning agility</li>
-									<li><strong>Noise</strong> — Random perturbation</li>
-									<li><strong>Rebels</strong> — Boids ignoring rules</li>
-									<li><strong>Time</strong> — Simulation speed</li>
-								</ul>`,
-							side: 'left',
-							align: 'start'
-						},
-						onHighlightStarted: () => { openSection = 'dynamics'; }
-					},
-					{
-						element: '#section-algorithm',
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 8px;">
-								<svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-									<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-								</svg>
-								<span>Algorithm</span>
-							</div>`,
-							description: `<p>Choose the neighbor detection algorithm <kbd style="background:#27272a;padding:1px 4px;border-radius:3px;font-size:10px;margin-left:4px;">A</kbd></p>
-								<ul>
-									<li><strong>Smooth Metric</strong> — Smooth kernel weighting</li>
-									<li><strong>Topological k-NN</strong> — Fixed k neighbors</li>
-									<li><strong>Hash-Free</strong> — No grid artifacts</li>
-									<li><strong>Stochastic</strong> — Random sampling</li>
-									<li><strong>Density Adaptive</strong> — Crowding-aware</li>
-								</ul>`,
-							side: 'left',
-							align: 'start'
-						},
-						onHighlightStarted: () => { openSection = 'algorithm'; }
-					},
-					{
-						popover: {
-							title: `<div style="display: flex; align-items: center; gap: 8px;">
-								<svg viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-									<rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
-									<path d="M6 8h.001"/>
-									<path d="M10 8h.001"/>
-									<path d="M14 8h.001"/>
-									<path d="M18 8h.001"/>
-									<path d="M8 12h.001"/>
-									<path d="M12 12h.001"/>
-									<path d="M16 12h.001"/>
-									<path d="M7 16h10"/>
-								</svg>
-								<span>Keyboard Shortcuts</span>
-							</div>`,
-							description: `
-								<p style="margin-bottom: 8px; color: #a1a1aa; font-size: 11px;">All keyboard shortcuts:</p>
-								<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 9px;">
-									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-										<div style="font-weight: 600; color: #f472b6; margin-bottom: 2px; font-size: 10px;">Playback</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Space</kbd> Play/Pause</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">S</kbd> Screenshot</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">V</kbd> Record Video</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">R</kbd> Reset Boids</div>
-									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-										<div style="font-weight: 600; color: #fb7185; margin-bottom: 2px; font-size: 10px;">Flocking</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Q</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">W</kbd> Alignment ±</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">E</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">D</kbd> Cohesion ±</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Z</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">X</kbd> Separation ±</div>
-									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-										<div style="font-weight: 600; color: #22d3ee; margin-bottom: 2px; font-size: 10px;">Interaction</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">1</kbd> Cursor Off</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">2</kbd> Attract</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">3</kbd> Repel</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Cycle Shape</div>
-									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-										<div style="font-weight: 600; color: #a78bfa; margin-bottom: 2px; font-size: 10px;">Cycle Options</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">B</kbd> Boundary</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">C</kbd> Color Mode</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">P</kbd> Palette</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">A</kbd> Algorithm</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Brush Shape</div>
-									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-										<div style="font-weight: 600; color: #fbbf24; margin-bottom: 2px; font-size: 10px;">Adjustments</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">+</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">-</kbd> Population</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">[</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">]</kbd> Trail Length</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↑</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↓</kbd> Speed</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">←</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">→</kbd> Boid Size</div>
-									</div>
-									<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-										<div style="font-weight: 600; color: #34d399; margin-bottom: 2px; font-size: 10px;">Interface</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Tab</kbd> Toggle Sidebar</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">H</kbd> <kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">?</kbd> Help Tour</div>
-										<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Esc</kbd> Close/Cancel</div>
-									</div>
-								</div>
-							`,
-							side: 'left',
-							align: 'center'
-						}
-					}
-				]
+				steps: tourSteps
 			});
 
 			driverObj.drive();
@@ -1175,7 +1346,7 @@
 							<circle cx="12" cy="12" r="10"/>
 							<path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
 						</svg>
-						<span class="section-label">World</span>
+						<span class="section-label">World <span class="section-value">({TOPOLOGY_NAMES[currentParams.boundaryMode] ?? 'Plane'})</span></span>
 					</div>
 					<svg class="section-chevron" class:open={openSection === 'world'} viewBox="0 0 20 20" fill="currentColor">
 						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
@@ -1217,13 +1388,15 @@
 						<span class="label">Mode</span>
 						<!-- Mode buttons: Attract, Repel, Vortex -->
 						<div class="cursor-toggle cursor-toggle-4">
-							<!-- Sliding indicator for attract/repel -->
-							<div class="cursor-toggle-indicator" style="transform: translateX({cursorModeIndex * 100}%)"></div>
+							<!-- Sliding indicator for attract/repel (hidden when mode is Off) -->
+							{#if currentParams.cursorMode !== CursorMode.Off}
+								<div class="cursor-toggle-indicator" style="transform: translateX({cursorModeIndex * 100}%)"></div>
+							{/if}
 							
 							<button 
 								class="cursor-toggle-btn power-btn"
-								class:active={currentParams.cursorMode !== CursorMode.Off}
-								onclick={() => setCursorMode(currentParams.cursorMode === CursorMode.Off ? CursorMode.Attract : CursorMode.Off)}
+								class:active={currentParams.cursorMode !== CursorMode.Off || currentParams.cursorVortex}
+								onclick={() => handleCursorModeToggle(CursorMode.Off)}
 								aria-label="Toggle Cursor"
 								title="Toggle interaction on/off"
 							>
@@ -1235,9 +1408,9 @@
 							<button 
 								class="cursor-toggle-btn attract"
 								class:active={currentParams.cursorMode === CursorMode.Attract}
-								onclick={() => setCursorMode(CursorMode.Attract)}
+								onclick={() => handleCursorModeToggle(CursorMode.Attract)}
 								aria-label="Attract"
-								title="Attract boids"
+								title="Attract boids (click again to turn off)"
 							>
 								<svg viewBox="0 0 24 24" class="h-5 w-5">
 									<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -1251,9 +1424,9 @@
 							<button 
 								class="cursor-toggle-btn repel"
 								class:active={currentParams.cursorMode === CursorMode.Repel}
-								onclick={() => setCursorMode(CursorMode.Repel)}
+								onclick={() => handleCursorModeToggle(CursorMode.Repel)}
 								aria-label="Repel"
-								title="Repel boids"
+								title="Repel boids (click again to turn off)"
 							>
 								<svg viewBox="0 0 24 24" class="h-5 w-5">
 									<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
@@ -1710,6 +1883,12 @@
 		letter-spacing: 0.06em;
 		color: rgb(161 161 170);
 	}
+	.section-value {
+		font-weight: 500;
+		text-transform: none;
+		letter-spacing: 0.02em;
+		color: rgb(113 113 122);
+	}
 	.section-chevron {
 		width: 14px;
 		height: 14px;
@@ -2004,10 +2183,6 @@
 	}
 	:global(.driver-popover-description strong) {
 		color: #e4e4e7 !important;
-	}
-	:global(.driver-popover-description em) {
-		color: #a78bfa !important;
-		font-style: normal !important;
 	}
 	:global(.driver-popover-progress-text) {
 		font-size: 10px !important;

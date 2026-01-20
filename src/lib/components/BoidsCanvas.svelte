@@ -268,14 +268,17 @@
 	></canvas>
 	
 	<!-- Custom cursor overlay -->
-	{#if currentCursor?.isActive && currentParams?.cursorMode !== CursorMode.Off}
+	{#if currentCursor?.isActive && (currentParams?.cursorMode !== CursorMode.Off || currentParams?.cursorVortex)}
 		{@const radius = currentParams?.cursorRadius ?? 50}
-		{@const isAttract = currentParams?.cursorMode === CursorMode.Attract}
+		{@const mode = currentParams?.cursorMode ?? CursorMode.Off}
+		{@const isAttract = mode === CursorMode.Attract}
+		{@const isRepel = mode === CursorMode.Repel}
+		{@const isVortexOnly = mode === CursorMode.Off && currentParams?.cursorVortex}
 		{@const shape = currentParams?.cursorShape ?? CursorShape.Disk}
 		{@const hasVortex = currentParams?.cursorVortex ?? false}
-		{@const color = isAttract ? '6, 182, 212' : '244, 63, 94'}
+		{@const color = isVortexOnly ? '249, 115, 22' : (isAttract ? '6, 182, 212' : '244, 63, 94')}
 		{@const baseOpacity = currentCursor.isPressed ? 0.9 : 0.6}
-		{@const spinClass = hasVortex ? (isAttract ? 'animate-spin-vortex' : 'animate-spin-vortex-reverse') : ''}
+		{@const spinClass = hasVortex ? (isRepel ? 'animate-spin-vortex-reverse' : 'animate-spin-vortex') : ''}
 		
 		<div
 			class="pointer-events-none absolute"
@@ -291,7 +294,7 @@
 						fill="none"
 						stroke="rgba({color}, {baseOpacity})"
 						stroke-width={currentCursor.isPressed ? 2.5 : 1.5}
-						stroke-dasharray={hasVortex ? "8 6" : "none"}
+						stroke-dasharray={hasVortex || isVortexOnly ? "10 8" : "none"}
 					/>
 				</svg>
 			
@@ -302,18 +305,20 @@
 						cx={radius}
 						cy={radius}
 						r={radius - 1}
-						fill="rgba({color}, {baseOpacity * 0.15})"
+						fill={isVortexOnly ? "none" : `rgba(${color}, ${baseOpacity * 0.15})`}
 						stroke="rgba({color}, {baseOpacity})"
 						stroke-width={currentCursor.isPressed ? 2 : 1.5}
-						stroke-dasharray={hasVortex ? "8 6" : "none"}
+						stroke-dasharray={hasVortex || isVortexOnly ? "10 8" : "none"}
 					/>
-					<!-- Center dot -->
-					<circle
-						cx={radius}
-						cy={radius}
-						r="3"
-						fill="rgba({color}, {baseOpacity})"
-					/>
+					<!-- Center dot (not shown for vortex-only) -->
+					{#if !isVortexOnly}
+						<circle
+							cx={radius}
+							cy={radius}
+							r="3"
+							fill="rgba({color}, {baseOpacity})"
+						/>
+					{/if}
 				</svg>
 			{/if}
 		</div>
@@ -330,14 +335,16 @@
 		to { transform: rotate(360deg); }
 	}
 	.animate-spin-vortex {
-		animation: spin-vortex 1.5s linear infinite;
+		animation: spin-vortex 2s linear infinite;
+		will-change: transform;
 	}
 	
 	@keyframes spin-vortex-reverse {
-		from { transform: rotate(360deg); }
-		to { transform: rotate(0deg); }
+		from { transform: rotate(0deg); }
+		to { transform: rotate(-360deg); }
 	}
 	.animate-spin-vortex-reverse {
-		animation: spin-vortex-reverse 1.5s linear infinite;
+		animation: spin-vortex-reverse 2s linear infinite;
+		will-change: transform;
 	}
 </style>
