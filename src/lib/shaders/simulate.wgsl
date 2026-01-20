@@ -314,10 +314,15 @@ fn applyBoundaryWithVelFix(pos: vec2<f32>, vel: vec2<f32>) -> vec4<f32> {
         newPos.y = bounceCoord(localY, bounceH) + inset;
     }
     
-    // Safety clamp
+    // Safety clamp - only for bouncy (non-wrapped) edges
+    // For wrapped edges, the wrapping logic handles everything
     let safeMargin = 1.0;
-    newPos.x = clamp(newPos.x, bounds.x + safeMargin, bounds.z - safeMargin);
-    newPos.y = clamp(newPos.y, bounds.y + safeMargin, bounds.w - safeMargin);
+    if (cfg.bounceX) {
+        newPos.x = clamp(newPos.x, bounds.x + safeMargin, bounds.z - safeMargin);
+    }
+    if (cfg.bounceY) {
+        newPos.y = clamp(newPos.y, bounds.y + safeMargin, bounds.w - safeMargin);
+    }
     
     return vec4<f32>(newPos, velMult);
 }

@@ -211,9 +211,11 @@ export function encodeRenderPass(
 	renderPass.draw(6, trailSegments); // 6 vertices per instance
 
 	// Render boids on top
+	// We draw 4x instances to handle edge wrapping ghosts (original + X/Y/XY ghosts)
+	// The shader will discard ghosts that aren't needed
 	renderPass.setPipeline(resources.pipelines.boid);
 	renderPass.setBindGroup(0, readFromA ? resources.bindGroups.boidB : resources.bindGroups.boidA);
-	renderPass.draw(3, boidCount); // 3 vertices per triangle
+	renderPass.draw(3, boidCount * 4); // 3 vertices per triangle, 4 copies for edge wrapping
 
 	renderPass.end();
 }

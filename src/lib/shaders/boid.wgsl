@@ -57,6 +57,37 @@ const SPECTRUM_BANDS: u32 = 2u;
 const SPECTRUM_RAINBOW: u32 = 3u;
 const SPECTRUM_MONO: u32 = 4u;
 
+// Boundary modes for wrapping detection
+const PLANE: u32 = 0u;
+const CYLINDER_X: u32 = 1u;
+const CYLINDER_Y: u32 = 2u;
+const TORUS: u32 = 3u;
+const MOBIUS_X: u32 = 4u;
+const MOBIUS_Y: u32 = 5u;
+const KLEIN_X: u32 = 6u;
+const KLEIN_Y: u32 = 7u;
+const PROJECTIVE_PLANE: u32 = 8u;
+
+// Check if X axis wraps for current boundary mode
+fn wrapsX() -> bool {
+    return uniforms.boundaryMode == TORUS || 
+           uniforms.boundaryMode == CYLINDER_X || 
+           uniforms.boundaryMode == MOBIUS_X ||
+           uniforms.boundaryMode == KLEIN_X ||
+           uniforms.boundaryMode == KLEIN_Y ||
+           uniforms.boundaryMode == PROJECTIVE_PLANE;
+}
+
+// Check if Y axis wraps for current boundary mode
+fn wrapsY() -> bool {
+    return uniforms.boundaryMode == TORUS || 
+           uniforms.boundaryMode == CYLINDER_Y || 
+           uniforms.boundaryMode == MOBIUS_Y ||
+           uniforms.boundaryMode == KLEIN_X ||
+           uniforms.boundaryMode == KLEIN_Y ||
+           uniforms.boundaryMode == PROJECTIVE_PLANE;
+}
+
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
@@ -175,15 +206,22 @@ fn vs_main(
 ) -> VertexOutput {
     var output: VertexOutput;
     
-    if (instanceIndex >= uniforms.boidCount) {
-        output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    // Decode instance index: we render up to 4 copies of each boid for edge wrapping
+    // ghostType: 0 = original, 1 = X-ghost, 2 = Y-ghost, 3 = XY-ghost (corner)
+    let boidIndex = instanceIndex / 4u;
+    let ghostType = instanceIndex % 4u;
+    
+    if (boidIndex >= uniforms.boidCount) {
+        // Place off-screen (outside clip space)
+        output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
+        output.barycentric = vec3<f32>(0.0);
         return output;
     }
     
-    let pos = positions[instanceIndex];
-    let vel = velocities[instanceIndex];
+    let pos = positions[boidIndex];
+    let vel = velocities[boidIndex];
     
     // Get local vertex
     let localVert = BOID_VERTICES[vertexIndex % 3u];
@@ -206,8 +244,85 @@ fn vs_main(
         scaledVert.x * sinA + scaledVert.y * cosA
     );
     
-    // Translate to world position
-    let worldPos = pos + rotatedVert;
+    // Calculate ghost offset based on ghostType
+    // Ghosts are rendered on the opposite side of the canvas for wrapped edges
+    var ghostOffset = vec2<f32>(0.0, 0.0);
+    let edgeThreshold = size * 1.5;  // How close to edge before we render a ghost
+    
+    // Determine if this ghost copy should be rendered
+    var shouldRender = true;
+    
+    if (ghostType == 1u) {
+        // X-ghost: rendered when boid is near left or right edge on wrapped X
+        if (wrapsX()) {
+            if (pos.x < edgeThreshold) {
+                // Near left edge - render ghost on right side
+                ghostOffset.x = uniforms.canvasWidth;
+            } else if (pos.x > uniforms.canvasWidth - edgeThreshold) {
+                // Near right edge - render ghost on left side
+                ghostOffset.x = -uniforms.canvasWidth;
+            } else {
+                shouldRender = false;
+            }
+        } else {
+            shouldRender = false;
+        }
+    } else if (ghostType == 2u) {
+        // Y-ghost: rendered when boid is near top or bottom edge on wrapped Y
+        if (wrapsY()) {
+            if (pos.y < edgeThreshold) {
+                // Near top edge - render ghost on bottom side
+                ghostOffset.y = uniforms.canvasHeight;
+            } else if (pos.y > uniforms.canvasHeight - edgeThreshold) {
+                // Near bottom edge - render ghost on top side
+                ghostOffset.y = -uniforms.canvasHeight;
+            } else {
+                shouldRender = false;
+            }
+        } else {
+            shouldRender = false;
+        }
+    } else if (ghostType == 3u) {
+        // XY-ghost (corner): rendered when boid is near both X and Y edges
+        if (wrapsX() && wrapsY()) {
+            var needsXGhost = false;
+            var needsYGhost = false;
+            
+            if (pos.x < edgeThreshold) {
+                ghostOffset.x = uniforms.canvasWidth;
+                needsXGhost = true;
+            } else if (pos.x > uniforms.canvasWidth - edgeThreshold) {
+                ghostOffset.x = -uniforms.canvasWidth;
+                needsXGhost = true;
+            }
+            
+            if (pos.y < edgeThreshold) {
+                ghostOffset.y = uniforms.canvasHeight;
+                needsYGhost = true;
+            } else if (pos.y > uniforms.canvasHeight - edgeThreshold) {
+                ghostOffset.y = -uniforms.canvasHeight;
+                needsYGhost = true;
+            }
+            
+            // Only render corner ghost if near BOTH edges
+            shouldRender = needsXGhost && needsYGhost;
+        } else {
+            shouldRender = false;
+        }
+    }
+    // ghostType == 0u is the original, always rendered
+    
+    if (!shouldRender) {
+        // Don't render this ghost - move it off-screen (outside clip space)
+        output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0);
+        output.color = vec3<f32>(0.0);
+        output.alpha = 0.0;
+        output.barycentric = vec3<f32>(0.0);
+        return output;
+    }
+    
+    // Translate to world position with ghost offset
+    let worldPos = pos + rotatedVert + ghostOffset;
     
     // Convert to clip space (orthographic projection)
     let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;
@@ -252,7 +367,7 @@ fn vs_main(
         }
         case COLOR_DENSITY: {
             // POSITION MODE - Ultra fast, just read pre-computed birth color
-            colorValue = birthColors[instanceIndex];
+            colorValue = birthColors[boidIndex];
         }
         default: {
             colorValue = 0.5;
