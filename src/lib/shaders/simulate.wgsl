@@ -164,6 +164,11 @@ const BOUNDARY_INSET: f32 = 30.0;
 const SOFT_MARGIN: f32 = 120.0;
 const EMERGENCY_ZONE: f32 = 15.0;
 
+// Wall texture scale (must match CPU side)
+const WALL_TEXTURE_SCALE: f32 = 4.0;
+const WALL_DETECT_RADIUS: f32 = 60.0;  // How far ahead to look for walls
+const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positionsIn: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read_write> positionsOut: array<vec2<f32>>;
@@ -173,6 +178,8 @@ const EMERGENCY_ZONE: f32 = 15.0;
 @group(0) @binding(6) var<storage, read> cellCounts: array<u32>;
 @group(0) @binding(7) var<storage, read> sortedIndices: array<u32>;
 @group(0) @binding(8) var<storage, read_write> trails: array<vec2<f32>>;
+@group(0) @binding(9) var wallTexture: texture_2d<f32>;
+@group(0) @binding(10) var wallSampler: sampler;
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -531,6 +538,93 @@ fn applySoftSteering(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
     }
     
     return newVel;
+}
+
+// Sample wall texture at a position (returns 0-1 wall density)
+fn sampleWall(pos: vec2<f32>) -> f32 {
+    // Convert canvas position to texture UV coordinates
+    let uv = vec2<f32>(
+        pos.x / uniforms.canvasWidth,
+        pos.y / uniforms.canvasHeight
+    );
+    // Clamp to valid range
+    let clampedUV = clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0));
+    return textureSampleLevel(wallTexture, wallSampler, clampedUV, 0.0).r;
+}
+
+// Wall avoidance - sample wall texture and compute steering force
+fn applyWallAvoidance(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
+    var avoidanceForce = vec2<f32>(0.0);
+    
+    // Sample walls at current position
+    let centerWall = sampleWall(pos);
+    
+    // If we're inside a wall, push out strongly
+    if (centerWall > 0.1) {
+        // Sample in 8 directions to find escape direction
+        let sampleDist = 20.0;
+        var escapeDir = vec2<f32>(0.0);
+        var minWall = centerWall;
+        
+        for (var i = 0; i < 8; i++) {
+            let angle = f32(i) * 0.785398; // PI/4
+            let dir = vec2<f32>(cos(angle), sin(angle));
+            let samplePos = pos + dir * sampleDist;
+            let wallVal = sampleWall(samplePos);
+            if (wallVal < minWall) {
+                minWall = wallVal;
+                escapeDir = dir;
+            }
+        }
+        
+        // Strong escape force proportional to wall density
+        avoidanceForce += escapeDir * centerWall * WALL_FORCE_STRENGTH * 3.0;
+    }
+    
+    // Look ahead in velocity direction for walls
+    let speed = length(vel);
+    if (speed > 0.1) {
+        let velDir = vel / speed;
+        
+        // Sample multiple points ahead
+        for (var d = 1; d <= 3; d++) {
+            let lookDist = f32(d) * WALL_DETECT_RADIUS / 3.0;
+            let lookPos = pos + velDir * lookDist;
+            let wallAhead = sampleWall(lookPos);
+            
+            if (wallAhead > 0.1) {
+                // Steer perpendicular to velocity to avoid wall
+                // Choose direction based on which side has less wall
+                let leftDir = vec2<f32>(-velDir.y, velDir.x);
+                let rightDir = vec2<f32>(velDir.y, -velDir.x);
+                let leftWall = sampleWall(pos + leftDir * 30.0);
+                let rightWall = sampleWall(pos + rightDir * 30.0);
+                
+                var avoidDir: vec2<f32>;
+                if (leftWall < rightWall) {
+                    avoidDir = leftDir;
+                } else {
+                    avoidDir = rightDir;
+                }
+                
+                // Force strength based on wall density and distance
+                let distFactor = 1.0 - f32(d - 1) / 3.0;
+                avoidanceForce += avoidDir * wallAhead * WALL_FORCE_STRENGTH * distFactor;
+            }
+        }
+    }
+    
+    // Also sample walls to the sides for proactive avoidance
+    let leftSample = sampleWall(pos + vec2<f32>(-25.0, 0.0));
+    let rightSample = sampleWall(pos + vec2<f32>(25.0, 0.0));
+    let topSample = sampleWall(pos + vec2<f32>(0.0, -25.0));
+    let bottomSample = sampleWall(pos + vec2<f32>(0.0, 25.0));
+    
+    // Push away from nearby walls
+    avoidanceForce.x += (leftSample - rightSample) * WALL_FORCE_STRENGTH * 0.5;
+    avoidanceForce.y += (topSample - bottomSample) * WALL_FORCE_STRENGTH * 0.5;
+    
+    return vel + avoidanceForce;
 }
 
 // ============================================================================
@@ -1281,6 +1375,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Apply soft steering for bouncy boundaries
     var newVel = applySoftSteering(myPos, myVel + acceleration);
+    
+    // Apply wall avoidance (user-drawn obstacles)
+    newVel = applyWallAvoidance(myPos, newVel);
+    
     newVel = limitMagnitude(newVel, uniforms.maxSpeed);
     
     // Minimum speed

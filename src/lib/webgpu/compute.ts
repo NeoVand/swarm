@@ -204,7 +204,9 @@ export function createComputePipelines(
 			{ binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
 			{ binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
 			{ binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-			{ binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }
+			{ binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+			{ binding: 9, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } },
+			{ binding: 10, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } }
 		]
 	});
 
@@ -225,7 +227,9 @@ export function createComputePipelines(
 			{ binding: 5, resource: { buffer: buffers.prefixSums } },
 			{ binding: 6, resource: { buffer: buffers.cellCounts } },
 			{ binding: 7, resource: { buffer: buffers.sortedIndices } },
-			{ binding: 8, resource: { buffer: buffers.trails } }
+			{ binding: 8, resource: { buffer: buffers.trails } },
+			{ binding: 9, resource: buffers.wallTexture.createView() },
+			{ binding: 10, resource: buffers.wallSampler }
 		]
 	});
 
@@ -241,7 +245,9 @@ export function createComputePipelines(
 			{ binding: 5, resource: { buffer: buffers.prefixSums } },
 			{ binding: 6, resource: { buffer: buffers.cellCounts } },
 			{ binding: 7, resource: { buffer: buffers.sortedIndices } },
-			{ binding: 8, resource: { buffer: buffers.trails } }
+			{ binding: 8, resource: { buffer: buffers.trails } },
+			{ binding: 9, resource: buffers.wallTexture.createView() },
+			{ binding: 10, resource: buffers.wallSampler }
 		]
 	});
 

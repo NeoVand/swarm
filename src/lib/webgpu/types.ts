@@ -49,6 +49,12 @@ export enum AlgorithmMode {
 	DensityAdaptive = 4 // Hash-free with advanced density-adaptive forces
 }
 
+export enum WallTool {
+	None = 0, // Normal cursor interaction mode
+	Pencil = 1, // Draw walls
+	Eraser = 2 // Erase walls
+}
+
 export interface SimulationParams {
 	alignment: number;
 	cohesion: number;
@@ -77,6 +83,8 @@ export interface SimulationParams {
 	idealDensity: number; // Density Adaptive: target neighbor density (1-10)
 	// Simulation timing
 	timeScale: number; // Simulation speed multiplier (0.25-2.0)
+	// Wall drawing
+	wallBrushSize: number; // Brush size for pencil/eraser (10-100 pixels)
 }
 
 export interface CursorState {
@@ -107,6 +115,8 @@ export interface SimulationBuffers {
 	uniforms: GPUBuffer;
 	trailHead: GPUBuffer;
 	birthColors: GPUBuffer; // Stores initial position-based color per boid
+	wallTexture: GPUTexture; // Stores wall data for obstacle avoidance
+	wallSampler: GPUSampler; // Sampler for wall texture
 }
 
 export interface ComputePipelines {
@@ -156,7 +166,9 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	sampleCount: 32, // Stochastic
 	idealDensity: 5.0, // Density Adaptive
 	// Simulation timing
-	timeScale: 1.0 // Normal speed
+	timeScale: 1.0, // Normal speed
+	// Wall drawing
+	wallBrushSize: 30 // Default brush size
 };
 
 /**
@@ -191,3 +203,6 @@ export function calculateOptimalPopulation(width: number, height: number): numbe
 export const UNIFORM_BUFFER_SIZE = 256; // Padded for alignment
 
 export const WORKGROUP_SIZE = 256;
+
+// Wall texture is at 1/4 resolution for performance
+export const WALL_TEXTURE_SCALE = 4;

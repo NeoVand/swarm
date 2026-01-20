@@ -9,6 +9,8 @@ import {
 	updateUniforms,
 	calculateGridDimensions,
 	createBlockSumsBuffer,
+	updateWallTexture,
+	createWallTexture,
 	type BufferConfig
 } from './buffers';
 import { createComputePipelines, encodeComputePasses, type ComputeResources } from './compute';
@@ -16,8 +18,15 @@ import {
 	createRenderPipelines,
 	encodeRenderPass,
 	destroyRenderResources,
+	recreateWallBindGroup,
 	type RenderResources
 } from './render';
+import {
+	getWallData,
+	getWallTextureDimensions,
+	initWallData,
+	wallsDirty
+} from '$lib/stores/simulation';
 
 export interface Simulation {
 	start: () => void;
@@ -30,6 +39,7 @@ export interface Simulation {
 	clearTrails: () => void;
 	resetBoids: () => void;
 	isRunning: () => boolean;
+	updateWalls: () => void;
 }
 
 export function createSimulation(
@@ -64,6 +74,9 @@ export function createSimulation(
 	// Initialize boid positions and velocities
 	initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
 	clearTrails(device, buffers, params.population, params.trailLength);
+
+	// Initialize wall data
+	initWallData(canvasWidth, canvasHeight);
 
 	// Create pipelines
 	let computeResources: ComputeResources = createComputePipelines(device, buffers, blockSumsBuffer);
@@ -195,6 +208,27 @@ export function createSimulation(
 		// Recalculate grid
 		gridInfo = calculateGridDimensions(canvasWidth, canvasHeight, params.perception);
 
+		// Recreate wall texture for new size
+		const oldWallTexture = buffers.wallTexture;
+		buffers.wallTexture = createWallTexture(device, canvasWidth, canvasHeight);
+		oldWallTexture.destroy();
+
+		// Reinitialize wall data for new dimensions
+		initWallData(canvasWidth, canvasHeight);
+
+		// Recreate bind groups that reference wall texture
+		renderResources.bindGroups.wall = recreateWallBindGroup(
+			device,
+			renderResources.wallBindGroupLayout,
+			buffers.uniforms,
+			buffers.wallTexture,
+			buffers.wallSampler
+		);
+
+		// Note: compute bind groups also need to be recreated for wall texture
+		// This is handled by recreating all compute resources
+		computeResources = createComputePipelines(device, buffers, blockSumsBuffer);
+
 		// Clear trails on resize
 		clearTrails(device, buffers, params.population, params.trailLength);
 		trailHead = 0;
@@ -258,6 +292,15 @@ export function createSimulation(
 		trailHead = 0;
 	}
 
+	function doUpdateWalls(): void {
+		const wallData = getWallData();
+		if (!wallData) return;
+
+		const dims = getWallTextureDimensions();
+		updateWallTexture(device, buffers.wallTexture, wallData, dims.width, dims.height);
+		wallsDirty.set(false);
+	}
+
 	return {
 		start,
 		stop,
@@ -268,6 +311,7 @@ export function createSimulation(
 		reallocateBuffers,
 		clearTrails: doTrailClear,
 		resetBoids,
-		isRunning: () => running
+		isRunning: () => running,
+		updateWalls: doUpdateWalls
 	};
 }

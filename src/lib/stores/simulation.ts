@@ -10,7 +10,9 @@ import {
 	ColorSpectrum,
 	CursorMode,
 	CursorShape,
-	AlgorithmMode
+	AlgorithmMode,
+	WallTool,
+	WALL_TEXTURE_SCALE
 } from '$lib/webgpu/types';
 
 // Main simulation parameters store
@@ -69,6 +71,79 @@ export const needsTrailClear = writable(false);
 
 // Flag to trigger simulation reset (reinitialize boid positions)
 export const needsSimulationReset = writable(false);
+
+// Wall drawing state
+export const wallTool = writable<WallTool>(WallTool.None);
+export const wallsDirty = writable(false);
+
+// Wall texture data (CPU-side buffer)
+// Initialized lazily based on canvas dimensions
+let wallDataArray: Uint8Array | null = null;
+let wallTextureWidth = 0;
+let wallTextureHeight = 0;
+
+export function initWallData(canvasWidth: number, canvasHeight: number): Uint8Array {
+	const newWidth = Math.ceil(canvasWidth / WALL_TEXTURE_SCALE);
+	const newHeight = Math.ceil(canvasHeight / WALL_TEXTURE_SCALE);
+
+	// Only recreate if dimensions changed
+	if (wallDataArray === null || newWidth !== wallTextureWidth || newHeight !== wallTextureHeight) {
+		wallTextureWidth = newWidth;
+		wallTextureHeight = newHeight;
+		wallDataArray = new Uint8Array(newWidth * newHeight);
+	}
+
+	return wallDataArray;
+}
+
+export function getWallData(): Uint8Array | null {
+	return wallDataArray;
+}
+
+export function getWallTextureDimensions(): { width: number; height: number } {
+	return { width: wallTextureWidth, height: wallTextureHeight };
+}
+
+// Paint a circle into the wall buffer
+export function paintWall(
+	canvasX: number,
+	canvasY: number,
+	brushSize: number,
+	erase: boolean
+): void {
+	if (!wallDataArray) return;
+
+	// Convert canvas coordinates to texture coordinates
+	const texX = Math.floor(canvasX / WALL_TEXTURE_SCALE);
+	const texY = Math.floor(canvasY / WALL_TEXTURE_SCALE);
+	const texRadius = Math.ceil(brushSize / WALL_TEXTURE_SCALE);
+
+	const value = erase ? 0 : 255;
+
+	// Draw filled circle
+	for (let dy = -texRadius; dy <= texRadius; dy++) {
+		for (let dx = -texRadius; dx <= texRadius; dx++) {
+			const distSq = dx * dx + dy * dy;
+			if (distSq <= texRadius * texRadius) {
+				const px = texX + dx;
+				const py = texY + dy;
+				if (px >= 0 && px < wallTextureWidth && py >= 0 && py < wallTextureHeight) {
+					wallDataArray[py * wallTextureWidth + px] = value;
+				}
+			}
+		}
+	}
+
+	wallsDirty.set(true);
+}
+
+// Clear all walls
+export function clearWalls(): void {
+	if (wallDataArray) {
+		wallDataArray.fill(0);
+		wallsDirty.set(true);
+	}
+}
 
 // Helper functions to update specific parameters
 export function setAlignment(value: number): void {
@@ -177,6 +252,14 @@ export function setTimeScale(value: number): void {
 	params.update((p) => ({ ...p, timeScale: value }));
 }
 
+export function setWallBrushSize(value: number): void {
+	params.update((p) => ({ ...p, wallBrushSize: value }));
+}
+
+export function setWallTool(value: WallTool): void {
+	wallTool.set(value);
+}
+
 // Play/pause toggle
 export function togglePlayPause(): void {
 	isRunning.update((running) => !running);
@@ -199,5 +282,6 @@ export {
 	CursorMode,
 	CursorShape,
 	AlgorithmMode,
+	WallTool,
 	DEFAULT_PARAMS
 };

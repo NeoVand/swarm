@@ -15,6 +15,7 @@
 		isRecording,
 		canvasElement,
 		needsSimulationReset,
+		wallTool,
 		setAlignment,
 		setCohesion,
 		setSeparation,
@@ -40,12 +41,16 @@
 		setIdealDensity,
 		setTimeScale,
 		setRecording,
+		setWallTool,
+		setWallBrushSize,
+		clearWalls,
 		BoundaryMode,
 		ColorMode,
 		ColorSpectrum,
 		CursorMode,
 		CursorShape,
 		AlgorithmMode,
+		WallTool,
 		DEFAULT_PARAMS
 	} from '$lib/stores/simulation';
 
@@ -54,6 +59,7 @@
 	let isPlaying = $derived($isRunning);
 	let recording = $derived($isRecording);
 	let canvas = $derived($canvasElement);
+	let currentWallTool = $derived($wallTool);
 
 	let paletteDropdownOpen = $state(false);
 	let paletteDropdownRef = $state<HTMLDivElement | undefined>(undefined);
@@ -315,6 +321,8 @@
 		setCursorShape(DEFAULT_PARAMS.cursorShape);
 		setCursorRadius(DEFAULT_PARAMS.cursorRadius);
 		setCursorForce(DEFAULT_PARAMS.cursorForce);
+		setWallTool(WallTool.None);
+		setWallBrushSize(DEFAULT_PARAMS.wallBrushSize);
 	}
 
 	function resetFlockingSection(e: Event): void {
@@ -2014,8 +2022,8 @@
 				{#if openSection === 'interaction'}
 					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 						<div class="row">
-							<span class="label">Mode</span>
-							<!-- Mode buttons: Attract, Repel, Vortex -->
+							<span class="label">Force</span>
+							<!-- Force buttons: Attract, Repel, Vortex -->
 							<div class="cursor-toggle cursor-toggle-4">
 								<!-- Sliding indicator for attract/repel (hidden when mode is Off) -->
 								{#if currentParams.cursorMode !== CursorMode.Off}
@@ -2182,6 +2190,122 @@
 							/>
 							<span class="value">{currentParams.cursorForce.toFixed(2)}</span>
 						</div>
+
+						<!-- Wall Drawing Tools -->
+						<div class="subsection-divider"></div>
+						<div class="subsection-header">
+							<span class="subsection-label">Walls</span>
+						</div>
+						<div class="row">
+							<span class="label">Draw</span>
+							<div class="cursor-toggle cursor-toggle-4">
+								<!-- Power button for wall drawing on/off -->
+								<button
+									class="cursor-toggle-btn power-btn"
+									class:active={currentWallTool !== WallTool.None}
+									onclick={() =>
+										setWallTool(
+											currentWallTool === WallTool.None ? WallTool.Pencil : WallTool.None
+										)}
+									aria-label="Toggle wall drawing"
+									title="Toggle wall drawing on/off"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.2"
+										stroke-linecap="round"
+									>
+										<path d="M12 3 L12 11" />
+										<path d="M6.3 6.3 A8.5 8.5 0 1 0 17.7 6.3" />
+									</svg>
+								</button>
+								<!-- Pencil -->
+								<button
+									class="cursor-toggle-btn"
+									class:active={currentWallTool === WallTool.Pencil}
+									onclick={() => setWallTool(WallTool.Pencil)}
+									aria-label="Pencil"
+									title="Draw walls"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+										<path d="m15 5 4 4" />
+									</svg>
+								</button>
+								<!-- Eraser -->
+								<button
+									class="cursor-toggle-btn"
+									class:active={currentWallTool === WallTool.Eraser}
+									onclick={() => setWallTool(WallTool.Eraser)}
+									aria-label="Eraser"
+									title="Erase walls"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<path
+											d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"
+										/>
+										<path d="M22 21H7" />
+										<path d="m5 11 9 9" />
+									</svg>
+								</button>
+								<!-- Clear all walls -->
+								<button
+									class="cursor-toggle-btn clear-btn"
+									onclick={() => clearWalls()}
+									aria-label="Clear walls"
+									title="Clear all walls"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<path d="M3 6h18" />
+										<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+										<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+									</svg>
+								</button>
+							</div>
+						</div>
+						{#if currentWallTool !== WallTool.None}
+							<div class="row">
+								<span class="label">Brush</span>
+								<input
+									type="range"
+									min="10"
+									max="100"
+									step="5"
+									value={currentParams.wallBrushSize}
+									oninput={(e) => setWallBrushSize(parseInt(e.currentTarget.value))}
+									class="slider"
+									aria-label="Brush Size"
+								/>
+								<span class="value">{currentParams.wallBrushSize}</span>
+							</div>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -3197,6 +3321,31 @@
 	.shape-btn.active {
 		background: rgba(255, 255, 255, 0.12);
 		color: rgb(228 228 231);
+	}
+
+	/* Subsection styling for grouped controls */
+	.subsection-divider {
+		height: 1px;
+		background: rgba(255, 255, 255, 0.06);
+		margin: 8px 0;
+	}
+	.subsection-header {
+		display: flex;
+		align-items: center;
+		margin-bottom: 6px;
+	}
+	.subsection-label {
+		font-size: 10px;
+		font-weight: 600;
+		color: rgb(113 113 122);
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	/* Clear button in wall tools row */
+	.cursor-toggle-btn.clear-btn:hover {
+		color: rgb(252, 165, 165);
+		background: rgba(239, 68, 68, 0.2);
 	}
 
 	/* Driver.js custom styles */

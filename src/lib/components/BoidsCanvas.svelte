@@ -3,7 +3,7 @@
 	import { initWebGPU, resizeCanvas, destroyWebGPU } from '$lib/webgpu/context';
 	import { createSimulation, type Simulation } from '$lib/webgpu/simulation';
 	import type { GPUContext, SimulationParams, CursorState } from '$lib/webgpu/types';
-	import { CursorMode, CursorShape, calculateOptimalPopulation } from '$lib/webgpu/types';
+	import { CursorMode, CursorShape, WallTool, calculateOptimalPopulation } from '$lib/webgpu/types';
 	import {
 		params,
 		cursor,
@@ -14,7 +14,10 @@
 		needsBufferReallocation,
 		needsTrailClear,
 		needsSimulationReset,
-		canvasElement
+		canvasElement,
+		wallTool,
+		paintWall,
+		wallsDirty
 	} from '$lib/stores/simulation';
 
 	let canvas: HTMLCanvasElement;
@@ -29,6 +32,8 @@
 	// Subscribe to stores
 	let currentParams: SimulationParams;
 	let currentCursor: CursorState;
+	let currentWallTool: WallTool = WallTool.None;
+	let isPaintingWall = false;
 
 	const unsubParams = params.subscribe((p) => {
 		currentParams = p;
@@ -38,6 +43,16 @@
 	const unsubCursor = cursor.subscribe((c) => {
 		currentCursor = c;
 		simulation?.updateCursor(c);
+	});
+
+	const unsubWallTool = wallTool.subscribe((t) => {
+		currentWallTool = t;
+	});
+
+	const unsubWallsDirty = wallsDirty.subscribe((dirty) => {
+		if (dirty && simulation) {
+			simulation.updateWalls();
+		}
 	});
 
 	const unsubRealloc = needsBufferReallocation.subscribe((needs) => {
@@ -105,23 +120,51 @@
 		// Track CSS position for visual cursor
 		cursorCssX = e.clientX - rect.left;
 		cursorCssY = e.clientY - rect.top;
+		const canvasX = cursorCssX * dpr;
+		const canvasY = cursorCssY * dpr;
+
+		// Paint walls if wall tool is active and mouse is pressed
+		if (isPaintingWall && currentWallTool !== WallTool.None) {
+			paintWall(
+				canvasX,
+				canvasY,
+				currentParams.wallBrushSize * dpr,
+				currentWallTool === WallTool.Eraser
+			);
+		}
+
 		cursor.update((c) => ({
 			...c,
-			x: cursorCssX * dpr,
-			y: cursorCssY * dpr,
+			x: canvasX,
+			y: canvasY,
 			isActive: true
 		}));
 	}
 
 	function handleMouseDown(): void {
+		if (currentWallTool !== WallTool.None) {
+			isPaintingWall = true;
+			// Paint at current position immediately
+			const dpr = Math.min(window.devicePixelRatio || 1, 2);
+			const canvasX = cursorCssX * dpr;
+			const canvasY = cursorCssY * dpr;
+			paintWall(
+				canvasX,
+				canvasY,
+				currentParams.wallBrushSize * dpr,
+				currentWallTool === WallTool.Eraser
+			);
+		}
 		cursor.update((c) => ({ ...c, isPressed: true }));
 	}
 
 	function handleMouseUp(): void {
+		isPaintingWall = false;
 		cursor.update((c) => ({ ...c, isPressed: false }));
 	}
 
 	function handleMouseLeave(): void {
+		isPaintingWall = false;
 		cursor.update((c) => ({ ...c, isActive: false, isPressed: false }));
 	}
 
@@ -133,9 +176,23 @@
 			const dpr = Math.min(window.devicePixelRatio || 1, 2);
 			cursorCssX = touch.clientX - rect.left;
 			cursorCssY = touch.clientY - rect.top;
+			const canvasX = cursorCssX * dpr;
+			const canvasY = cursorCssY * dpr;
+
+			// Paint walls if wall tool is active
+			if (currentWallTool !== WallTool.None) {
+				isPaintingWall = true;
+				paintWall(
+					canvasX,
+					canvasY,
+					currentParams.wallBrushSize * dpr,
+					currentWallTool === WallTool.Eraser
+				);
+			}
+
 			cursor.set({
-				x: cursorCssX * dpr,
-				y: cursorCssY * dpr,
+				x: canvasX,
+				y: canvasY,
 				isPressed: true,
 				isActive: true
 			});
@@ -150,16 +207,30 @@
 			const dpr = Math.min(window.devicePixelRatio || 1, 2);
 			cursorCssX = touch.clientX - rect.left;
 			cursorCssY = touch.clientY - rect.top;
+			const canvasX = cursorCssX * dpr;
+			const canvasY = cursorCssY * dpr;
+
+			// Paint walls if wall tool is active
+			if (isPaintingWall && currentWallTool !== WallTool.None) {
+				paintWall(
+					canvasX,
+					canvasY,
+					currentParams.wallBrushSize * dpr,
+					currentWallTool === WallTool.Eraser
+				);
+			}
+
 			cursor.update((c) => ({
 				...c,
-				x: cursorCssX * dpr,
-				y: cursorCssY * dpr
+				x: canvasX,
+				y: canvasY
 			}));
 		}
 	}
 
 	function handleTouchEnd(e: TouchEvent): void {
 		e.preventDefault();
+		isPaintingWall = false;
 		// Fully reset cursor state when touch ends
 		cursor.set({ x: -9999, y: -9999, isPressed: false, isActive: false });
 	}
@@ -244,6 +315,8 @@
 		unsubTrailClear();
 		unsubSimulationReset();
 		unsubRunning();
+		unsubWallTool();
+		unsubWallsDirty();
 		canvasElement.set(null);
 		simulation?.destroy();
 		destroyWebGPU(gpuContext);
@@ -254,7 +327,9 @@
 <div bind:this={container} class="fixed relative inset-0 overflow-hidden bg-[#0a0b0d]">
 	<canvas
 		bind:this={canvas}
-		class="block touch-none select-none {currentParams?.cursorMode !== CursorMode.Off
+		class="block touch-none select-none {currentParams?.cursorMode !== CursorMode.Off ||
+		currentParams?.cursorVortex ||
+		currentWallTool !== WallTool.None
 			? 'cursor-none'
 			: ''}"
 		onmousemove={handleMouseMove}
@@ -268,8 +343,49 @@
 		oncontextmenu={(e) => e.preventDefault()}
 	></canvas>
 
-	<!-- Custom cursor overlay -->
-	{#if currentCursor?.isActive && (currentParams?.cursorMode !== CursorMode.Off || currentParams?.cursorVortex)}
+	<!-- Wall tool cursor overlay -->
+	{#if currentCursor?.isActive && currentWallTool !== WallTool.None}
+		{@const brushSize = currentParams?.wallBrushSize ?? 30}
+		{@const isPencil = currentWallTool === WallTool.Pencil}
+		{@const brushColor = isPencil ? '100, 116, 139' : '239, 68, 68'}
+
+		<div
+			class="pointer-events-none absolute"
+			style="left: {cursorCssX}px; top: {cursorCssY}px; transform: translate(-50%, -50%);"
+		>
+			<svg width={brushSize * 2} height={brushSize * 2}>
+				<circle
+					cx={brushSize}
+					cy={brushSize}
+					r={brushSize - 1}
+					fill={isPaintingWall ? `rgba(${brushColor}, 0.3)` : 'none'}
+					stroke="rgba({brushColor}, {isPaintingWall ? 0.9 : 0.6})"
+					stroke-width={isPaintingWall ? 2 : 1.5}
+					stroke-dasharray={isPencil ? 'none' : '6 4'}
+				/>
+				<!-- Center crosshair -->
+				<line
+					x1={brushSize - 6}
+					y1={brushSize}
+					x2={brushSize + 6}
+					y2={brushSize}
+					stroke="rgba({brushColor}, 0.8)"
+					stroke-width="1"
+				/>
+				<line
+					x1={brushSize}
+					y1={brushSize - 6}
+					x2={brushSize}
+					y2={brushSize + 6}
+					stroke="rgba({brushColor}, 0.8)"
+					stroke-width="1"
+				/>
+			</svg>
+		</div>
+	{/if}
+
+	<!-- Custom cursor overlay for boid interaction -->
+	{#if currentCursor?.isActive && currentWallTool === WallTool.None && (currentParams?.cursorMode !== CursorMode.Off || currentParams?.cursorVortex)}
 		{@const radius = currentParams?.cursorRadius ?? 50}
 		{@const mode = currentParams?.cursorMode ?? CursorMode.Off}
 		{@const isAttract = mode === CursorMode.Attract}

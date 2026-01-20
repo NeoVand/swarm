@@ -1,7 +1,7 @@
 // Buffer creation and management
 
 import type { SimulationBuffers, SimulationParams, CursorState } from './types';
-import { WORKGROUP_SIZE } from './types';
+import { WORKGROUP_SIZE, WALL_TEXTURE_SCALE } from './types';
 
 export interface BufferConfig {
 	boidCount: number;
@@ -94,6 +94,24 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
+	// Wall texture for obstacle avoidance (1/4 resolution)
+	const wallTextureWidth = Math.ceil(canvasWidth / WALL_TEXTURE_SCALE);
+	const wallTextureHeight = Math.ceil(canvasHeight / WALL_TEXTURE_SCALE);
+	const wallTexture = device.createTexture({
+		size: [wallTextureWidth, wallTextureHeight, 1],
+		format: 'r8unorm',
+		usage:
+			GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+	});
+
+	// Sampler for wall texture (linear filtering for smooth edges)
+	const wallSampler = device.createSampler({
+		magFilter: 'linear',
+		minFilter: 'linear',
+		addressModeU: 'clamp-to-edge',
+		addressModeV: 'clamp-to-edge'
+	});
+
 	return {
 		positionA,
 		positionB,
@@ -107,7 +125,9 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		boidCellIndices,
 		uniforms,
 		trailHead,
-		birthColors
+		birthColors,
+		wallTexture,
+		wallSampler
 	};
 }
 
@@ -125,6 +145,7 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.uniforms.destroy();
 	buffers.trailHead.destroy();
 	buffers.birthColors.destroy();
+	buffers.wallTexture.destroy();
 }
 
 export function initializeBoids(
@@ -312,5 +333,37 @@ export function createBlockSumsBuffer(
 	return device.createBuffer({
 		size: Math.max(numBlocks * 4, 4),
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+}
+
+// Update wall texture from CPU data
+export function updateWallTexture(
+	device: GPUDevice,
+	wallTexture: GPUTexture,
+	wallData: Uint8Array,
+	width: number,
+	height: number
+): void {
+	device.queue.writeTexture(
+		{ texture: wallTexture },
+		wallData.buffer,
+		{ offset: wallData.byteOffset, bytesPerRow: width, rowsPerImage: height },
+		{ width, height, depthOrArrayLayers: 1 }
+	);
+}
+
+// Create a new wall texture (for resize)
+export function createWallTexture(
+	device: GPUDevice,
+	canvasWidth: number,
+	canvasHeight: number
+): GPUTexture {
+	const wallTextureWidth = Math.ceil(canvasWidth / WALL_TEXTURE_SCALE);
+	const wallTextureHeight = Math.ceil(canvasHeight / WALL_TEXTURE_SCALE);
+	return device.createTexture({
+		size: [wallTextureWidth, wallTextureHeight, 1],
+		format: 'r8unorm',
+		usage:
+			GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
 	});
 }
