@@ -12,6 +12,7 @@ import {
 	CursorShape,
 	AlgorithmMode,
 	WallTool,
+	WallBrushShape,
 	WALL_TEXTURE_SCALE
 } from '$lib/webgpu/types';
 
@@ -82,6 +83,9 @@ let wallDataArray: Uint8Array | null = null;
 let wallTextureWidth = 0;
 let wallTextureHeight = 0;
 
+// Stroke tracking for hollow brush
+let strokeSnapshot: Uint8Array | null = null;
+
 export function initWallData(canvasWidth: number, canvasHeight: number): Uint8Array {
 	const newWidth = Math.ceil(canvasWidth / WALL_TEXTURE_SCALE);
 	const newHeight = Math.ceil(canvasHeight / WALL_TEXTURE_SCALE);
@@ -130,6 +134,122 @@ export function paintWall(
 				if (px >= 0 && px < wallTextureWidth && py >= 0 && py < wallTextureHeight) {
 					wallDataArray[py * wallTextureWidth + px] = value;
 				}
+			}
+		}
+	}
+
+	wallsDirty.set(true);
+}
+
+// Begin tracking a stroke (call before drawing with hollow brush)
+export function beginStroke(): void {
+	if (wallDataArray) {
+		strokeSnapshot = new Uint8Array(wallDataArray);
+	}
+}
+
+// End stroke and apply hollow only to newly drawn pixels
+export function endStrokeWithHollow(thickness: number): void {
+	if (!wallDataArray || !strokeSnapshot) return;
+
+	const erosionRadius = Math.ceil(thickness / WALL_TEXTURE_SCALE);
+	const erosionRadiusSq = erosionRadius * erosionRadius;
+
+	// Find pixels that are new (weren't in snapshot but are now walls)
+	const newPixels = new Set<number>();
+	for (let i = 0; i < wallDataArray.length; i++) {
+		if (wallDataArray[i] > 0 && strokeSnapshot[i] === 0) {
+			newPixels.add(i);
+		}
+	}
+
+	// For each new pixel, check if it's interior to the NEW stroke only
+	for (const idx of newPixels) {
+		const x = idx % wallTextureWidth;
+		const y = Math.floor(idx / wallTextureWidth);
+
+		// Check if this pixel is interior (all neighbors within radius are also new pixels)
+		let isInterior = true;
+
+		outer: for (let dy = -erosionRadius; dy <= erosionRadius && isInterior; dy++) {
+			for (let dx = -erosionRadius; dx <= erosionRadius; dx++) {
+				const distSq = dx * dx + dy * dy;
+				if (distSq > erosionRadiusSq) continue;
+
+				const nx = x + dx;
+				const ny = y + dy;
+
+				// If we hit a boundary, this is not interior
+				if (nx < 0 || nx >= wallTextureWidth || ny < 0 || ny >= wallTextureHeight) {
+					isInterior = false;
+					break outer;
+				}
+
+				const nidx = ny * wallTextureWidth + nx;
+				// Check if neighbor is part of new stroke
+				if (!newPixels.has(nidx)) {
+					isInterior = false;
+					break outer;
+				}
+			}
+		}
+
+		// Erase interior pixels of the new stroke
+		if (isInterior) {
+			wallDataArray[idx] = 0;
+		}
+	}
+
+	strokeSnapshot = null;
+	wallsDirty.set(true);
+}
+
+// Hollow out walls by eroding the interior (morphological erosion) - for all walls
+export function hollowWalls(thickness: number): void {
+	if (!wallDataArray) return;
+
+	const erosionRadius = Math.ceil(thickness / WALL_TEXTURE_SCALE);
+	const erosionRadiusSq = erosionRadius * erosionRadius;
+
+	// Create a copy to read from while we modify the original
+	const original = new Uint8Array(wallDataArray);
+
+	// For each pixel, check if it's an interior pixel (all neighbors within radius are walls)
+	for (let y = 0; y < wallTextureHeight; y++) {
+		for (let x = 0; x < wallTextureWidth; x++) {
+			const idx = y * wallTextureWidth + x;
+
+			// Only process wall pixels
+			if (original[idx] === 0) continue;
+
+			// Check if this is an interior pixel
+			let isInterior = true;
+
+			// Sample in a circle pattern for efficiency
+			outer: for (let dy = -erosionRadius; dy <= erosionRadius && isInterior; dy++) {
+				for (let dx = -erosionRadius; dx <= erosionRadius; dx++) {
+					const distSq = dx * dx + dy * dy;
+					if (distSq > erosionRadiusSq) continue;
+
+					const nx = x + dx;
+					const ny = y + dy;
+
+					// If we hit a boundary or empty pixel, this is not interior
+					if (nx < 0 || nx >= wallTextureWidth || ny < 0 || ny >= wallTextureHeight) {
+						isInterior = false;
+						break outer;
+					}
+
+					if (original[ny * wallTextureWidth + nx] === 0) {
+						isInterior = false;
+						break outer;
+					}
+				}
+			}
+
+			// Erase interior pixels
+			if (isInterior) {
+				wallDataArray[idx] = 0;
 			}
 		}
 	}
@@ -256,6 +376,10 @@ export function setWallBrushSize(value: number): void {
 	params.update((p) => ({ ...p, wallBrushSize: value }));
 }
 
+export function setWallBrushShape(value: WallBrushShape): void {
+	params.update((p) => ({ ...p, wallBrushShape: value }));
+}
+
 export function setWallTool(value: WallTool): void {
 	wallTool.set(value);
 }
@@ -283,5 +407,6 @@ export {
 	CursorShape,
 	AlgorithmMode,
 	WallTool,
+	WallBrushShape,
 	DEFAULT_PARAMS
 };

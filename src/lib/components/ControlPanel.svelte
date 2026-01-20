@@ -43,6 +43,7 @@
 		setRecording,
 		setWallTool,
 		setWallBrushSize,
+		setWallBrushShape,
 		clearWalls,
 		BoundaryMode,
 		ColorMode,
@@ -51,6 +52,7 @@
 		CursorShape,
 		AlgorithmMode,
 		WallTool,
+		WallBrushShape,
 		DEFAULT_PARAMS
 	} from '$lib/stores/simulation';
 
@@ -323,6 +325,7 @@
 		setCursorForce(DEFAULT_PARAMS.cursorForce);
 		setWallTool(WallTool.None);
 		setWallBrushSize(DEFAULT_PARAMS.wallBrushSize);
+		setWallBrushShape(DEFAULT_PARAMS.wallBrushShape);
 	}
 
 	function resetFlockingSection(e: Event): void {
@@ -413,6 +416,11 @@
 		// Ignore if user is typing in an input field
 		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
 			return;
+		}
+
+		// Blur any focused element to prevent ugly focus outlines when using shortcuts
+		if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
+			document.activeElement.blur();
 		}
 
 		// Get current values for cycling
@@ -901,7 +909,7 @@
 						openSection = 'boids';
 					}
 				},
-				// Step 3: World (topology via edge behaviors)
+				// Step 3: World (topology grid)
 				{
 					element: '#section-world',
 					popover: {
@@ -911,33 +919,34 @@
 							</svg>
 							<span>World</span>
 						</div>`,
-						description: `<p>Set edge behavior for each axis:${kbd('B', isTouch)}</p>
-							<div style="display: flex; flex-direction: column; gap: 6px; margin: 8px 0;">
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" style="width: 20px; height: 20px; flex-shrink: 0;">
+						description: `<p>Choose from 9 topologies in a 3×3 grid:${kbd('B', isTouch)}</p>
+							<p style="font-size: 11px; margin: 8px 0 4px 0;">Edge behaviors:</p>
+							<div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px;">
+								<div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
 										<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.18"/>
-										<rect x="5" y="5" width="7" height="14" fill="currentColor" opacity="0.6"/>
+										<rect x="5" y="5" width="7" height="14" fill="currentColor" opacity="0.5"/>
 									</svg>
-									<span><strong>Bounce</strong> — Boids reflect off walls</span>
+									<span><strong>Bounce</strong> — Reflect off walls</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" style="width: 20px; height: 20px; flex-shrink: 0;">
-										<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.35"/>
+								<div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
+										<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.25"/>
 										<line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/>
 									</svg>
-									<span><strong>Stitch</strong> — Edges wrap to opposite side</span>
+									<span><strong>Wrap</strong> — Teleport to opposite side</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" style="width: 20px; height: 20px; flex-shrink: 0;">
-										<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.55"/>
-										<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.55"/>
-										<line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="currentColor" stroke-width="1.4"/>
-										<line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="currentColor" stroke-width="1.4"/>
+								<div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
+										<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.4"/>
+										<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.4"/>
+										<line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="currentColor" stroke-width="1.2"/>
+										<line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="currentColor" stroke-width="1.2"/>
 									</svg>
-									<span><strong>Flip</strong> — Wrap + mirror orientation</span>
+									<span><strong>Flip</strong> — Wrap + mirror direction</span>
 								</div>
 							</div>
-							<p style="font-size: 10px; color: #71717a; margin-top: 6px;">Combine left/bottom edges to create Torus, Möbius, Klein Bottle, and more!</p>`,
+							<p style="font-size: 10px; color: #71717a;">Columns = horizontal edges, Rows = vertical edges. Click any topology to select it!</p>`,
 						side: 'left',
 						align: 'start'
 					},
@@ -2324,7 +2333,48 @@
 						</div>
 						{#if currentWallTool !== WallTool.None}
 							<div class="row">
-								<span class="label">Brush</span>
+								<span class="label">Shape</span>
+								<div class="shape-toggle shape-toggle-2">
+									<button
+										class="shape-btn"
+										class:active={currentParams.wallBrushShape === WallBrushShape.Solid}
+										onclick={() => setWallBrushShape(WallBrushShape.Solid)}
+										aria-label="Solid"
+										title="Solid"
+									>
+										<svg viewBox="0 0 24 24" class="h-5 w-5">
+											<circle cx="12" cy="12" r="7" fill="currentColor" opacity="0.4" />
+											<circle
+												cx="12"
+												cy="12"
+												r="7"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+											/>
+										</svg>
+									</button>
+									<button
+										class="shape-btn"
+										class:active={currentParams.wallBrushShape === WallBrushShape.Ring}
+										onclick={() => setWallBrushShape(WallBrushShape.Ring)}
+										aria-label="Ring"
+										title="Ring (auto-hollows on release)"
+									>
+										<svg
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											class="h-5 w-5"
+										>
+											<circle cx="12" cy="12" r="7" />
+										</svg>
+									</button>
+								</div>
+							</div>
+							<div class="row">
+								<span class="label">Size</span>
 								<input
 									type="range"
 									min="10"
@@ -2815,6 +2865,13 @@
 {/if}
 
 <style>
+	/* Remove focus outlines - shortcuts should not highlight buttons */
+	button:focus,
+	input:focus,
+	[role='button']:focus {
+		outline: none;
+	}
+
 	.panel {
 		background: rgba(8, 8, 12, 0.92);
 		backdrop-filter: blur(24px) saturate(1.1);

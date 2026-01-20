@@ -865,5 +865,5 @@ export const TOPOLOGY_NAMES = [
 	'Möbius Y',
 	'Klein X',
 	'Klein Y',
-	'Projective Plane'
+	'Roman'
 ];

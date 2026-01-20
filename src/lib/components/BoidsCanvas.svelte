@@ -3,7 +3,13 @@
 	import { initWebGPU, resizeCanvas, destroyWebGPU } from '$lib/webgpu/context';
 	import { createSimulation, type Simulation } from '$lib/webgpu/simulation';
 	import type { GPUContext, SimulationParams, CursorState } from '$lib/webgpu/types';
-	import { CursorMode, CursorShape, WallTool, calculateOptimalPopulation } from '$lib/webgpu/types';
+	import {
+		CursorMode,
+		CursorShape,
+		WallTool,
+		WallBrushShape,
+		calculateOptimalPopulation
+	} from '$lib/webgpu/types';
 	import {
 		params,
 		cursor,
@@ -17,6 +23,8 @@
 		canvasElement,
 		wallTool,
 		paintWall,
+		beginStroke,
+		endStrokeWithHollow,
 		wallsDirty
 	} from '$lib/stores/simulation';
 
@@ -144,6 +152,13 @@
 	function handleMouseDown(): void {
 		if (currentWallTool !== WallTool.None) {
 			isPaintingWall = true;
+			// Begin stroke tracking if using ring brush with pencil
+			if (
+				currentWallTool === WallTool.Pencil &&
+				currentParams.wallBrushShape === WallBrushShape.Ring
+			) {
+				beginStroke();
+			}
 			// Paint at current position immediately
 			const dpr = Math.min(window.devicePixelRatio || 1, 2);
 			const canvasX = cursorCssX * dpr;
@@ -159,11 +174,27 @@
 	}
 
 	function handleMouseUp(): void {
+		// Auto-hollow if ring brush was used for drawing
+		if (
+			isPaintingWall &&
+			currentWallTool === WallTool.Pencil &&
+			currentParams.wallBrushShape === WallBrushShape.Ring
+		) {
+			endStrokeWithHollow(currentParams.wallBrushSize);
+		}
 		isPaintingWall = false;
 		cursor.update((c) => ({ ...c, isPressed: false }));
 	}
 
 	function handleMouseLeave(): void {
+		// Auto-hollow if ring brush was used for drawing
+		if (
+			isPaintingWall &&
+			currentWallTool === WallTool.Pencil &&
+			currentParams.wallBrushShape === WallBrushShape.Ring
+		) {
+			endStrokeWithHollow(currentParams.wallBrushSize);
+		}
 		isPaintingWall = false;
 		cursor.update((c) => ({ ...c, isActive: false, isPressed: false }));
 	}
@@ -182,6 +213,13 @@
 			// Paint walls if wall tool is active
 			if (currentWallTool !== WallTool.None) {
 				isPaintingWall = true;
+				// Begin stroke tracking if using ring brush with pencil
+				if (
+					currentWallTool === WallTool.Pencil &&
+					currentParams.wallBrushShape === WallBrushShape.Ring
+				) {
+					beginStroke();
+				}
 				paintWall(
 					canvasX,
 					canvasY,
@@ -230,6 +268,14 @@
 
 	function handleTouchEnd(e: TouchEvent): void {
 		e.preventDefault();
+		// Auto-hollow if ring brush was used for drawing
+		if (
+			isPaintingWall &&
+			currentWallTool === WallTool.Pencil &&
+			currentParams.wallBrushShape === WallBrushShape.Ring
+		) {
+			endStrokeWithHollow(currentParams.wallBrushSize);
+		}
 		isPaintingWall = false;
 		// Fully reset cursor state when touch ends
 		cursor.set({ x: -9999, y: -9999, isPressed: false, isActive: false });

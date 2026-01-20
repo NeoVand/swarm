@@ -17,205 +17,185 @@
 
 	let { currentMode }: Props = $props();
 
-	// 3D Viewer state
+	// Grid layout: rows = Y behavior, cols = X behavior
+	const GRID: { mode: BoundaryMode; name: string }[][] = [
+		[
+			{ mode: BoundaryMode.Plane, name: 'Plane' },
+			{ mode: BoundaryMode.CylinderX, name: 'Cylinder X' },
+			{ mode: BoundaryMode.MobiusX, name: 'Möbius X' }
+		],
+		[
+			{ mode: BoundaryMode.CylinderY, name: 'Cylinder Y' },
+			{ mode: BoundaryMode.Torus, name: 'Torus' },
+			{ mode: BoundaryMode.KleinX, name: 'Klein X' }
+		],
+		[
+			{ mode: BoundaryMode.MobiusY, name: 'Möbius Y' },
+			{ mode: BoundaryMode.KleinY, name: 'Klein Y' },
+			{ mode: BoundaryMode.ProjectivePlane, name: 'Roman' }
+		]
+	];
+
+	const FLAT_GRID = GRID.flat();
+
+	// Single shared renderer and camera
 	let renderer: THREE.WebGLRenderer | null = null;
-	let scene: THREE.Scene | null = null;
 	let camera: THREE.PerspectiveCamera | null = null;
-	let mesh: THREE.Mesh | null = null;
-	let gridLines: THREE.LineSegments | null = null;
-	let edgeLines: Line2[] = [];
-	let edgeMaterial: LineMaterial | null = null;
+	let mainCanvas: HTMLCanvasElement | null = null;
+
+	// Per-cell scene data (loaded progressively)
+	interface CellData {
+		scene: THREE.Scene;
+		mesh: THREE.Mesh;
+		gridLines: THREE.LineSegments;
+		edgeLines: Line2[];
+		edgeMaterial: LineMaterial;
+		mode: BoundaryMode;
+		loaded: boolean;
+	}
+
+	let cells: (CellData | null)[] = Array(9).fill(null);
 	let animationId: number | null = null;
-	let canvasEl: HTMLCanvasElement | null = null;
-	let isContextLost = false;
-	let rotationX = 0.3;
-	let rotationY = 0;
-	let lastWidth = 0;
-	let lastHeight = 0;
 	let startTime = 0;
+	let rotationY = 0;
+	let loadIndex = 0;
+	let isInitialized = false;
 
-	// Edge types
-	type EdgeType = 'bounce' | 'wrap' | 'wrapFlip';
-
-	// Current displayed mode (non-reactive)
-	let displayedMode = -1;
-
-	// Derive edge config from current mode
-	function getEdgesFromMode(mode: BoundaryMode): { x: EdgeType; y: EdgeType } {
-		switch (mode) {
-			case BoundaryMode.Plane:
-				return { x: 'bounce', y: 'bounce' };
-			case BoundaryMode.CylinderX:
-				return { x: 'wrap', y: 'bounce' };
-			case BoundaryMode.CylinderY:
-				return { x: 'bounce', y: 'wrap' };
-			case BoundaryMode.Torus:
-				return { x: 'wrap', y: 'wrap' };
-			case BoundaryMode.MobiusX:
-				return { x: 'wrapFlip', y: 'bounce' };
-			case BoundaryMode.MobiusY:
-				return { x: 'bounce', y: 'wrapFlip' };
-			case BoundaryMode.KleinX:
-				return { x: 'wrapFlip', y: 'wrap' };
-			case BoundaryMode.KleinY:
-				return { x: 'wrap', y: 'wrapFlip' };
-			case BoundaryMode.ProjectivePlane:
-				return { x: 'wrapFlip', y: 'wrapFlip' };
-			default:
-				return { x: 'bounce', y: 'bounce' };
-		}
-	}
-
-	// Derive mode from edge config
-	function getModeFromEdges(x: EdgeType, y: EdgeType): BoundaryMode {
-		if (x === 'bounce' && y === 'bounce') return BoundaryMode.Plane;
-		if (x === 'wrap' && y === 'bounce') return BoundaryMode.CylinderX;
-		if (x === 'bounce' && y === 'wrap') return BoundaryMode.CylinderY;
-		if (x === 'wrap' && y === 'wrap') return BoundaryMode.Torus;
-		if (x === 'wrapFlip' && y === 'bounce') return BoundaryMode.MobiusX;
-		if (x === 'bounce' && y === 'wrapFlip') return BoundaryMode.MobiusY;
-		if (x === 'wrapFlip' && y === 'wrap') return BoundaryMode.KleinX;
-		if (x === 'wrap' && y === 'wrapFlip') return BoundaryMode.KleinY;
-		if (x === 'wrapFlip' && y === 'wrapFlip') return BoundaryMode.ProjectivePlane;
-		return BoundaryMode.Plane;
-	}
-
-	const xEdge = $derived(getEdgesFromMode(currentMode).x);
-	const yEdge = $derived(getEdgesFromMode(currentMode).y);
-
-	function setXEdge(type: EdgeType) {
-		if (type === xEdge) return; // Already selected
-		setBoundaryMode(getModeFromEdges(type, yEdge));
-	}
-
-	function setYEdge(type: EdgeType) {
-		if (type === yEdge) return; // Already selected
-		setBoundaryMode(getModeFromEdges(xEdge, type));
-	}
-
-	function initThree(canvas: HTMLCanvasElement) {
-		canvasEl = canvas;
-		scene = new THREE.Scene();
-		camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-		camera.position.z = 2.5;
-
-		renderer = new THREE.WebGLRenderer({
-			canvas,
-			antialias: true,
-			alpha: true
-		});
-		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-		resizeRendererToDisplaySize();
-		renderer.setClearColor(0x000000, 0);
-
-		// Lighting
-		const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+	// Shared lighting setup - create once, clone to each scene
+	function addLightsToScene(scene: THREE.Scene) {
+		const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 		scene.add(ambientLight);
 
-		const keyLight = new THREE.DirectionalLight(0xffffff, 0.85);
+		const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
 		keyLight.position.set(2, 3, 4);
 		scene.add(keyLight);
 
-		const fillLight = new THREE.DirectionalLight(0x88aaff, 0.35);
+		const fillLight = new THREE.DirectionalLight(0x88aaff, 0.3);
 		fillLight.position.set(-2, -1, 1.5);
 		scene.add(fillLight);
-
-		const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
-		rimLight.position.set(0, 0, -3.5);
-		scene.add(rimLight);
-
-		startTime = performance.now();
-		updateMesh(currentMode);
-		animate();
 	}
 
-	function updateMesh(mode: number) {
-		if (!scene) return;
-		if (displayedMode === mode) return;
+	// Per-topology scale and rotation adjustments
+	function getTopologyAdjustments(mode: BoundaryMode): {
+		scale: number;
+		rotationX: number;
+		rotationZ: number;
+	} {
+		switch (mode) {
+			case BoundaryMode.Plane:
+				return { scale: 0.68, rotationX: 0, rotationZ: 0 };
+			case BoundaryMode.CylinderX:
+			case BoundaryMode.CylinderY:
+				return { scale: 0.55, rotationX: 0, rotationZ: 0 };
+			case BoundaryMode.Torus:
+				return { scale: 0.78, rotationX: 0.5, rotationZ: 0 }; // Tilted to show spin
+			case BoundaryMode.MobiusX:
+			case BoundaryMode.MobiusY:
+				return { scale: 0.85, rotationX: 0, rotationZ: 0 };
+			case BoundaryMode.KleinX:
+				return { scale: 0.85, rotationX: 0, rotationZ: 0 };
+			case BoundaryMode.KleinY:
+				return { scale: 0.85, rotationX: Math.PI / 2, rotationZ: 0 }; // Vertical
+			case BoundaryMode.ProjectivePlane:
+				return { scale: 1.2, rotationX: 0, rotationZ: 0 }; // Larger Roman
+			default:
+				return { scale: 0.75, rotationX: 0, rotationZ: 0 };
+		}
+	}
 
-		if (mesh) {
-			scene.remove(mesh);
-			mesh.geometry.dispose();
-			(mesh.material as THREE.Material).dispose();
-		}
-		if (gridLines) {
-			scene.remove(gridLines);
-			gridLines.geometry.dispose();
-			(gridLines.material as THREE.Material).dispose();
-			gridLines = null;
-		}
-		for (const line of edgeLines) {
-			scene.remove(line);
-			line.geometry.dispose();
-		}
-		edgeLines = [];
-		edgeMaterial?.dispose();
-		edgeMaterial = null;
+	// Create a single cell's scene (called progressively)
+	function createCellScene(mode: BoundaryMode): CellData {
+		const scene = new THREE.Scene();
+		addLightsToScene(scene);
 
+		const adjustments = getTopologyAdjustments(mode);
+
+		// Create mesh
 		const geometry = getTopologyGeometry(mode);
-
-		// Compute center offset from main geometry
 		const bbox = new THREE.Box3().setFromBufferAttribute(
 			geometry.getAttribute('position') as THREE.BufferAttribute
 		);
 		const center = bbox.getCenter(new THREE.Vector3());
 		geometry.translate(-center.x, -center.y, -center.z);
 
-		const color = getTopologyColor(mode);
+		// Apply initial rotation to geometry if needed
+		if (adjustments.rotationX !== 0 || adjustments.rotationZ !== 0) {
+			geometry.rotateX(adjustments.rotationX);
+			geometry.rotateZ(adjustments.rotationZ);
+		}
 
+		const color = getTopologyColor(mode);
 		const material = new THREE.MeshPhysicalMaterial({
 			color: color,
 			vertexColors: true,
 			metalness: 0.1,
-			roughness: 0.38,
-			clearcoat: 0.15,
-			clearcoatRoughness: 0.35,
+			roughness: 0.4,
+			clearcoat: 0.1,
 			emissive: new THREE.Color(0x1a1d30),
-			emissiveIntensity: 0.35,
+			emissiveIntensity: 0.3,
 			transparent: false,
-			opacity: 1,
 			side: THREE.DoubleSide,
 			polygonOffset: true,
 			polygonOffsetFactor: 1,
 			polygonOffsetUnits: 1
 		});
 
-		mesh = new THREE.Mesh(geometry, material);
-		mesh.renderOrder = 0;
-		mesh.scale.setScalar(0.92);
+		const mesh = new THREE.Mesh(geometry, material);
+		mesh.scale.setScalar(adjustments.scale);
 		scene.add(mesh);
 
-		// Grid lines - apply same center offset, scaled slightly smaller to avoid z-fighting with edges
+		// Grid lines
 		const gridGeometry = getTopologyGridGeometry(mode);
 		gridGeometry.translate(-center.x, -center.y, -center.z);
+		if (adjustments.rotationX !== 0 || adjustments.rotationZ !== 0) {
+			gridGeometry.rotateX(adjustments.rotationX);
+			gridGeometry.rotateZ(adjustments.rotationZ);
+		}
 		const gridMaterial = new THREE.LineBasicMaterial({
 			color: 0xffffff,
 			transparent: true,
-			opacity: 0.22,
+			opacity: 0.25,
 			depthTest: true,
 			depthWrite: false
 		});
-		gridLines = new THREE.LineSegments(gridGeometry, gridMaterial);
-		gridLines.renderOrder = 1;
-		gridLines.scale.setScalar(0.919); // Slightly smaller than edges (0.922) to prevent z-fighting
+		const gridLines = new THREE.LineSegments(gridGeometry, gridMaterial);
+		gridLines.scale.setScalar(adjustments.scale * 0.998);
 		scene.add(gridLines);
 
-		// Edge lines - apply same center offset
+		// Edge lines
 		const edgeGeometries = getTopologyEdgeGeometries(mode);
 
-		// Create shared material for thick lines
-		edgeMaterial = new LineMaterial({
+		// Apply transformations to edge geometries
+		if (edgeGeometries.free) {
+			edgeGeometries.free.translate(-center.x, -center.y, -center.z);
+			if (adjustments.rotationX !== 0 || adjustments.rotationZ !== 0) {
+				edgeGeometries.free.rotateX(adjustments.rotationX);
+				edgeGeometries.free.rotateZ(adjustments.rotationZ);
+			}
+		}
+		if (edgeGeometries.stitch) {
+			edgeGeometries.stitch.translate(-center.x, -center.y, -center.z);
+			if (adjustments.rotationX !== 0 || adjustments.rotationZ !== 0) {
+				edgeGeometries.stitch.rotateX(adjustments.rotationX);
+				edgeGeometries.stitch.rotateZ(adjustments.rotationZ);
+			}
+		}
+
+		const edgeMaterial = new LineMaterial({
 			color: 0xffffff,
-			transparent: false,
+			transparent: true,
 			opacity: 1.0,
-			linewidth: 2,
+			linewidth: 0.4,
 			worldUnits: false,
 			depthTest: true,
 			depthWrite: true
 		});
-		edgeMaterial.resolution.set(lastWidth || 220, lastHeight || 220);
 
-		// Helper to create Line2 from segment positions (handles multiple disconnected curves)
+		const cellSize = Math.floor((mainCanvas?.clientWidth || 210) / 3);
+		edgeMaterial.resolution.set(cellSize, cellSize);
+
+		const edgeLines: Line2[] = [];
+
 		const createEdgeLines = (positions: Float32Array | number[]) => {
 			const arr = Array.from(positions);
 			if (arr.length < 6) return;
@@ -227,46 +207,38 @@
 				if (polylinePoints.length >= 6) {
 					const lineGeometry = new LineGeometry();
 					lineGeometry.setPositions(polylinePoints);
-					const line = new Line2(lineGeometry, edgeMaterial!);
+					const line = new Line2(lineGeometry, edgeMaterial);
 					line.computeLineDistances();
-					line.renderOrder = 2;
-					line.scale.setScalar(0.922); // Slightly larger than grid (0.92) to prevent z-fighting
-					scene!.add(line);
+					line.scale.setScalar(adjustments.scale * 1.002);
+					scene.add(line);
 					edgeLines.push(line);
 				}
 				polylinePoints = [];
 			};
 
-			// Process segments (each segment is 6 values: 2 points × 3 coords)
 			for (let segIdx = 0; segIdx < arr.length / 6; segIdx++) {
 				const base = segIdx * 6;
-				const p1 = [arr[base] - center.x, arr[base + 1] - center.y, arr[base + 2] - center.z];
-				const p2 = [arr[base + 3] - center.x, arr[base + 4] - center.y, arr[base + 5] - center.z];
+				// Positions are already transformed, just use them directly
+				const p1 = [arr[base], arr[base + 1], arr[base + 2]];
+				const p2 = [arr[base + 3], arr[base + 4], arr[base + 5]];
 
 				if (polylinePoints.length === 0) {
-					// Start new curve
 					polylinePoints.push(...p1, ...p2);
 				} else {
-					// Check if this segment continues from the last point
 					const lastIdx = polylinePoints.length - 3;
 					const dist = Math.sqrt(
 						(p1[0] - polylinePoints[lastIdx]) ** 2 +
 							(p1[1] - polylinePoints[lastIdx + 1]) ** 2 +
 							(p1[2] - polylinePoints[lastIdx + 2]) ** 2
 					);
-
 					if (dist < epsilon) {
-						// Continuous - just add the endpoint
 						polylinePoints.push(...p2);
 					} else {
-						// Discontinuity - finish current curve, start new one
 						finishCurve();
 						polylinePoints.push(...p1, ...p2);
 					}
 				}
 			}
-
-			// Finish last curve
 			finishCurve();
 		};
 
@@ -279,332 +251,315 @@
 			createEdgeLines(pos.array as Float32Array);
 		}
 
-		displayedMode = mode;
+		return {
+			scene,
+			mesh,
+			gridLines,
+			edgeLines,
+			edgeMaterial,
+			mode,
+			loaded: true
+		};
 	}
 
-	function resizeRendererToDisplaySize() {
-		if (!renderer || !camera || !canvasEl) return;
-		const width = canvasEl.clientWidth || 220;
-		const height = canvasEl.clientHeight || 220;
-		if (width === lastWidth && height === lastHeight) return;
-		lastWidth = width;
-		lastHeight = height;
-		renderer.setSize(width, height, false);
-		camera.aspect = width / height;
-		camera.updateProjectionMatrix();
-		edgeMaterial?.resolution.set(width, height);
+	// Progressive loading - load one cell per frame
+	function loadNextCell() {
+		if (loadIndex >= 9) return;
+
+		const mode = FLAT_GRID[loadIndex].mode;
+		cells[loadIndex] = createCellScene(mode);
+		loadIndex++;
+
+		// Schedule next load
+		if (loadIndex < 9) {
+			requestAnimationFrame(loadNextCell);
+		}
+	}
+
+	function initRenderer(canvas: HTMLCanvasElement) {
+		if (isInitialized) return;
+		isInitialized = true;
+		mainCanvas = canvas;
+
+		renderer = new THREE.WebGLRenderer({
+			canvas,
+			antialias: true,
+			alpha: true
+		});
+		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+		renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+		renderer.setClearColor(0x000000, 0);
+		renderer.setScissorTest(true);
+
+		camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+		camera.position.set(0, 0.8, 2.6); // Slightly above, looking down
+		camera.lookAt(0, 0, 0);
+
+		startTime = performance.now();
+		rotationY = 0;
+		loadIndex = 0;
+
+		// Start progressive loading
+		requestAnimationFrame(loadNextCell);
+
+		// Start animation loop
+		animate();
 	}
 
 	function animate() {
-		if (isContextLost) return;
 		animationId = requestAnimationFrame(animate);
 
-		if (scene && displayedMode !== currentMode) {
-			updateMesh(currentMode);
-		}
+		if (!renderer || !camera || !mainCanvas) return;
 
-		resizeRendererToDisplaySize();
+		const canvasWidth = mainCanvas.clientWidth;
+		const canvasHeight = mainCanvas.clientHeight;
+		const cellWidth = Math.floor(canvasWidth / 3);
+		const cellHeight = Math.floor(canvasHeight / 3);
 
-		if (!Number.isFinite(rotationX) || !Number.isFinite(rotationY)) {
-			rotationX = 0.3;
-			rotationY = 0;
-		}
+		rotationY += 0.008;
+		const elapsed = (performance.now() - startTime) * 0.001;
+		const rotationX = 0.25 + Math.sin(elapsed * 0.4) * 0.15;
 
-		if (mesh && gridLines) {
-			rotationY += 0.006;
-			const elapsed = (performance.now() - startTime) * 0.001;
-			rotationX = 0.25 + Math.sin(elapsed * 0.35) * 0.18;
-			mesh.rotation.x = rotationX;
-			mesh.rotation.y = rotationY;
-			gridLines.rotation.x = rotationX;
-			gridLines.rotation.y = rotationY;
-			for (const line of edgeLines) {
+		// Clear the entire canvas
+		renderer.setScissor(0, 0, canvasWidth, canvasHeight);
+		renderer.setViewport(0, 0, canvasWidth, canvasHeight);
+		renderer.clear();
+
+		// Render each cell
+		for (let i = 0; i < 9; i++) {
+			const cell = cells[i];
+			if (!cell) continue;
+
+			const row = Math.floor(i / 3);
+			const col = i % 3;
+
+			// Calculate viewport (Y is flipped in WebGL)
+			const x = col * cellWidth;
+			const y = (2 - row) * cellHeight;
+
+			const isSelected = cell.mode === currentMode;
+
+			// Update material brightness based on selection
+			const mat = cell.mesh.material as THREE.MeshPhysicalMaterial;
+			const targetEmissive = isSelected ? 0.45 : 0.15;
+			mat.emissiveIntensity = THREE.MathUtils.lerp(mat.emissiveIntensity, targetEmissive, 0.1);
+
+			// Adjust color saturation for selected vs unselected
+			if (isSelected) {
+				mat.color.setHex(getTopologyColor(cell.mode));
+			} else {
+				const baseColor = new THREE.Color(getTopologyColor(cell.mode));
+				const gray = new THREE.Color(0x555566);
+				mat.color.lerpColors(gray, baseColor, 0.5);
+			}
+
+			// Grid opacity
+			const gridMat = cell.gridLines.material as THREE.LineBasicMaterial;
+			gridMat.opacity = isSelected ? 0.22 : 0.08;
+
+			// Edge opacity
+			cell.edgeMaterial.opacity = isSelected ? 1.0 : 0.4;
+
+			// Rotate
+			cell.mesh.rotation.x = rotationX;
+			cell.mesh.rotation.y = rotationY;
+			cell.gridLines.rotation.x = rotationX;
+			cell.gridLines.rotation.y = rotationY;
+			for (const line of cell.edgeLines) {
 				line.rotation.x = rotationX;
 				line.rotation.y = rotationY;
 			}
+
+			// Render this cell
+			renderer.setScissor(x, y, cellWidth, cellHeight);
+			renderer.setViewport(x, y, cellWidth, cellHeight);
+			renderer.render(cell.scene, camera);
+		}
+	}
+
+	function disposeAll() {
+		if (animationId) {
+			cancelAnimationFrame(animationId);
+			animationId = null;
 		}
 
-		if (renderer && scene && camera) {
-			renderer.render(scene, camera);
+		for (const cell of cells) {
+			if (cell) {
+				cell.mesh.geometry.dispose();
+				(cell.mesh.material as THREE.Material).dispose();
+				cell.gridLines.geometry.dispose();
+				(cell.gridLines.material as THREE.Material).dispose();
+				for (const line of cell.edgeLines) {
+					line.geometry.dispose();
+				}
+				cell.edgeMaterial.dispose();
+			}
 		}
-	}
+		cells = Array(9).fill(null);
 
-	function handleContextLost(event: Event) {
-		event.preventDefault();
-		isContextLost = true;
-		if (animationId) cancelAnimationFrame(animationId);
-	}
-
-	function handleContextRestored() {
-		isContextLost = false;
-		if (!canvasEl) return;
-		disposeThree();
-		initThree(canvasEl);
-	}
-
-	function disposeThree() {
-		if (animationId) cancelAnimationFrame(animationId);
 		renderer?.dispose();
 		renderer = null;
-		scene = null;
 		camera = null;
-		lastWidth = 0;
-		lastHeight = 0;
-		if (mesh) {
-			mesh.geometry.dispose();
-			(mesh.material as THREE.Material).dispose();
-			mesh = null;
-		}
-		if (gridLines) {
-			gridLines.geometry.dispose();
-			(gridLines.material as THREE.Material).dispose();
-			gridLines = null;
-		}
-		for (const line of edgeLines) {
-			line.geometry.dispose();
-		}
-		edgeLines = [];
-		edgeMaterial?.dispose();
-		edgeMaterial = null;
+		mainCanvas = null;
+		isInitialized = false;
+		loadIndex = 0;
 	}
 
-	function threeCanvas(node: HTMLCanvasElement) {
-		node.addEventListener('webglcontextlost', handleContextLost);
-		node.addEventListener('webglcontextrestored', handleContextRestored);
-		initThree(node);
-		return () => {
-			node.removeEventListener('webglcontextlost', handleContextLost);
-			node.removeEventListener('webglcontextrestored', handleContextRestored);
-			disposeThree();
+	function canvasAction(node: HTMLCanvasElement) {
+		initRenderer(node);
+		return {
+			destroy() {
+				disposeAll();
+			}
 		};
 	}
+
+	function handleSelect(mode: BoundaryMode) {
+		if (mode !== currentMode) {
+			setBoundaryMode(mode);
+		}
+	}
+
+	function handleKeydown(event: KeyboardEvent, mode: BoundaryMode) {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			handleSelect(mode);
+		}
+	}
+
+	// Get cell position for click handling
+	function handleCanvasClick(event: MouseEvent) {
+		if (!mainCanvas) return;
+
+		const rect = mainCanvas.getBoundingClientRect();
+		const x = event.clientX - rect.left;
+		const y = event.clientY - rect.top;
+
+		const cellWidth = rect.width / 3;
+		const cellHeight = rect.height / 3;
+
+		const col = Math.floor(x / cellWidth);
+		const row = Math.floor(y / cellHeight);
+
+		if (col >= 0 && col < 3 && row >= 0 && row < 3) {
+			const mode = GRID[row][col].mode;
+			handleSelect(mode);
+		}
+	}
+
+	// Cleanup on destroy
+	$effect(() => {
+		return () => {
+			disposeAll();
+		};
+	});
 </script>
 
-<div class="topology-selector">
-	<div class="topology-stage">
-		<canvas class="canvas-container" {@attach threeCanvas} aria-hidden="true"></canvas>
+<div class="topology-grid">
+	<canvas
+		class="grid-canvas"
+		use:canvasAction
+		onclick={handleCanvasClick}
+		onkeydown={(e) => {
+			if (e.key === 'Enter' || e.key === ' ') handleCanvasClick(e as unknown as MouseEvent);
+		}}
+		role="grid"
+		tabindex="0"
+		aria-label="Topology selection grid"
+	></canvas>
 
-		<!-- Left edge buttons (X axis) -->
-		<div class="edge-group vertical left">
-			<button
-				class="edge-btn"
-				class:active={xEdge === 'bounce'}
-				onclick={() => setXEdge('bounce')}
-				title="Bounce"
-			>
-				<svg viewBox="0 0 24 24">
-					<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.18" />
-					<rect x="5" y="5" width="7" height="14" fill="currentColor" opacity="0.6" />
-				</svg>
-			</button>
-			<button
-				class="edge-btn"
-				class:active={xEdge === 'wrap'}
-				onclick={() => setXEdge('wrap')}
-				title="Stitch"
-			>
-				<svg viewBox="0 0 24 24">
-					<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.35" />
-					<line
-						x1="12"
-						y1="5"
-						x2="12"
-						y2="19"
-						stroke="currentColor"
-						stroke-width="1.6"
-						stroke-dasharray="2 2"
-						stroke-linecap="butt"
-					/>
-				</svg>
-			</button>
-			<button
-				class="edge-btn"
-				class:active={xEdge === 'wrapFlip'}
-				onclick={() => setXEdge('wrapFlip')}
-				title="Flip & Stitch"
-			>
-				<svg viewBox="0 0 24 24">
-					<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.55" />
-					<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.55" />
-					<line
-						x1="6.5"
-						y1="6.5"
-						x2="17.5"
-						y2="17.5"
-						stroke="currentColor"
-						stroke-width="1.4"
-						stroke-linecap="round"
-					/>
-					<line
-						x1="17.5"
-						y1="6.5"
-						x2="6.5"
-						y2="17.5"
-						stroke="currentColor"
-						stroke-width="1.4"
-						stroke-linecap="round"
-					/>
-				</svg>
-			</button>
-		</div>
-
-		<!-- Bottom edge buttons (Y axis) -->
-		<div class="edge-group horizontal bottom">
-			<button
-				class="edge-btn"
-				class:active={yEdge === 'bounce'}
-				onclick={() => setYEdge('bounce')}
-				title="Bounce"
-			>
-				<svg viewBox="0 0 24 24">
-					<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.18" />
-					<rect x="5" y="12" width="14" height="7" fill="currentColor" opacity="0.6" />
-				</svg>
-			</button>
-			<button
-				class="edge-btn"
-				class:active={yEdge === 'wrap'}
-				onclick={() => setYEdge('wrap')}
-				title="Stitch"
-			>
-				<svg viewBox="0 0 24 24">
-					<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.35" />
-					<line
-						x1="5"
-						y1="12"
-						x2="19"
-						y2="12"
-						stroke="currentColor"
-						stroke-width="1.6"
-						stroke-dasharray="2 2"
-						stroke-linecap="butt"
-					/>
-				</svg>
-			</button>
-			<button
-				class="edge-btn"
-				class:active={yEdge === 'wrapFlip'}
-				onclick={() => setYEdge('wrapFlip')}
-				title="Flip & Stitch"
-			>
-				<svg viewBox="0 0 24 24">
-					<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.55" />
-					<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.55" />
-					<line
-						x1="6.5"
-						y1="6.5"
-						x2="17.5"
-						y2="17.5"
-						stroke="currentColor"
-						stroke-width="1.4"
-						stroke-linecap="round"
-					/>
-					<line
-						x1="17.5"
-						y1="6.5"
-						x2="6.5"
-						y2="17.5"
-						stroke="currentColor"
-						stroke-width="1.4"
-						stroke-linecap="round"
-					/>
-				</svg>
-			</button>
-		</div>
+	<!-- Overlay for labels and selection indicators -->
+	<div class="labels-overlay">
+		{#each GRID as row, rowIdx (rowIdx)}
+			<div class="label-row">
+				{#each row as cell (cell.mode)}
+					{@const isSelected = cell.mode === currentMode}
+					<div
+						class="label-cell"
+						class:selected={isSelected}
+						onclick={() => handleSelect(cell.mode)}
+						onkeydown={(e) => handleKeydown(e, cell.mode)}
+						role="button"
+						tabindex="0"
+						title={cell.name}
+					>
+						<span class="cell-label">{cell.name}</span>
+					</div>
+				{/each}
+			</div>
+		{/each}
 	</div>
 </div>
 
 <style>
-	.topology-selector {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0;
-		padding: 0;
-		width: 100%;
-	}
-
-	.topology-stage {
+	.topology-grid {
 		position: relative;
 		width: 100%;
-		aspect-ratio: 1.1 / 1;
-		height: auto;
-		padding-left: 36px;
-		padding-bottom: 34px;
-		box-sizing: border-box;
+		aspect-ratio: 1;
 	}
 
-	.canvas-container {
+	.grid-canvas {
 		width: 100%;
 		height: 100%;
 		display: block;
 		border-radius: 8px;
-		overflow: hidden;
-		pointer-events: none;
-		user-select: none;
-		touch-action: none;
-		background: transparent;
-		border: none;
-		box-shadow: none;
+		cursor: pointer;
 	}
 
-	.edge-group.left {
+	.labels-overlay {
 		position: absolute;
-		left: 0;
 		top: 0;
-		height: calc(100% - 36px);
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		gap: 4px;
-	}
-
-	.edge-group.bottom {
-		position: absolute;
-		left: 36px;
+		left: 0;
 		right: 0;
 		bottom: 0;
-		height: 36px;
 		display: flex;
-		flex-direction: row;
-		justify-content: center;
-		align-items: center;
-		gap: 4px;
+		flex-direction: column;
+		pointer-events: none;
 	}
 
-	/* Edge button groups */
-	.edge-group {
+	.label-row {
+		flex: 1;
 		display: flex;
 	}
 
-	.edge-btn {
+	.label-cell {
+		flex: 1;
 		display: flex;
-		align-items: center;
+		align-items: flex-end;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
-		background: rgba(255, 255, 255, 0.03);
+		padding-bottom: 2px;
 		border: 1.5px solid transparent;
 		border-radius: 6px;
+		margin: 1px;
+		pointer-events: auto;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: all 0.2s ease;
+	}
+
+	.label-cell:hover {
+		background: rgba(255, 255, 255, 0.04);
+		border-color: rgba(255, 255, 255, 0.12);
+	}
+
+	.label-cell.selected {
+		border-color: rgba(124, 154, 255, 0.5);
+		box-shadow: 0 0 10px rgba(124, 154, 255, 0.15);
+	}
+
+	.cell-label {
+		font-size: 6px;
+		font-weight: 500;
 		color: rgba(255, 255, 255, 0.4);
-		padding: 4px;
+		text-transform: uppercase;
+		letter-spacing: 0.2px;
+		transition: color 0.2s ease;
 	}
 
-	.edge-btn:hover {
-		background: rgba(255, 255, 255, 0.08);
+	.label-cell.selected .cell-label {
+		color: rgba(185, 199, 255, 0.9);
+	}
+
+	.label-cell:hover .cell-label {
 		color: rgba(255, 255, 255, 0.7);
-	}
-
-	.edge-btn.active {
-		background: rgba(185, 199, 255, 0.1);
-		border-color: rgba(185, 199, 255, 0.5);
-		color: #b9c7ff;
-	}
-
-	.edge-btn svg {
-		width: 100%;
-		height: 100%;
 	}
 </style>

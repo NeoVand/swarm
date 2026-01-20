@@ -55,6 +55,11 @@ export enum WallTool {
 	Eraser = 2 // Erase walls
 }
 
+export enum WallBrushShape {
+	Solid = 0, // Filled circle
+	Ring = 1 // Hollow ring
+}
+
 export interface SimulationParams {
 	alignment: number;
 	cohesion: number;
@@ -85,6 +90,7 @@ export interface SimulationParams {
 	timeScale: number; // Simulation speed multiplier (0.25-2.0)
 	// Wall drawing
 	wallBrushSize: number; // Brush size for pencil/eraser (10-100 pixels)
+	wallBrushShape: WallBrushShape; // Brush shape
 }
 
 export interface CursorState {
@@ -168,7 +174,8 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	// Simulation timing
 	timeScale: 1.0, // Normal speed
 	// Wall drawing
-	wallBrushSize: 30 // Default brush size
+	wallBrushSize: 30, // Default brush size
+	wallBrushShape: WallBrushShape.Solid // Default brush shape
 };
 
 /**
