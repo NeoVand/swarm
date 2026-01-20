@@ -79,10 +79,12 @@
 	const yEdge = $derived(getEdgesFromMode(currentMode).y);
 
 	function setXEdge(type: EdgeType) {
+		if (type === xEdge) return; // Already selected
 		setBoundaryMode(getModeFromEdges(type, yEdge));
 	}
 
 	function setYEdge(type: EdgeType) {
+		if (type === yEdge) return; // Already selected
 		setBoundaryMode(getModeFromEdges(xEdge, type));
 	}
 
