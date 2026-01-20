@@ -46,7 +46,8 @@
 		ColorSpectrum,
 		CursorMode,
 		CursorShape,
-		AlgorithmMode
+		AlgorithmMode,
+		DEFAULT_PARAMS
 	} from '$lib/stores/simulation';
 
 	let currentParams = $derived($params);
@@ -261,6 +262,75 @@
 
 	function toggleSection(section: typeof openSection) {
 		openSection = openSection === section ? section : section; // Always open clicked section
+	}
+
+	// Section tour step indices (for jumping to specific cards)
+	const sectionTourSteps: Record<typeof openSection, number> = {
+		boids: 2,
+		world: 3,
+		interaction: 4,
+		flocking: 5,
+		dynamics: 6,
+		algorithm: 7
+	};
+
+	// Start tour at a specific section
+	function startTourAtSection(section: typeof openSection): void {
+		if (!$isPanelOpen) {
+			isPanelOpen.set(true);
+		}
+		setTimeout(() => {
+			startTourAtStep(sectionTourSteps[section]);
+		}, 100);
+	}
+
+	// Reset functions for each section
+	function resetBoidsSection(e: Event): void {
+		e.stopPropagation();
+		setPopulation(DEFAULT_PARAMS.population);
+		setBoidSize(DEFAULT_PARAMS.boidSize);
+		setTrailLength(DEFAULT_PARAMS.trailLength);
+		setColorMode(DEFAULT_PARAMS.colorMode);
+		setColorSpectrum(DEFAULT_PARAMS.colorSpectrum);
+	}
+
+	function resetWorldSection(e: Event): void {
+		e.stopPropagation();
+		setBoundaryMode(DEFAULT_PARAMS.boundaryMode);
+	}
+
+	function resetInteractionSection(e: Event): void {
+		e.stopPropagation();
+		setCursorMode(DEFAULT_PARAMS.cursorMode);
+		setCursorVortex(DEFAULT_PARAMS.cursorVortex);
+		setCursorShape(DEFAULT_PARAMS.cursorShape);
+		setCursorRadius(DEFAULT_PARAMS.cursorRadius);
+		setCursorForce(DEFAULT_PARAMS.cursorForce);
+	}
+
+	function resetFlockingSection(e: Event): void {
+		e.stopPropagation();
+		setAlignment(DEFAULT_PARAMS.alignment);
+		setCohesion(DEFAULT_PARAMS.cohesion);
+		setSeparation(DEFAULT_PARAMS.separation);
+		setPerception(DEFAULT_PARAMS.perception);
+	}
+
+	function resetDynamicsSection(e: Event): void {
+		e.stopPropagation();
+		setMaxSpeed(DEFAULT_PARAMS.maxSpeed);
+		setMaxForce(DEFAULT_PARAMS.maxForce);
+		setNoise(DEFAULT_PARAMS.noise);
+		setRebels(DEFAULT_PARAMS.rebels);
+		setTimeScale(DEFAULT_PARAMS.timeScale);
+	}
+
+	function resetAlgorithmSection(e: Event): void {
+		e.stopPropagation();
+		setAlgorithmMode(DEFAULT_PARAMS.algorithmMode);
+		setKNeighbors(DEFAULT_PARAMS.kNeighbors);
+		setSampleCount(DEFAULT_PARAMS.sampleCount);
+		setIdealDensity(DEFAULT_PARAMS.idealDensity);
 	}
 
 	function selectPalette(spectrum: ColorSpectrum) {
@@ -573,6 +643,10 @@
 
 	// Driver.js tour configuration
 	function startTour(): void {
+		startTourAtStep(0);
+	}
+
+	function startTourAtStep(startStep: number): void {
 		// Ensure panel is open before starting tour
 		if (!$isPanelOpen) {
 			isPanelOpen.set(true);
@@ -1022,7 +1096,7 @@
 				steps: tourSteps
 			});
 
-			driverObj.drive();
+			driverObj.drive(startStep);
 		}, 250);
 	}
 
@@ -1197,9 +1271,19 @@
 						</svg>
 						<span class="section-label">Boids</span>
 					</div>
-					<svg class="section-chevron" class:open={openSection === 'boids'} viewBox="0 0 20 20" fill="currentColor">
-						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-					</svg>
+					<div class="section-actions">
+						{#if openSection === 'boids'}
+							<span class="section-action-btn" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); startTourAtSection('boids'); }} title="Help">
+								<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+							</span>
+							<span class="section-action-btn" role="button" tabindex="0" onclick={resetBoidsSection} title="Reset">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+							</span>
+						{/if}
+						<svg class="section-chevron" class:open={openSection === 'boids'} viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</button>
 				{#if openSection === 'boids'}
 					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
@@ -1348,9 +1432,19 @@
 						</svg>
 						<span class="section-label">World <span class="section-value">({TOPOLOGY_NAMES[currentParams.boundaryMode] ?? 'Plane'})</span></span>
 					</div>
-					<svg class="section-chevron" class:open={openSection === 'world'} viewBox="0 0 20 20" fill="currentColor">
-						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-					</svg>
+					<div class="section-actions">
+						{#if openSection === 'world'}
+							<span class="section-action-btn" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); startTourAtSection('world'); }} title="Help">
+								<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+							</span>
+							<span class="section-action-btn" role="button" tabindex="0" onclick={resetWorldSection} title="Reset">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+							</span>
+						{/if}
+						<svg class="section-chevron" class:open={openSection === 'world'} viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</button>
 				{#if openSection === 'world'}
 				<div class="section-content topology-section" transition:slide={{ duration: 150, easing: cubicOut }}>
@@ -1378,9 +1472,19 @@
 						</svg>
 						<span class="section-label">Interaction</span>
 					</div>
-					<svg class="section-chevron" class:open={openSection === 'interaction'} viewBox="0 0 20 20" fill="currentColor">
-						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-					</svg>
+					<div class="section-actions">
+						{#if openSection === 'interaction'}
+							<span class="section-action-btn" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); startTourAtSection('interaction'); }} title="Help">
+								<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+							</span>
+							<span class="section-action-btn" role="button" tabindex="0" onclick={resetInteractionSection} title="Reset">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+							</span>
+						{/if}
+						<svg class="section-chevron" class:open={openSection === 'interaction'} viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</button>
 				{#if openSection === 'interaction'}
 				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
@@ -1499,9 +1603,19 @@
 						</svg>
 						<span class="section-label">Flocking</span>
 					</div>
-					<svg class="section-chevron" class:open={openSection === 'flocking'} viewBox="0 0 20 20" fill="currentColor">
-						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-					</svg>
+					<div class="section-actions">
+						{#if openSection === 'flocking'}
+							<span class="section-action-btn" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); startTourAtSection('flocking'); }} title="Help">
+								<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+							</span>
+							<span class="section-action-btn" role="button" tabindex="0" onclick={resetFlockingSection} title="Reset">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+							</span>
+						{/if}
+						<svg class="section-chevron" class:open={openSection === 'flocking'} viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</button>
 				{#if openSection === 'flocking'}
 				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
@@ -1543,9 +1657,19 @@
 						</svg>
 						<span class="section-label">Dynamics</span>
 					</div>
-					<svg class="section-chevron" class:open={openSection === 'dynamics'} viewBox="0 0 20 20" fill="currentColor">
-						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-					</svg>
+					<div class="section-actions">
+						{#if openSection === 'dynamics'}
+							<span class="section-action-btn" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); startTourAtSection('dynamics'); }} title="Help">
+								<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+							</span>
+							<span class="section-action-btn" role="button" tabindex="0" onclick={resetDynamicsSection} title="Reset">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+							</span>
+						{/if}
+						<svg class="section-chevron" class:open={openSection === 'dynamics'} viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</button>
 				{#if openSection === 'dynamics'}
 				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
@@ -1602,9 +1726,19 @@
 						</svg>
 						<span class="section-label">Algorithm</span>
 					</div>
-					<svg class="section-chevron" class:open={openSection === 'algorithm'} viewBox="0 0 20 20" fill="currentColor">
-						<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-					</svg>
+					<div class="section-actions">
+						{#if openSection === 'algorithm'}
+							<span class="section-action-btn" role="button" tabindex="0" onclick={(e) => { e.stopPropagation(); startTourAtSection('algorithm'); }} title="Help">
+								<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+							</span>
+							<span class="section-action-btn" role="button" tabindex="0" onclick={resetAlgorithmSection} title="Reset">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+							</span>
+						{/if}
+						<svg class="section-chevron" class:open={openSection === 'algorithm'} viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+						</svg>
+					</div>
 				</button>
 				{#if openSection === 'algorithm'}
 				<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
@@ -1888,6 +2022,33 @@
 		text-transform: none;
 		letter-spacing: 0.02em;
 		color: rgb(113 113 122);
+	}
+	.section-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.section-action-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: rgb(113 113 122);
+		cursor: pointer;
+		transition: color 0.15s, background 0.15s;
+	}
+	.section-action-btn:hover {
+		color: rgb(161 161 170);
+		background: rgba(255, 255, 255, 0.05);
+	}
+	.section-action-btn svg {
+		width: 12px;
+		height: 12px;
 	}
 	.section-chevron {
 		width: 14px;
