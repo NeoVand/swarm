@@ -384,8 +384,8 @@
 		</div>
 	{/if}
 
-	<!-- Custom cursor overlay for boid interaction -->
-	{#if currentCursor?.isActive && currentWallTool === WallTool.None && (currentParams?.cursorMode !== CursorMode.Off || currentParams?.cursorVortex)}
+	<!-- Custom cursor overlay for boid interaction (shows alongside wall tool cursor) -->
+	{#if currentCursor?.isActive && (currentParams?.cursorMode !== CursorMode.Off || currentParams?.cursorVortex)}
 		{@const radius = currentParams?.cursorRadius ?? 50}
 		{@const mode = currentParams?.cursorMode ?? CursorMode.Off}
 		{@const isAttract = mode === CursorMode.Attract}

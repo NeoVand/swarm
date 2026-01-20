@@ -518,6 +518,27 @@
 				}
 				break;
 
+			// Wall drawing tools (5-8)
+			case '5':
+				event.preventDefault();
+				setWallTool(currentWallTool === WallTool.None ? WallTool.Pencil : WallTool.None);
+				break;
+
+			case '6':
+				event.preventDefault();
+				setWallTool(WallTool.Pencil);
+				break;
+
+			case '7':
+				event.preventDefault();
+				setWallTool(WallTool.Eraser);
+				break;
+
+			case '8':
+				event.preventDefault();
+				clearWalls();
+				break;
+
 			// Cycle through options
 			case 'b': {
 				event.preventDefault();
@@ -565,15 +586,8 @@
 			}
 
 			// Flocking parameters: Q/W for Align, E/D for Cohesion, Z/X for Separate
+			// Left key = decrease, Right key = increase (matches keyboard layout)
 			case 'q':
-				event.preventDefault();
-				if (currentParams) {
-					const newAlign = Math.min(currentParams.alignment + 0.1, 2);
-					setAlignment(newAlign);
-				}
-				break;
-
-			case 'w':
 				event.preventDefault();
 				if (currentParams) {
 					const newAlign = Math.max(currentParams.alignment - 0.1, 0);
@@ -581,15 +595,15 @@
 				}
 				break;
 
-			case 'e':
+			case 'w':
 				event.preventDefault();
 				if (currentParams) {
-					const newCohesion = Math.min(currentParams.cohesion + 0.1, 2);
-					setCohesion(newCohesion);
+					const newAlign = Math.min(currentParams.alignment + 0.1, 2);
+					setAlignment(newAlign);
 				}
 				break;
 
-			case 'd':
+			case 'e':
 				event.preventDefault();
 				if (currentParams) {
 					const newCohesion = Math.max(currentParams.cohesion - 0.1, 0);
@@ -597,10 +611,18 @@
 				}
 				break;
 
+			case 'd':
+				event.preventDefault();
+				if (currentParams) {
+					const newCohesion = Math.min(currentParams.cohesion + 0.1, 2);
+					setCohesion(newCohesion);
+				}
+				break;
+
 			case 'z':
 				event.preventDefault();
 				if (currentParams) {
-					const newSep = Math.min(currentParams.separation + 0.1, 2);
+					const newSep = Math.max(currentParams.separation - 0.1, 0);
 					setSeparation(newSep);
 				}
 				break;
@@ -608,7 +630,7 @@
 			case 'x':
 				event.preventDefault();
 				if (currentParams) {
-					const newSep = Math.max(currentParams.separation - 0.1, 0);
+					const newSep = Math.min(currentParams.separation + 0.1, 2);
 					setSeparation(newSep);
 				}
 				break;
@@ -935,10 +957,10 @@
 							</svg>
 							<span>Interaction</span>
 						</div>`,
-						description: `<p>${isTouch ? 'Touch' : 'Move your cursor over'} the canvas to interact:</p>
-							<div style="display: flex; flex-direction: column; gap: 5px; margin-top: 8px;">
+						description: `<p><strong style="color: #e4e4e7;">Force</strong> — ${isTouch ? 'Touch' : 'Move cursor over'} canvas:</p>
+							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
 								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
+									<svg viewBox="0 0 24 24" style="width: 15px; height: 15px; flex-shrink: 0;">
 										<g stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
 											<path d="M12 1 L12 8 M9 5 L12 8 L15 5"/>
 											<path d="M1.5 19.5 L7.5 13.5 M2 14.5 L7.5 13.5 L6.5 19"/>
@@ -946,10 +968,10 @@
 										</g>
 										<circle cx="12" cy="12" r="2.5" fill="#22d3ee"/>
 									</svg>
-									<span><strong>Attract</strong> — Pull boids toward cursor${kbd('2', isTouch)}</span>
+									<span><strong>Attract</strong> — Pull boids${kbd('2', isTouch)}</span>
 								</div>
 								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
+									<svg viewBox="0 0 24 24" style="width: 15px; height: 15px; flex-shrink: 0;">
 										<g stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
 											<path d="M12 8 L12 1 M9 4 L12 1 L15 4"/>
 											<path d="M7.5 13.5 L1.5 19.5 M5 19.5 L1.5 19.5 L1.5 16"/>
@@ -957,34 +979,42 @@
 										</g>
 										<circle cx="12" cy="12" r="2.5" fill="#fb7185"/>
 									</svg>
-									<span><strong>Repel</strong> — Push boids away${kbd('3', isTouch)}</span>
+									<span><strong>Repel</strong> — Push boids${kbd('3', isTouch)}</span>
 								</div>
 								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; flex-shrink: 0;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
 										<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
 										<path d="M21 3v5h-5"/>
 										<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
 										<path d="M3 21v-5h5"/>
 									</svg>
-									<span><strong>Vortex</strong> — Spin (works alone or combined)${kbd('4', isTouch)}</span>
+									<span><strong>Vortex</strong> — Spin${kbd('4', isTouch)}</span>
 								</div>
 							</div>
-							<p style="margin-top: 8px; font-size: 11px; color: #a1a1aa;">Click active mode again to turn off. Use <strong style="color: #f97316;">Vortex alone</strong> for pure rotation!</p>
-							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 8px;">
+							<p style="margin-top: 10px;"><strong style="color: #e4e4e7;">Walls</strong> — Draw obstacles that deflect boids:</p>
+							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
 								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0; opacity: 0.6;">
-										<circle cx="12" cy="12" r="7"/>
+									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
+										<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+										<path d="m15 5 4 4"/>
 									</svg>
-									<span><strong>Shape</strong> — Ring or Disk${kbd('T', isTouch)}</span>
+									<span><strong>Pencil</strong> — Draw walls${kbd('6', isTouch)}</span>
 								</div>
 								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; flex-shrink: 0; opacity: 0.6;">
-										<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>
+									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
+										<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/>
+										<path d="M22 21H7"/><path d="m5 11 9 9"/>
 									</svg>
-									<span><strong>Size/Power</strong> — Adjust influence</span>
+									<span><strong>Eraser</strong> — Remove walls${kbd('7', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
+										<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+									</svg>
+									<span><strong>Clear</strong> — Delete all walls${kbd('8', isTouch)}</span>
 								</div>
 							</div>
-							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">${isTouch ? 'Press and hold' : 'Click'} canvas to boost force and range!</p>`,
+							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">${isTouch ? 'Press and hold' : 'Click'} canvas to boost force! Toggle draw mode${kbd('5', isTouch)}</p>`,
 						side: 'left',
 						align: 'start'
 					},
@@ -1004,9 +1034,9 @@
 						</div>`,
 						description: `<p>The three classic rules of boids:</p>
 							<ul>
-								<li><strong>Align</strong> — Match neighbors' heading${kbd('Q W', isTouch)}</li>
-								<li><strong>Cohesion</strong> — Move toward group center${kbd('E D', isTouch)}</li>
-								<li><strong>Separate</strong> — Avoid crowding${kbd('Z X', isTouch)}</li>
+								<li><strong>Align</strong> — Match neighbors' heading${kbd('Q− W+', isTouch)}</li>
+								<li><strong>Cohesion</strong> — Move toward group center${kbd('E− D+', isTouch)}</li>
+								<li><strong>Separate</strong> — Avoid crowding${kbd('Z− X+', isTouch)}</li>
 								<li><strong>Range</strong> — Perception distance</li>
 							</ul>`,
 						side: 'left',
@@ -1085,6 +1115,26 @@
 							<p style="margin-bottom: 8px; color: #a1a1aa; font-size: 11px;">All keyboard shortcuts:</p>
 							<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 9px;">
 								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #22d3ee; margin-bottom: 2px; font-size: 10px;">Force</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">1</kbd> Toggle On/Off</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">2</kbd> Attract</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">3</kbd> Repel</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">4</kbd> Vortex</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #94a3b8; margin-bottom: 2px; font-size: 10px;">Walls</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">5</kbd> Toggle Draw</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">6</kbd> Pencil</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">7</kbd> Eraser</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">8</kbd> Clear All</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
+									<div style="font-weight: 600; color: #fb7185; margin-bottom: 2px; font-size: 10px;">Flocking</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Q</kbd>−<kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">W</kbd>+ Align</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">E</kbd>−<kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">D</kbd>+ Cohesion</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Z</kbd>−<kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">X</kbd>+ Separation</div>
+								</div>
+								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
 									<div style="font-weight: 600; color: #f472b6; margin-bottom: 2px; font-size: 10px;">Playback</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Space</kbd> Play/Pause</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">S</kbd> Screenshot</div>
@@ -1092,40 +1142,22 @@
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">R</kbd> Reset Boids</div>
 								</div>
 								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-									<div style="font-weight: 600; color: #fb7185; margin-bottom: 2px; font-size: 10px;">Flocking</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Q</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">W</kbd> Alignment ±</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">E</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">D</kbd> Cohesion ±</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Z</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">X</kbd> Separation ±</div>
-								</div>
-								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-									<div style="font-weight: 600; color: #22d3ee; margin-bottom: 2px; font-size: 10px;">Interaction</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">1</kbd> Toggle On/Off</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">2</kbd> Attract (toggle)</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">3</kbd> Repel (toggle)</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">4</kbd> Vortex (toggle)</div>
-								</div>
-								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
 									<div style="font-weight: 600; color: #a78bfa; margin-bottom: 2px; font-size: 10px;">Cycle Options</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">B</kbd> Boundary</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">C</kbd> Color Mode</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">P</kbd> Palette</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">A</kbd> Algorithm</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Brush Shape</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Cursor Shape</div>
 								</div>
 								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
 									<div style="font-weight: 600; color: #fbbf24; margin-bottom: 2px; font-size: 10px;">Adjustments</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">+</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">-</kbd> Population</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">−</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">+</kbd> Population</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">[</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">]</kbd> Trail Length</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↑</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">↓</kbd> Speed</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">←</kbd><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">→</kbd> Boid Size</div>
 								</div>
-								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-									<div style="font-weight: 600; color: #34d399; margin-bottom: 2px; font-size: 10px;">Interface</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Tab</kbd> Toggle Sidebar</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">H</kbd> <kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">?</kbd> Help Tour</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Esc</kbd> Close/Cancel</div>
-								</div>
 							</div>
+							<p style="margin-top: 6px; color: #71717a; font-size: 9px; text-align: center;"><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Tab</kbd> Sidebar · <kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">H</kbd> Help · <kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">Esc</kbd> Close</p>
 						`,
 						side: 'left',
 						align: 'center'
