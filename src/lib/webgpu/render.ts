@@ -32,7 +32,11 @@ export function createRenderPipelines(
 	// === Boid Render Pipeline ===
 	const boidBindGroupLayout = device.createBindGroupLayout({
 		entries: [
-			{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+			{
+				binding: 0,
+				visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+				buffer: { type: 'uniform' }
+			},
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // birthColors
@@ -97,7 +101,11 @@ export function createRenderPipelines(
 	// === Trail Render Pipeline ===
 	const trailBindGroupLayout = device.createBindGroupLayout({
 		entries: [
-			{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+			{
+				binding: 0,
+				visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+				buffer: { type: 'uniform' }
+			},
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
@@ -197,7 +205,7 @@ export function encodeRenderPass(
 
 	// Render trails first (underneath boids)
 	const trailSegments = boidCount * (trailLength - 1);
-	
+
 	renderPass.setPipeline(resources.pipelines.trail);
 	renderPass.setBindGroup(0, readFromA ? resources.bindGroups.trailB : resources.bindGroups.trailA);
 	renderPass.draw(6, trailSegments); // 6 vertices per instance

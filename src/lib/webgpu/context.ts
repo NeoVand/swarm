@@ -24,7 +24,7 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 	const timeSinceLastAttempt = now - lastInitAttempt;
 	if (timeSinceLastAttempt < 500 && lastInitAttempt > 0) {
 		const waitTime = 500 - timeSinceLastAttempt;
-		await new Promise(resolve => setTimeout(resolve, waitTime));
+		await new Promise((resolve) => setTimeout(resolve, waitTime));
 	}
 	lastInitAttempt = Date.now();
 
@@ -59,30 +59,32 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 			}
 			currentDevice = null;
 			// Longer delay to let GPU fully release resources
-			await new Promise(resolve => setTimeout(resolve, 300));
+			await new Promise((resolve) => setTimeout(resolve, 300));
 		}
 
 		// Detect if we're on a mobile device
-		const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-		
+		const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+			navigator.userAgent
+		);
+
 		// Request adapter with retry logic and exponential backoff
 		// On mobile, try without power preference first (more compatible), then with preferences
 		let adapter: GPUAdapter | null = null;
 		const maxRetries = 5;
-		
+
 		// Different adapter options to try - mobile devices often work better without power preference
 		const adapterOptions: GPURequestAdapterOptions[] = isMobile
 			? [
-				{}, // No preference - most compatible on mobile
-				{ powerPreference: 'low-power' },
-				{ powerPreference: 'high-performance' }
-			  ]
+					{}, // No preference - most compatible on mobile
+					{ powerPreference: 'low-power' },
+					{ powerPreference: 'high-performance' }
+				]
 			: [
-				{ powerPreference: 'high-performance' },
-				{ powerPreference: 'low-power' },
-				{} // No preference as fallback
-			  ];
-		
+					{ powerPreference: 'high-performance' },
+					{ powerPreference: 'low-power' },
+					{} // No preference as fallback
+				];
+
 		for (let attempt = 0; attempt < maxRetries; attempt++) {
 			// Cycle through different adapter options
 			const options = adapterOptions[attempt % adapterOptions.length];
@@ -93,12 +95,17 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 					break;
 				}
 			} catch (e) {
-				console.warn(`Adapter request attempt ${attempt + 1} failed with options ${JSON.stringify(options)}:`, e);
+				console.warn(
+					`Adapter request attempt ${attempt + 1} failed with options ${JSON.stringify(options)}:`,
+					e
+				);
 			}
 			// Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
 			const delay = 200 * Math.pow(2, attempt);
-			console.log(`Retrying adapter request in ${delay}ms (attempt ${attempt + 2}/${maxRetries})...`);
-			await new Promise(resolve => setTimeout(resolve, delay));
+			console.log(
+				`Retrying adapter request in ${delay}ms (attempt ${attempt + 2}/${maxRetries})...`
+			);
+			await new Promise((resolve) => setTimeout(resolve, delay));
 		}
 
 		if (!adapter) {

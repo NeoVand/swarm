@@ -338,7 +338,10 @@ export function encodeComputePasses(
 	{
 		const pass = encoder.beginComputePass();
 		pass.setPipeline(resources.pipelines.simulate);
-		pass.setBindGroup(0, readFromA ? resources.bindGroups.simulateA : resources.bindGroups.simulateB);
+		pass.setBindGroup(
+			0,
+			readFromA ? resources.bindGroups.simulateA : resources.bindGroups.simulateB
+		);
 		pass.dispatchWorkgroups(boidWorkgroups);
 		pass.end();
 	}

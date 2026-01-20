@@ -9,7 +9,10 @@
 	let { spectrum, size = 16 }: Props = $props();
 
 	// Gradient stops for each spectrum (diagonal from top-left to bottom-right)
-	const gradients: Record<ColorSpectrum, { id: string; stops: Array<{ offset: string; color: string }> }> = {
+	const gradients: Record<
+		ColorSpectrum,
+		{ id: string; stops: Array<{ offset: string; color: string }> }
+	> = {
 		[ColorSpectrum.Chrome]: {
 			id: 'chrome',
 			stops: [

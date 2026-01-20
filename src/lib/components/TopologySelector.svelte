@@ -3,7 +3,12 @@
 	import { Line2 } from 'three/addons/lines/Line2.js';
 	import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 	import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-	import { getTopologyGeometry, getTopologyColor, getTopologyGridGeometry, getTopologyEdgeGeometries, TOPOLOGY_NAMES } from '$lib/utils/topologyMeshes';
+	import {
+		getTopologyGeometry,
+		getTopologyColor,
+		getTopologyGridGeometry,
+		getTopologyEdgeGeometries
+	} from '$lib/utils/topologyMeshes';
 	import { setBoundaryMode, BoundaryMode } from '$lib/stores/simulation';
 
 	interface Props {
@@ -148,12 +153,14 @@
 		edgeMaterial = null;
 
 		const geometry = getTopologyGeometry(mode);
-		
+
 		// Compute center offset from main geometry
-		const bbox = new THREE.Box3().setFromBufferAttribute(geometry.getAttribute('position') as THREE.BufferAttribute);
+		const bbox = new THREE.Box3().setFromBufferAttribute(
+			geometry.getAttribute('position') as THREE.BufferAttribute
+		);
 		const center = bbox.getCenter(new THREE.Vector3());
 		geometry.translate(-center.x, -center.y, -center.z);
-		
+
 		const color = getTopologyColor(mode);
 
 		const material = new THREE.MeshPhysicalMaterial({
@@ -195,7 +202,7 @@
 
 		// Edge lines - apply same center offset
 		const edgeGeometries = getTopologyEdgeGeometries(mode);
-		
+
 		// Create shared material for thick lines
 		edgeMaterial = new LineMaterial({
 			color: 0xffffff,
@@ -207,15 +214,15 @@
 			depthWrite: true
 		});
 		edgeMaterial.resolution.set(lastWidth || 220, lastHeight || 220);
-		
+
 		// Helper to create Line2 from segment positions (handles multiple disconnected curves)
 		const createEdgeLines = (positions: Float32Array | number[]) => {
 			const arr = Array.from(positions);
 			if (arr.length < 6) return;
-			
+
 			const epsilon = 0.0001;
 			let polylinePoints: number[] = [];
-			
+
 			const finishCurve = () => {
 				if (polylinePoints.length >= 6) {
 					const lineGeometry = new LineGeometry();
@@ -229,13 +236,13 @@
 				}
 				polylinePoints = [];
 			};
-			
+
 			// Process segments (each segment is 6 values: 2 points × 3 coords)
 			for (let segIdx = 0; segIdx < arr.length / 6; segIdx++) {
 				const base = segIdx * 6;
 				const p1 = [arr[base] - center.x, arr[base + 1] - center.y, arr[base + 2] - center.z];
 				const p2 = [arr[base + 3] - center.x, arr[base + 4] - center.y, arr[base + 5] - center.z];
-				
+
 				if (polylinePoints.length === 0) {
 					// Start new curve
 					polylinePoints.push(...p1, ...p2);
@@ -244,10 +251,10 @@
 					const lastIdx = polylinePoints.length - 3;
 					const dist = Math.sqrt(
 						(p1[0] - polylinePoints[lastIdx]) ** 2 +
-						(p1[1] - polylinePoints[lastIdx + 1]) ** 2 +
-						(p1[2] - polylinePoints[lastIdx + 2]) ** 2
+							(p1[1] - polylinePoints[lastIdx + 1]) ** 2 +
+							(p1[2] - polylinePoints[lastIdx + 2]) ** 2
 					);
-					
+
 					if (dist < epsilon) {
 						// Continuous - just add the endpoint
 						polylinePoints.push(...p2);
@@ -258,11 +265,11 @@
 					}
 				}
 			}
-			
+
 			// Finish last curve
 			finishCurve();
 		};
-		
+
 		if (edgeGeometries.free) {
 			const pos = edgeGeometries.free.getAttribute('position') as THREE.BufferAttribute;
 			createEdgeLines(pos.array as Float32Array);
@@ -375,11 +382,7 @@
 
 <div class="topology-selector">
 	<div class="topology-stage">
-		<canvas
-			class="canvas-container"
-			{@attach threeCanvas}
-			aria-hidden="true"
-		></canvas>
+		<canvas class="canvas-container" {@attach threeCanvas} aria-hidden="true"></canvas>
 
 		<!-- Left edge buttons (X axis) -->
 		<div class="edge-group vertical left">
@@ -402,7 +405,16 @@
 			>
 				<svg viewBox="0 0 24 24">
 					<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.35" />
-					<line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2" stroke-linecap="butt" />
+					<line
+						x1="12"
+						y1="5"
+						x2="12"
+						y2="19"
+						stroke="currentColor"
+						stroke-width="1.6"
+						stroke-dasharray="2 2"
+						stroke-linecap="butt"
+					/>
 				</svg>
 			</button>
 			<button
@@ -414,8 +426,24 @@
 				<svg viewBox="0 0 24 24">
 					<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.55" />
 					<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.55" />
-					<line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
-					<line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+					<line
+						x1="6.5"
+						y1="6.5"
+						x2="17.5"
+						y2="17.5"
+						stroke="currentColor"
+						stroke-width="1.4"
+						stroke-linecap="round"
+					/>
+					<line
+						x1="17.5"
+						y1="6.5"
+						x2="6.5"
+						y2="17.5"
+						stroke="currentColor"
+						stroke-width="1.4"
+						stroke-linecap="round"
+					/>
 				</svg>
 			</button>
 		</div>
@@ -441,7 +469,16 @@
 			>
 				<svg viewBox="0 0 24 24">
 					<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.35" />
-					<line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2" stroke-linecap="butt" />
+					<line
+						x1="5"
+						y1="12"
+						x2="19"
+						y2="12"
+						stroke="currentColor"
+						stroke-width="1.6"
+						stroke-dasharray="2 2"
+						stroke-linecap="butt"
+					/>
 				</svg>
 			</button>
 			<button
@@ -453,12 +490,27 @@
 				<svg viewBox="0 0 24 24">
 					<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.55" />
 					<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.55" />
-					<line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
-					<line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+					<line
+						x1="6.5"
+						y1="6.5"
+						x2="17.5"
+						y2="17.5"
+						stroke="currentColor"
+						stroke-width="1.4"
+						stroke-linecap="round"
+					/>
+					<line
+						x1="17.5"
+						y1="6.5"
+						x2="6.5"
+						y2="17.5"
+						stroke="currentColor"
+						stroke-width="1.4"
+						stroke-linecap="round"
+					/>
 				</svg>
 			</button>
 		</div>
-
 	</div>
 </div>
 
@@ -555,5 +607,4 @@
 		width: 100%;
 		height: 100%;
 	}
-
 </style>

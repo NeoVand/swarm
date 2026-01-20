@@ -192,4 +192,12 @@ export function setRecording(value: boolean): void {
 }
 
 // Export enums for use in components
-export { BoundaryMode, ColorMode, ColorSpectrum, CursorMode, CursorShape, AlgorithmMode, DEFAULT_PARAMS };
+export {
+	BoundaryMode,
+	ColorMode,
+	ColorSpectrum,
+	CursorMode,
+	CursorShape,
+	AlgorithmMode,
+	DEFAULT_PARAMS
+};

@@ -12,7 +12,12 @@ import {
 	type BufferConfig
 } from './buffers';
 import { createComputePipelines, encodeComputePasses, type ComputeResources } from './compute';
-import { createRenderPipelines, encodeRenderPass, destroyRenderResources, type RenderResources } from './render';
+import {
+	createRenderPipelines,
+	encodeRenderPass,
+	destroyRenderResources,
+	type RenderResources
+} from './render';
 
 export interface Simulation {
 	start: () => void;
@@ -91,7 +96,10 @@ export function createSimulation(
 
 		// Update grid dimensions if perception changed
 		const newGridInfo = calculateGridDimensions(canvasWidth, canvasHeight, params.perception);
-		if (newGridInfo.gridWidth !== gridInfo.gridWidth || newGridInfo.gridHeight !== gridInfo.gridHeight) {
+		if (
+			newGridInfo.gridWidth !== gridInfo.gridWidth ||
+			newGridInfo.gridHeight !== gridInfo.gridHeight
+		) {
 			gridInfo = newGridInfo;
 			// Grid changed, may need to recreate some buffers
 		}
@@ -243,7 +251,7 @@ export function createSimulation(
 		// Reinitialize boid positions and velocities without reallocating buffers
 		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
 		clearTrails(device, buffers, params.population, params.trailLength);
-		
+
 		// Reset state
 		readFromA = true;
 		frameCount = 0;

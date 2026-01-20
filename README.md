@@ -26,7 +26,7 @@ A high-performance boids flocking simulation running entirely on the GPU using W
 Each boid follows three simple rules that create complex emergent behavior:
 
 1. **Alignment** — Steer toward the average heading of nearby flockmates
-2. **Cohesion** — Move toward the center of mass of nearby flockmates  
+2. **Cohesion** — Move toward the center of mass of nearby flockmates
 3. **Separation** — Avoid crowding neighbors (short-range repulsion)
 
 These local interactions produce global patterns: schools of fish, flocks of birds, swarms of insects.
@@ -50,24 +50,24 @@ This transforms O(n²) neighbor searches into O(n) operations.
 
 ### Algorithms
 
-| Algorithm | Description |
-|-----------|-------------|
-| **Smooth Metric** | Metric neighbors with smooth kernels and jitter |
-| **Topological K-NN** | K-nearest neighbors regardless of distance |
-| **Hash Free** | Per-boid randomized grid offset (no seams) |
+| Algorithm             | Description                                      |
+| --------------------- | ------------------------------------------------ |
+| **Smooth Metric**     | Metric neighbors with smooth kernels and jitter  |
+| **Topological K-NN**  | K-nearest neighbors regardless of distance       |
+| **Hash Free**         | Per-boid randomized grid offset (no seams)       |
 | **Stochastic Sample** | Random neighbor sampling with distance weighting |
-| **Density Adaptive** | Adjusts behavior based on local density |
+| **Density Adaptive**  | Adjusts behavior based on local density          |
 
 ### Boundary Topologies
 
-| Boundary | Description |
-|----------|-------------|
-| **Plane** | Bounded area with soft wall avoidance |
-| **Torus** | Wraps both axes (like Pac-Man) |
-| **Cylinder** | Wraps on one axis, bounces on the other |
-| **Möbius Strip** | Wraps with a twist—exit right, enter left flipped |
-| **Klein Bottle** | Double twist, non-orientable surface |
-| **Projective Plane** | Both axes twisted |
+| Boundary             | Description                                       |
+| -------------------- | ------------------------------------------------- |
+| **Plane**            | Bounded area with soft wall avoidance             |
+| **Torus**            | Wraps both axes (like Pac-Man)                    |
+| **Cylinder**         | Wraps on one axis, bounces on the other           |
+| **Möbius Strip**     | Wraps with a twist—exit right, enter left flipped |
+| **Klein Bottle**     | Double twist, non-orientable surface              |
+| **Projective Plane** | Both axes twisted                                 |
 
 ### Color Modes
 
@@ -99,6 +99,7 @@ npm run preview  # Preview production build
 ## Browser Support
 
 WebGPU required:
+
 - Chrome/Edge 113+
 - Safari 18+ (macOS Sequoia / iOS 18)
 - Firefox (behind flag)
@@ -109,4 +110,4 @@ MIT
 
 ---
 
-*Inspired by Craig Reynolds' [original boids paper](https://www.red3d.com/cwr/boids/) (1987)*
+_Inspired by Craig Reynolds' [original boids paper](https://www.red3d.com/cwr/boids/) (1987)_

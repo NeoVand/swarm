@@ -14,7 +14,7 @@ export interface BufferConfig {
 
 export function createBuffers(device: GPUDevice, config: BufferConfig): SimulationBuffers {
 	const { boidCount, trailLength, canvasWidth, canvasHeight } = config;
-	
+
 	// Use max grid size for grid buffers to avoid reallocation when perception changes
 	const { maxTotalCells } = calculateMaxGridDimensions(canvasWidth, canvasHeight);
 
@@ -137,7 +137,7 @@ export function initializeBoids(
 	// Safe spawn margin - keep boids away from edges and corners
 	// This matches the BOUNDARY_INSET (30) in simulate.wgsl plus extra padding
 	const safeMargin = 80; // Boundary inset (30) + extra padding (50)
-	
+
 	// Calculate safe spawn area
 	const safeMinX = safeMargin;
 	const safeMaxX = canvasWidth - safeMargin;
@@ -145,19 +145,19 @@ export function initializeBoids(
 	const safeMaxY = canvasHeight - safeMargin;
 	const safeWidth = safeMaxX - safeMinX;
 	const safeHeight = safeMaxY - safeMinY;
-	
+
 	// Create initial positions (random within safe area) and birth colors
 	const positions = new Float32Array(boidCount * 2);
 	const birthColors = new Float32Array(boidCount);
 	const centerX = canvasWidth * 0.5;
 	const centerY = canvasHeight * 0.5;
-	
+
 	for (let i = 0; i < boidCount; i++) {
 		const x = safeMinX + Math.random() * safeWidth;
 		const y = safeMinY + Math.random() * safeHeight;
 		positions[i * 2] = x;
 		positions[i * 2 + 1] = y;
-		
+
 		// Compute birth color based on angle from canvas center (rainbow wheel)
 		const angle = Math.atan2(y - centerY, x - centerX);
 		birthColors[i] = (angle + Math.PI) / (2 * Math.PI); // Normalize to [0, 1]

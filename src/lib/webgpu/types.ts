@@ -37,16 +37,16 @@ export enum CursorMode {
 }
 
 export enum CursorShape {
-	Ring = 0,        // Boids attracted to the circumference
-	Disk = 1,        // Filled circle - attraction/repulsion area
+	Ring = 0, // Boids attracted to the circumference
+	Disk = 1 // Filled circle - attraction/repulsion area
 }
 
 export enum AlgorithmMode {
-	TopologicalKNN = 0,    // k-nearest neighbors with smooth kernels
-	SmoothMetric = 1,      // Metric neighbors with smooth kernels + jitter
-	HashFree = 2,          // Per-boid randomized grid offset (no global seams)
-	StochasticSample = 3,  // Random neighbor sampling with distance weighting
-	DensityAdaptive = 4,   // Hash-free with advanced density-adaptive forces
+	TopologicalKNN = 0, // k-nearest neighbors with smooth kernels
+	SmoothMetric = 1, // Metric neighbors with smooth kernels + jitter
+	HashFree = 2, // Per-boid randomized grid offset (no global seams)
+	StochasticSample = 3, // Random neighbor sampling with distance weighting
+	DensityAdaptive = 4 // Hash-free with advanced density-adaptive forces
 }
 
 export interface SimulationParams {
@@ -61,7 +61,7 @@ export interface SimulationParams {
 	boundaryMode: BoundaryMode;
 	cursorMode: CursorMode;
 	cursorShape: CursorShape;
-	cursorVortex: boolean;      // Independent vortex toggle (adds rotation)
+	cursorVortex: boolean; // Independent vortex toggle (adds rotation)
 	cursorForce: number;
 	cursorRadius: number;
 	boidSize: number;
@@ -72,11 +72,11 @@ export interface SimulationParams {
 	population: number;
 	algorithmMode: AlgorithmMode;
 	// Algorithm-specific parameters
-	kNeighbors: number;      // Topological K-NN: number of neighbors (4-24)
-	sampleCount: number;     // Stochastic: random samples per frame (8-64)
-	idealDensity: number;    // Density Adaptive: target neighbor density (1-10)
+	kNeighbors: number; // Topological K-NN: number of neighbors (4-24)
+	sampleCount: number; // Stochastic: random samples per frame (8-64)
+	idealDensity: number; // Density Adaptive: target neighbor density (1-10)
 	// Simulation timing
-	timeScale: number;       // Simulation speed multiplier (0.25-2.0)
+	timeScale: number; // Simulation speed multiplier (0.25-2.0)
 }
 
 export interface CursorState {
@@ -152,38 +152,38 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	population: 7000,
 	algorithmMode: AlgorithmMode.SmoothMetric,
 	// Algorithm-specific defaults
-	kNeighbors: 12,      // Topological K-NN
-	sampleCount: 32,     // Stochastic
-	idealDensity: 5.0,   // Density Adaptive
+	kNeighbors: 12, // Topological K-NN
+	sampleCount: 32, // Stochastic
+	idealDensity: 5.0, // Density Adaptive
 	// Simulation timing
-	timeScale: 1.0       // Normal speed
+	timeScale: 1.0 // Normal speed
 };
 
 /**
  * Calculate optimal boid population based on canvas dimensions.
  * Aims for a comfortable density that looks good on any screen size.
- * 
+ *
  * @param width Canvas width in pixels
  * @param height Canvas height in pixels
  * @returns Optimal population count
  */
 export function calculateOptimalPopulation(width: number, height: number): number {
 	const area = width * height;
-	
+
 	// Target density: roughly 1 boid per 300 square pixels
 	// This gives a nice balance - not too sparse, not too crowded
 	const density = 300;
 	let population = Math.floor(area / density);
-	
+
 	// Clamp to reasonable bounds
-	const MIN_POPULATION = 800;   // Minimum for visual interest
+	const MIN_POPULATION = 800; // Minimum for visual interest
 	const MAX_POPULATION = 15000; // Maximum for performance
-	
+
 	population = Math.max(MIN_POPULATION, Math.min(MAX_POPULATION, population));
-	
+
 	// Round to nearest 500 for cleaner numbers
 	population = Math.round(population / 500) * 500;
-	
+
 	return population;
 }
 

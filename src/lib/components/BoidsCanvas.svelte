@@ -14,8 +14,7 @@
 		needsBufferReallocation,
 		needsTrailClear,
 		needsSimulationReset,
-		canvasElement,
-		setPopulation
+		canvasElement
 	} from '$lib/stores/simulation';
 
 	let canvas: HTMLCanvasElement;
@@ -114,7 +113,7 @@
 		}));
 	}
 
-	function handleMouseDown(e: MouseEvent): void {
+	function handleMouseDown(): void {
 		cursor.update((c) => ({ ...c, isPressed: true }));
 	}
 
@@ -187,26 +186,26 @@
 
 			// Calculate optimal population based on screen size
 			const optimalPopulation = calculateOptimalPopulation(canvas.width, canvas.height);
-			
+
 			// Update params with optimal population directly (without triggering reallocation flag)
-			params.update(p => ({ ...p, population: optimalPopulation }));
-			
+			params.update((p) => ({ ...p, population: optimalPopulation }));
+
 			// Get params for simulation init
 			let initParams: SimulationParams;
-			const unsub0 = params.subscribe(p => initParams = p);
+			const unsub0 = params.subscribe((p) => (initParams = p));
 			unsub0();
 
 			// Create simulation
 			simulation = createSimulation(gpuContext, initParams!, (newFps) => {
 				fps.set(newFps);
 			});
-			
+
 			// Ensure reallocation flag is clean after init
 			needsBufferReallocation.set(false);
 
 			// Start simulation (respects current isRunning state)
 			let currentRunning = true;
-			const unsub = isRunning.subscribe(v => currentRunning = v);
+			const unsub = isRunning.subscribe((v) => (currentRunning = v));
 			unsub();
 			if (currentRunning) {
 				simulation.start();
@@ -252,10 +251,12 @@
 	});
 </script>
 
-<div bind:this={container} class="fixed inset-0 overflow-hidden bg-[#0a0b0d] relative">
+<div bind:this={container} class="fixed relative inset-0 overflow-hidden bg-[#0a0b0d]">
 	<canvas
 		bind:this={canvas}
-		class="block touch-none select-none {currentParams?.cursorMode !== CursorMode.Off ? 'cursor-none' : ''}"
+		class="block touch-none select-none {currentParams?.cursorMode !== CursorMode.Off
+			? 'cursor-none'
+			: ''}"
 		onmousemove={handleMouseMove}
 		onmousedown={handleMouseDown}
 		onmouseup={handleMouseUp}
@@ -266,7 +267,7 @@
 		ontouchcancel={(e) => handleTouchEnd(e)}
 		oncontextmenu={(e) => e.preventDefault()}
 	></canvas>
-	
+
 	<!-- Custom cursor overlay -->
 	{#if currentCursor?.isActive && (currentParams?.cursorMode !== CursorMode.Off || currentParams?.cursorVortex)}
 		{@const radius = currentParams?.cursorRadius ?? 50}
@@ -276,17 +277,21 @@
 		{@const isVortexOnly = mode === CursorMode.Off && currentParams?.cursorVortex}
 		{@const shape = currentParams?.cursorShape ?? CursorShape.Disk}
 		{@const hasVortex = currentParams?.cursorVortex ?? false}
-		{@const color = isVortexOnly ? '249, 115, 22' : (isAttract ? '6, 182, 212' : '244, 63, 94')}
+		{@const color = isVortexOnly ? '249, 115, 22' : isAttract ? '6, 182, 212' : '244, 63, 94'}
 		{@const baseOpacity = currentCursor.isPressed ? 0.9 : 0.6}
-		{@const spinClass = hasVortex ? (isRepel ? 'animate-spin-vortex-reverse' : 'animate-spin-vortex') : ''}
-		
+		{@const spinClass = hasVortex
+			? isRepel
+				? 'animate-spin-vortex-reverse'
+				: 'animate-spin-vortex'
+			: ''}
+
 		<div
 			class="pointer-events-none absolute"
 			style="left: {cursorCssX}px; top: {cursorCssY}px; transform: translate(-50%, -50%);"
 		>
 			<!-- Ring Shape -->
 			{#if shape === CursorShape.Ring}
-				<svg width="{radius * 2}" height="{radius * 2}" class={spinClass}>
+				<svg width={radius * 2} height={radius * 2} class={spinClass}>
 					<circle
 						cx={radius}
 						cy={radius}
@@ -294,30 +299,25 @@
 						fill="none"
 						stroke="rgba({color}, {baseOpacity})"
 						stroke-width={currentCursor.isPressed ? 2.5 : 1.5}
-						stroke-dasharray={hasVortex || isVortexOnly ? "10 8" : "none"}
+						stroke-dasharray={hasVortex || isVortexOnly ? '10 8' : 'none'}
 					/>
 				</svg>
-			
-			<!-- Disk Shape (default) -->
+
+				<!-- Disk Shape (default) -->
 			{:else}
-				<svg width="{radius * 2}" height="{radius * 2}" class={spinClass}>
+				<svg width={radius * 2} height={radius * 2} class={spinClass}>
 					<circle
 						cx={radius}
 						cy={radius}
 						r={radius - 1}
-						fill={isVortexOnly ? "none" : `rgba(${color}, ${baseOpacity * 0.15})`}
+						fill={isVortexOnly ? 'none' : `rgba(${color}, ${baseOpacity * 0.15})`}
 						stroke="rgba({color}, {baseOpacity})"
 						stroke-width={currentCursor.isPressed ? 2 : 1.5}
-						stroke-dasharray={hasVortex || isVortexOnly ? "10 8" : "none"}
+						stroke-dasharray={hasVortex || isVortexOnly ? '10 8' : 'none'}
 					/>
 					<!-- Center dot (not shown for vortex-only) -->
 					{#if !isVortexOnly}
-						<circle
-							cx={radius}
-							cy={radius}
-							r="3"
-							fill="rgba({color}, {baseOpacity})"
-						/>
+						<circle cx={radius} cy={radius} r="3" fill="rgba({color}, {baseOpacity})" />
 					{/if}
 				</svg>
 			{/if}
@@ -329,19 +329,27 @@
 	.cursor-none {
 		cursor: none;
 	}
-	
+
 	@keyframes spin-vortex {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 	.animate-spin-vortex {
 		animation: spin-vortex 2s linear infinite;
 		will-change: transform;
 	}
-	
+
 	@keyframes spin-vortex-reverse {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(-360deg); }
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(-360deg);
+		}
 	}
 	.animate-spin-vortex-reverse {
 		animation: spin-vortex-reverse 2s linear infinite;

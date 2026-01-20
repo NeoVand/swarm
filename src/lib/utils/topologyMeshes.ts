@@ -39,9 +39,9 @@ function colorizeGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry 
 		const z = position.getZ(i);
 
 		// Hue from angle around Y axis, loop red→red
-		const hue = ((Math.atan2(z, x) / (2 * Math.PI)) + 1) % 1;
+		const hue = (Math.atan2(z, x) / (2 * Math.PI) + 1) % 1;
 		const sat = 0.75;
-	const val = 1.0 - Math.min(0.12, Math.abs(y) * 0.02);
+		const val = 1.0 - Math.min(0.12, Math.abs(y) * 0.02);
 		const [r, g, b] = hsvToRgb(hue, sat, val);
 
 		colors[i * 3] = r;
@@ -59,14 +59,40 @@ function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
 	const p = v * (1 - s);
 	const q = v * (1 - f * s);
 	const t = v * (1 - (1 - f) * s);
-	let r = 0, g = 0, b = 0;
+	let r = 0,
+		g = 0,
+		b = 0;
 	switch (i % 6) {
-		case 0: r = v; g = t; b = p; break;
-		case 1: r = q; g = v; b = p; break;
-		case 2: r = p; g = v; b = t; break;
-		case 3: r = p; g = q; b = v; break;
-		case 4: r = t; g = p; b = v; break;
-		case 5: r = v; g = p; b = q; break;
+		case 0:
+			r = v;
+			g = t;
+			b = p;
+			break;
+		case 1:
+			r = q;
+			g = v;
+			b = p;
+			break;
+		case 2:
+			r = p;
+			g = v;
+			b = t;
+			break;
+		case 3:
+			r = p;
+			g = q;
+			b = v;
+			break;
+		case 4:
+			r = t;
+			g = p;
+			b = v;
+			break;
+		case 5:
+			r = v;
+			g = p;
+			b = q;
+			break;
 	}
 	return [r, g, b];
 }
@@ -546,7 +572,12 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 				const z = r * Math.sin(V);
 				target.set(x, z, y);
 			};
-			return createParametricGridGeometry(func, GRID_LINES_TORUS_MAJOR, GRID_LINES_TORUS_MINOR, GRID_SAMPLES);
+			return createParametricGridGeometry(
+				func,
+				GRID_LINES_TORUS_MAJOR,
+				GRID_LINES_TORUS_MINOR,
+				GRID_SAMPLES
+			);
 		}
 		case 4: {
 			const R = 0.55;
@@ -559,7 +590,12 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 				const z = S * Math.sin(U / 2);
 				target.set(x, z, y);
 			};
-			return createParametricGridGeometry(func, GRID_LINES_MOBIUS_U, GRID_LINES_MOBIUS_V, GRID_SAMPLES);
+			return createParametricGridGeometry(
+				func,
+				GRID_LINES_MOBIUS_U,
+				GRID_LINES_MOBIUS_V,
+				GRID_SAMPLES
+			);
 		}
 		case 5: {
 			const R = 0.55;
@@ -572,7 +608,12 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 				const z = S * Math.sin(U / 2);
 				target.set(z, x, y);
 			};
-			return createParametricGridGeometry(func, GRID_LINES_MOBIUS_U, GRID_LINES_MOBIUS_V, GRID_SAMPLES);
+			return createParametricGridGeometry(
+				func,
+				GRID_LINES_MOBIUS_U,
+				GRID_LINES_MOBIUS_V,
+				GRID_SAMPLES
+			);
 		}
 		case 6: {
 			const scale = 0.04;
@@ -595,7 +636,12 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 				z = 4 * c * sinV;
 				target.set(x * scale, z * scale, (y - 8) * scale);
 			};
-			return createParametricGridGeometry(func, GRID_LINES_KLEIN_U, GRID_LINES_KLEIN_V, GRID_SAMPLES);
+			return createParametricGridGeometry(
+				func,
+				GRID_LINES_KLEIN_U,
+				GRID_LINES_KLEIN_V,
+				GRID_SAMPLES
+			);
 		}
 		case 7: {
 			const scale = 0.04;
@@ -618,7 +664,12 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 				z = 4 * c * sinV;
 				target.set(z * scale, x * scale, (y - 8) * scale);
 			};
-			return createParametricGridGeometry(func, GRID_LINES_KLEIN_U, GRID_LINES_KLEIN_V, GRID_SAMPLES);
+			return createParametricGridGeometry(
+				func,
+				GRID_LINES_KLEIN_U,
+				GRID_LINES_KLEIN_V,
+				GRID_SAMPLES
+			);
 		}
 		case 8: {
 			const scale = 0.9;
