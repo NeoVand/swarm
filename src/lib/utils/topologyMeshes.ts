@@ -9,10 +9,6 @@ import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.j
 // Higher resolution for smooth parametric surfaces
 const SLICES = 80;
 const STACKS = 40;
-const GRID_SLICES = 18;
-const GRID_STACKS = 10;
-const GRID_LINES_U = 10;
-const GRID_LINES_V = 8;
 const GRID_LINES_CURVE = 12;
 const GRID_LINES_AXIS = 8;
 const GRID_LINES_TORUS_MAJOR = 8;
@@ -428,7 +424,7 @@ export function createKleinXGeometry(): THREE.BufferGeometry {
 		const sinV = Math.sin(V);
 		const c = 1 - 0.5 * cosU;
 
-		let x: number, y: number, z: number;
+		let x: number, y: number;
 
 		if (U <= Math.PI) {
 			x = 6 * cosU * (1 + sinU) + 4 * c * cosU * cosV;
@@ -437,7 +433,7 @@ export function createKleinXGeometry(): THREE.BufferGeometry {
 			x = 6 * cosU * (1 + sinU) + 4 * c * Math.cos(V + Math.PI);
 			y = 16 * sinU;
 		}
-		z = 4 * c * sinV;
+		const z = 4 * c * sinV;
 
 		// Scale and center
 		target.set(x * scale, z * scale, (y - 8) * scale);
@@ -462,7 +458,7 @@ export function createKleinYGeometry(): THREE.BufferGeometry {
 		const sinV = Math.sin(V);
 		const c = 1 - 0.5 * cosU;
 
-		let x: number, y: number, z: number;
+		let x: number, y: number;
 
 		if (U <= Math.PI) {
 			x = 6 * cosU * (1 + sinU) + 4 * c * cosU * cosV;
@@ -471,7 +467,7 @@ export function createKleinYGeometry(): THREE.BufferGeometry {
 			x = 6 * cosU * (1 + sinU) + 4 * c * Math.cos(V + Math.PI);
 			y = 16 * sinU;
 		}
-		z = 4 * c * sinV;
+		const z = 4 * c * sinV;
 
 		// Rotated for Y variant and scaled
 		target.set(z * scale, x * scale, (y - 8) * scale);
@@ -625,7 +621,7 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 				const cosV = Math.cos(V);
 				const sinV = Math.sin(V);
 				const c = 1 - 0.5 * cosU;
-				let x: number, y: number, z: number;
+				let x: number, y: number;
 				if (U <= Math.PI) {
 					x = 6 * cosU * (1 + sinU) + 4 * c * cosU * cosV;
 					y = 16 * sinU + 4 * c * sinU * cosV;
@@ -633,7 +629,7 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 					x = 6 * cosU * (1 + sinU) + 4 * c * Math.cos(V + Math.PI);
 					y = 16 * sinU;
 				}
-				z = 4 * c * sinV;
+				const z = 4 * c * sinV;
 				target.set(x * scale, z * scale, (y - 8) * scale);
 			};
 			return createParametricGridGeometry(
@@ -653,7 +649,7 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 				const cosV = Math.cos(V);
 				const sinV = Math.sin(V);
 				const c = 1 - 0.5 * cosU;
-				let x: number, y: number, z: number;
+				let x: number, y: number;
 				if (U <= Math.PI) {
 					x = 6 * cosU * (1 + sinU) + 4 * c * cosU * cosV;
 					y = 16 * sinU + 4 * c * sinU * cosV;
@@ -661,7 +657,7 @@ export function getTopologyGridGeometry(mode: number): THREE.BufferGeometry {
 					x = 6 * cosU * (1 + sinU) + 4 * c * Math.cos(V + Math.PI);
 					y = 16 * sinU;
 				}
-				z = 4 * c * sinV;
+				const z = 4 * c * sinV;
 				target.set(z * scale, x * scale, (y - 8) * scale);
 			};
 			return createParametricGridGeometry(
@@ -783,7 +779,7 @@ export function getTopologyEdgeGeometries(mode: number): {
 				const cosV = Math.cos(V);
 				const sinV = Math.sin(V);
 				const c = 1 - 0.5 * cosU;
-				let x: number, y: number, z: number;
+				let x: number, y: number;
 				if (U <= Math.PI) {
 					x = 6 * cosU * (1 + sinU) + 4 * c * cosU * cosV;
 					y = 16 * sinU + 4 * c * sinU * cosV;
@@ -791,7 +787,7 @@ export function getTopologyEdgeGeometries(mode: number): {
 					x = 6 * cosU * (1 + sinU) + 4 * c * Math.cos(V + Math.PI);
 					y = 16 * sinU;
 				}
-				z = 4 * c * sinV;
+				const z = 4 * c * sinV;
 				target.set(x * scale, z * scale, (y - 8) * scale);
 			};
 			return {
@@ -809,7 +805,7 @@ export function getTopologyEdgeGeometries(mode: number): {
 				const cosV = Math.cos(V);
 				const sinV = Math.sin(V);
 				const c = 1 - 0.5 * cosU;
-				let x: number, y: number, z: number;
+				let x: number, y: number;
 				if (U <= Math.PI) {
 					x = 6 * cosU * (1 + sinU) + 4 * c * cosU * cosV;
 					y = 16 * sinU + 4 * c * sinU * cosV;
@@ -817,7 +813,7 @@ export function getTopologyEdgeGeometries(mode: number): {
 					x = 6 * cosU * (1 + sinU) + 4 * c * Math.cos(V + Math.PI);
 					y = 16 * sinU;
 				}
-				z = 4 * c * sinV;
+				const z = 4 * c * sinV;
 				target.set(z * scale, x * scale, (y - 8) * scale);
 			};
 			return {
@@ -852,7 +848,8 @@ export function getTopologyEdgeGeometries(mode: number): {
 /**
  * Get color for topology - unified elegant color
  */
-export function getTopologyColor(_mode: number): number {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function getTopologyColor(_mode?: number): number {
 	return TOPOLOGY_COLOR;
 }
 

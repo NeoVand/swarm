@@ -13,7 +13,7 @@ export interface BufferConfig {
 }
 
 export function createBuffers(device: GPUDevice, config: BufferConfig): SimulationBuffers {
-	const { boidCount, trailLength, canvasWidth, canvasHeight } = config;
+	const { boidCount, canvasWidth, canvasHeight } = config;
 
 	// Use max grid size for grid buffers to avoid reallocation when perception changes
 	const { maxTotalCells } = calculateMaxGridDimensions(canvasWidth, canvasHeight);
@@ -184,7 +184,8 @@ export function clearTrails(
 	device: GPUDevice,
 	buffers: SimulationBuffers,
 	boidCount: number,
-	_trailLength?: number // Unused - always clears full pre-allocated buffer
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_trailLength?: number
 ): void {
 	// Zero out trail buffer (full pre-allocated size)
 	const zeros = new Float32Array(boidCount * MAX_TRAIL_LENGTH * 2);

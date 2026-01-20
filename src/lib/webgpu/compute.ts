@@ -1,6 +1,6 @@
 // Compute pipeline setup for boid simulation
 
-import type { SimulationBuffers, ComputePipelines } from './types';
+import type { SimulationBuffers } from './types';
 import { WORKGROUP_SIZE } from './types';
 
 import clearShader from '$lib/shaders/clear.wgsl?raw';

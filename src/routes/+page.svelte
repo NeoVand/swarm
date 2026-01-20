@@ -9,7 +9,6 @@
 	// Detect device type
 	const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 	const isiOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-	const isMobile = isAndroid || isiOS;
 
 	// Check if this is a temporary failure that can be fixed with reload
 	let isTemporaryFailure = $derived(

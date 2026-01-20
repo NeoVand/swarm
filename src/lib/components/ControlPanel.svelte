@@ -342,6 +342,14 @@
 		setIdealDensity(DEFAULT_PARAMS.idealDensity);
 	}
 
+	// Keyboard handler for accessible span buttons
+	function handleKeydown(e: KeyboardEvent, action: (e: Event) => void): void {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			action(e);
+		}
+	}
+
 	function selectPalette(spectrum: ColorSpectrum) {
 		setColorSpectrum(spectrum);
 		paletteDropdownOpen = false;
@@ -503,45 +511,50 @@
 				break;
 
 			// Cycle through options
-			case 'b':
+			case 'b': {
 				event.preventDefault();
 				const currentBoundary = currentParams?.boundaryMode ?? BoundaryMode.Plane;
 				const boundaryIndex = boundaryModes.indexOf(currentBoundary);
 				const nextBoundary = boundaryModes[(boundaryIndex + 1) % boundaryModes.length];
 				setBoundaryMode(nextBoundary);
 				break;
+			}
 
-			case 'c':
+			case 'c': {
 				event.preventDefault();
 				const currentColor = currentParams?.colorMode ?? ColorMode.Orientation;
 				const colorIndex = colorModes.indexOf(currentColor);
 				const nextColor = colorModes[(colorIndex + 1) % colorModes.length];
 				setColorMode(nextColor);
 				break;
+			}
 
-			case 'a':
+			case 'a': {
 				event.preventDefault();
 				const currentAlgo = currentParams?.algorithmMode ?? AlgorithmMode.SmoothMetric;
 				const algoIndex = algorithmModes.indexOf(currentAlgo);
 				const nextAlgo = algorithmModes[(algoIndex + 1) % algorithmModes.length];
 				setAlgorithmMode(nextAlgo);
 				break;
+			}
 
-			case 'p':
+			case 'p': {
 				event.preventDefault();
 				const currentPalette = currentParams?.colorSpectrum ?? ColorSpectrum.Rainbow;
 				const paletteIndex = colorSpectrums.indexOf(currentPalette);
 				const nextPalette = colorSpectrums[(paletteIndex + 1) % colorSpectrums.length];
 				setColorSpectrum(nextPalette);
 				break;
+			}
 
-			case 't':
+			case 't': {
 				event.preventDefault();
 				const currentShape = currentParams?.cursorShape ?? CursorShape.Disk;
 				const shapeIndex = cursorShapes.indexOf(currentShape);
 				const nextShape = cursorShapes[(shapeIndex + 1) % cursorShapes.length];
 				setCursorShape(nextShape);
 				break;
+			}
 
 			// Flocking parameters: Q/W for Align, E/D for Cohesion, Z/X for Separate
 			case 'q':
@@ -711,6 +724,7 @@
 			const isTouch = isTouchDevice();
 
 			// Build tour steps dynamically based on device type
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const tourSteps: any[] = [
 				// Step 0: Welcome
 				{
@@ -1117,8 +1131,8 @@
 				smoothScroll: true,
 				allowClose: true,
 				overlayColor: 'rgba(0, 0, 0, 0.85)',
-				stagePadding: 10,
-				stageRadius: 10,
+				stagePadding: 0,
+				stageRadius: 6,
 				popoverClass: 'tour-popover',
 				popoverOffset: 12,
 				onPopoverRender: (popover, { state }) => {
@@ -1434,6 +1448,7 @@
 									e.stopPropagation();
 									startTourAtSection('boids');
 								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('boids'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -1449,6 +1464,7 @@
 								role="button"
 								tabindex="0"
 								onclick={resetBoidsSection}
+								onkeydown={(e) => handleKeydown(e, resetBoidsSection)}
 								title="Reset"
 							>
 								<svg
@@ -1658,7 +1674,7 @@
 										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
 										transition:slide={{ duration: 150, easing: cubicOut }}
 									>
-										{#each colorOptions as opt}
+										{#each colorOptions as opt (opt.value)}
 											<button
 												class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
 												class:active={currentParams.colorMode === opt.value}
@@ -1803,7 +1819,7 @@
 										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 overflow-y-auto rounded-md"
 										transition:slide={{ duration: 150, easing: cubicOut }}
 									>
-										{#each spectrumOptions as opt}
+										{#each spectrumOptions as opt (opt.value)}
 											<button
 												class="dropdown-item flex w-full items-center gap-2 px-3 py-2 text-left text-[10px]"
 												class:active={currentParams.colorSpectrum === opt.value}
@@ -1856,6 +1872,7 @@
 									e.stopPropagation();
 									startTourAtSection('world');
 								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('world'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -1871,6 +1888,7 @@
 								role="button"
 								tabindex="0"
 								onclick={resetWorldSection}
+								onkeydown={(e) => handleKeydown(e, resetWorldSection)}
 								title="Reset"
 							>
 								<svg
@@ -1947,6 +1965,7 @@
 									e.stopPropagation();
 									startTourAtSection('interaction');
 								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('interaction'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -1962,6 +1981,7 @@
 								role="button"
 								tabindex="0"
 								onclick={resetInteractionSection}
+								onkeydown={(e) => handleKeydown(e, resetInteractionSection)}
 								title="Reset"
 							>
 								<svg
@@ -2196,6 +2216,7 @@
 									e.stopPropagation();
 									startTourAtSection('flocking');
 								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('flocking'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -2211,6 +2232,7 @@
 								role="button"
 								tabindex="0"
 								onclick={resetFlockingSection}
+								onkeydown={(e) => handleKeydown(e, resetFlockingSection)}
 								title="Reset"
 							>
 								<svg
@@ -2330,6 +2352,7 @@
 									e.stopPropagation();
 									startTourAtSection('dynamics');
 								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('dynamics'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -2345,6 +2368,7 @@
 								role="button"
 								tabindex="0"
 								onclick={resetDynamicsSection}
+								onkeydown={(e) => handleKeydown(e, resetDynamicsSection)}
 								title="Reset"
 							>
 								<svg
@@ -2487,6 +2511,7 @@
 									e.stopPropagation();
 									startTourAtSection('algorithm');
 								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('algorithm'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -2502,6 +2527,7 @@
 								role="button"
 								tabindex="0"
 								onclick={resetAlgorithmSection}
+								onkeydown={(e) => handleKeydown(e, resetAlgorithmSection)}
 								title="Reset"
 							>
 								<svg
@@ -2564,7 +2590,7 @@
 										class="dropdown-menu dropdown-up absolute right-0 bottom-full left-0 z-50 mb-1 max-h-48 overflow-y-auto rounded-md"
 										transition:slide={{ duration: 150, easing: cubicOut }}
 									>
-										{#each algorithmOptions as opt}
+										{#each algorithmOptions as opt (opt.value)}
 											<button
 												class="dropdown-item flex w-full items-center gap-2 px-3 py-2 text-left text-[10px]"
 												class:active={currentParams.algorithmMode === opt.value}
