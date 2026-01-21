@@ -40,6 +40,9 @@ struct Uniforms {
     timeScale: f32,
 }
 
+// Special cell index for dead boids - they don't participate in spatial hash
+const INVALID_CELL: u32 = 0xFFFFFFFFu;
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> prefixSums: array<u32>;
 @group(0) @binding(2) var<storage, read_write> cellOffsets: array<atomic<u32>>;
@@ -55,6 +58,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     let cellIndex = boidCellIndices[boidIndex];
+    
+    // Skip dead boids (marked as INVALID_CELL in count pass)
+    if (cellIndex == INVALID_CELL) {
+        return;
+    }
+    
     let cellStart = prefixSums[cellIndex];
     let localOffset = atomicAdd(&cellOffsets[cellIndex], 1u);
     

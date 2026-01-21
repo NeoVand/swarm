@@ -4,6 +4,7 @@ import { writable, derived } from 'svelte/store';
 import {
 	type SimulationParams,
 	type CursorState,
+	type CurvePoint,
 	DEFAULT_PARAMS,
 	BoundaryMode,
 	ColorMode,
@@ -13,7 +14,9 @@ import {
 	AlgorithmMode,
 	WallTool,
 	WallBrushShape,
-	WALL_TEXTURE_SCALE
+	PopulationCap,
+	WALL_TEXTURE_SCALE,
+	CA_DEFAULT_CURVES
 } from '$lib/webgpu/types';
 
 // Main simulation parameters store
@@ -72,6 +75,35 @@ export const needsTrailClear = writable(false);
 
 // Flag to trigger simulation reset (reinitialize boid positions)
 export const needsSimulationReset = writable(false);
+
+// ============================================================================
+// CA SYSTEM STORES
+// ============================================================================
+
+// CA curve stores - each curve is an array of control points
+// These are separate from params because they need special handling for GPU upload
+export const caCurves = writable<{
+	vitalityInfluence: CurvePoint[];
+	alignment: CurvePoint[];
+	cohesion: CurvePoint[];
+	separation: CurvePoint[];
+	birth: CurvePoint[];
+}>({
+	vitalityInfluence: CA_DEFAULT_CURVES.vitalityInfluence.map((p) => ({ ...p })),
+	alignment: CA_DEFAULT_CURVES.alignment.map((p) => ({ ...p })),
+	cohesion: CA_DEFAULT_CURVES.cohesion.map((p) => ({ ...p })),
+	separation: CA_DEFAULT_CURVES.separation.map((p) => ({ ...p })),
+	birth: CA_DEFAULT_CURVES.birth.map((p) => ({ ...p }))
+});
+
+// Flag to trigger CA curve GPU upload
+export const caCurvesDirty = writable(false);
+
+// Flag to trigger CA state reinitialization
+export const needsCAStateReset = writable(false);
+
+// Currently active population (may differ from params.population due to CA dynamics)
+export const activePopulation = writable(0);
 
 // Wall drawing state
 export const wallTool = writable<WallTool>(WallTool.None);
@@ -398,6 +430,123 @@ export function setRecording(value: boolean): void {
 	isRecording.set(value);
 }
 
+// ============================================================================
+// CA SYSTEM SETTERS
+// ============================================================================
+
+export function setCAEnabled(value: boolean): void {
+	params.update((p) => ({ ...p, caEnabled: value }));
+	if (value) {
+		// When enabling CA, reinitialize CA state AND upload current curves
+		needsCAStateReset.set(true);
+		caCurvesDirty.set(true); // Ensure store curves are uploaded to GPU
+	}
+}
+
+export function setAgingEnabled(value: boolean): void {
+	params.update((p) => ({ ...p, agingEnabled: value }));
+}
+
+export function setMaxAge(value: number): void {
+	params.update((p) => ({ ...p, maxAge: value }));
+}
+
+export function setVitalityGain(value: number): void {
+	params.update((p) => ({ ...p, vitalityGain: value }));
+}
+
+export function setBirthVitalityThreshold(value: number): void {
+	params.update((p) => ({ ...p, birthVitalityThreshold: value }));
+}
+
+export function setBirthFieldThreshold(value: number): void {
+	params.update((p) => ({ ...p, birthFieldThreshold: value }));
+}
+
+export function setBirthSplit(value: number): void {
+	params.update((p) => ({ ...p, birthSplit: value }));
+}
+
+export function setVitalityConservation(value: number): void {
+	params.update((p) => ({ ...p, vitalityConservation: value }));
+}
+
+export function setAgeSpread(value: number): void {
+	params.update((p) => ({ ...p, ageSpread: value }));
+}
+
+export function setPopulationCap(value: PopulationCap): void {
+	params.update((p) => ({ ...p, populationCap: value }));
+}
+
+export function setMaxPopulation(value: number): void {
+	params.update((p) => ({ ...p, maxPopulation: value }));
+}
+
+/**
+ * Update a specific CA curve and mark as dirty for GPU upload.
+ */
+export function setCACurve(
+	curveType: 'vitalityInfluence' | 'alignment' | 'cohesion' | 'separation' | 'birth',
+	points: CurvePoint[]
+): void {
+	caCurves.update((curves) => ({
+		...curves,
+		[curveType]: [...points]
+	}));
+	caCurvesDirty.set(true);
+}
+
+/**
+ * Update all CA curves at once.
+ */
+export function setAllCACurves(curves: {
+	vitalityInfluence: CurvePoint[];
+	alignment: CurvePoint[];
+	cohesion: CurvePoint[];
+	separation: CurvePoint[];
+	birth: CurvePoint[];
+}): void {
+	caCurves.set({
+		vitalityInfluence: [...curves.vitalityInfluence],
+		alignment: [...curves.alignment],
+		cohesion: [...curves.cohesion],
+		separation: [...curves.separation],
+		birth: [...curves.birth]
+	});
+	caCurvesDirty.set(true);
+}
+
+/**
+ * Reset CA curves to defaults.
+ */
+export function resetCACurves(): void {
+	setAllCACurves({
+		vitalityInfluence: [...CA_DEFAULT_CURVES.vitalityInfluence],
+		alignment: [...CA_DEFAULT_CURVES.alignment],
+		cohesion: [...CA_DEFAULT_CURVES.cohesion],
+		separation: [...CA_DEFAULT_CURVES.separation],
+		birth: [...CA_DEFAULT_CURVES.birth]
+	});
+}
+
+/**
+ * Reset entire CA system to defaults.
+ */
+export function resetCASystem(): void {
+	params.update((p) => ({
+		...p,
+		caEnabled: false,
+		agingEnabled: true,
+		maxAge: 15,
+		birthThreshold: 3.5,
+		populationCap: PopulationCap.Soft,
+		maxPopulation: 15000
+	}));
+	resetCACurves();
+	needsCAStateReset.set(true);
+}
+
 // Export enums for use in components
 export {
 	BoundaryMode,
@@ -408,5 +557,9 @@ export {
 	AlgorithmMode,
 	WallTool,
 	WallBrushShape,
+	PopulationCap,
 	DEFAULT_PARAMS
 };
+
+// Export CA curve type for components
+export type { CurvePoint };

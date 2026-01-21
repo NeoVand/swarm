@@ -42,6 +42,18 @@ struct Uniforms {
     idealDensity: f32,    // Density Adaptive: target neighbor density
     // Simulation timing
     timeScale: f32,       // Simulation speed multiplier
+    // CA System parameters
+    caEnabled: u32,       // Master toggle for CA system
+    agingEnabled: u32,    // Natural death by time
+    maxAge: f32,          // Maximum lifespan in seconds
+    vitalityGain: f32,    // Gain multiplier for neighbor influence
+    birthVitalityThreshold: f32,  // Parent vitality required to birth
+    birthFieldThreshold: f32,     // Weighted field strength required
+    vitalityConservation: f32,    // How much vitality preserved in birth
+    birthSplit: f32,      // Fraction of vitality given to child (0-1)
+    ageSpread: f32,       // Initial age spread as fraction of maxAge
+    populationCap: u32,   // 0=none, 1=soft, 2=hard
+    maxPopulation: u32,   // Maximum allowed population
 }
 
 // Cursor shapes
@@ -69,6 +81,22 @@ const ALG_DENSITY_ADAPTIVE: u32 = 4u;
 const MAX_K_NEIGHBORS: u32 = 24u;
 const MAX_CANDIDATES: u32 = 128u;
 const MAX_TRAIL_LENGTH: u32 = 100u;
+
+// ============================================================================
+// CA SYSTEM CONSTANTS
+// ============================================================================
+
+const CA_CURVE_SAMPLES: u32 = 128u;
+const CA_CURVE_VITALITY_INFLUENCE: u32 = 0u;
+const CA_CURVE_ALIGNMENT: u32 = 1u;
+const CA_CURVE_COHESION: u32 = 2u;
+const CA_CURVE_SEPARATION: u32 = 3u;
+const CA_CURVE_BIRTH: u32 = 4u;
+
+// Population cap modes
+const POP_CAP_NONE: u32 = 0u;
+const POP_CAP_SOFT: u32 = 1u;
+const POP_CAP_HARD: u32 = 2u;
 
 // ============================================================================
 // BOUNDARY SYSTEM - Modular configuration for all topology types
@@ -181,6 +209,14 @@ const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
 @group(0) @binding(9) var wallTexture: texture_2d<f32>;
 @group(0) @binding(10) var wallSampler: sampler;
 
+// CA System bindings (separate bind group to stay within storage buffer limits)
+// Using single read_write buffer for state - small race conditions acceptable for visual effects
+@group(1) @binding(0) var<storage, read_write> boidState: array<vec4<f32>>;  // [age, vitality, alive, padding]
+@group(1) @binding(1) var caCurvesTexture: texture_1d<f32>;  // 4 curves × 128 samples as 1D texture
+// Birth colors - updated when child is born so they get position-based color
+@group(1) @binding(3) var<storage, read_write> birthColors: array<f32>;
+@group(1) @binding(2) var caCurvesSampler: sampler;  // Sampler for curve lookup
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -227,6 +263,73 @@ fn separationKernel(dist: f32, radius: f32) -> f32 {
     let t = 1.0 - q;
     return t * t * (2.0 / (q + 0.5));
 }
+
+// ============================================================================
+// CA SYSTEM FUNCTIONS
+// ============================================================================
+
+// Look up a value from a CA curve using linear interpolation
+fn lookupCACurve(curveIndex: u32, t: f32) -> f32 {
+    let base = i32(curveIndex * CA_CURVE_SAMPLES);
+    let curvePos = clamp(t, 0.0, 1.0) * 127.0;
+    let idxLow = i32(floor(curvePos));
+    let idxHigh = min(idxLow + 1, 127);
+    let frac = curvePos - f32(idxLow);
+    
+    // Use textureLoad for 1D texture (returns vec4, we use .r channel)
+    let valLow = textureLoad(caCurvesTexture, base + idxLow, 0).r;
+    let valHigh = textureLoad(caCurvesTexture, base + idxHigh, 0).r;
+    return mix(valLow, valHigh, frac);
+}
+
+// Get boid state: returns vec4(age, vitality, alive, padding)
+fn getBoidState(boidIndex: u32) -> vec4<f32> {
+    return boidState[boidIndex];
+}
+
+// Check if boid is alive
+fn isBoidAlive(boidIndex: u32) -> bool {
+    return boidState[boidIndex].z > 0.5;  // alive is stored in z component as 0.0 or 1.0
+}
+
+// Get boid vitality (0-1)
+fn getBoidVitality(boidIndex: u32) -> f32 {
+    return boidState[boidIndex].y;
+}
+
+// Calculate vitality contribution from a neighbor (uses vitality influence curve!)
+fn getVitalityContribution(neighborVitality: f32) -> f32 {
+    // Look up the vitality influence curve
+    // x = neighbor's vitality (0-1)
+    // y = contribution to influence sum (can be negative!)
+    return lookupCACurve(CA_CURVE_VITALITY_INFLUENCE, neighborVitality);
+}
+
+// Calculate birth field contribution from a neighbor (uses birth curve!)
+// x = neighbor's vitality (0-1)
+// y = contribution to birth field sum
+// Separate from vitality influence - allows independent control of birth dynamics
+fn getBirthContribution(neighborVitality: f32) -> f32 {
+    return lookupCACurve(CA_CURVE_BIRTH, neighborVitality);
+}
+
+// Get force modulation multiplier based on own vitality
+// Curves return OFFSET from 1.0, so y=0 means multiplier=1 (no change)
+// y>0 means stronger force, y<0 means weaker force
+fn getAlignmentModulation(vitality: f32) -> f32 {
+    return 1.0 + lookupCACurve(CA_CURVE_ALIGNMENT, vitality);
+}
+
+fn getCohesionModulation(vitality: f32) -> f32 {
+    return 1.0 + lookupCACurve(CA_CURVE_COHESION, vitality);
+}
+
+fn getSeparationModulation(vitality: f32) -> f32 {
+    return 1.0 + lookupCACurve(CA_CURVE_SEPARATION, vitality);
+}
+
+// Note: Birth queueing disabled for now to stay within storage buffer limits
+// TODO: Re-implement birth with a CPU-side or texture-based approach
 
 // ============================================================================
 // BOUNDARY FUNCTIONS - Clean, modular boundary handling
@@ -1149,6 +1252,33 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let myPos = positionsIn[boidIndex];
     let myVel = velocitiesIn[boidIndex];
     
+    // ========================================================================
+    // CA SYSTEM: Read current state (only when CA is enabled)
+    // ========================================================================
+    var myAge = 0.0;
+    var myVitality = 1.0;
+    var myAlive = true;
+    
+    if (uniforms.caEnabled != 0u) {
+        let myState = getBoidState(boidIndex);
+        myAge = myState.x;
+        myVitality = myState.y;
+        myAlive = myState.z > 0.5;
+        
+        // Dead boids: Skip simulation entirely.
+        // IMPORTANT: We do NOT write to position/velocity/trail buffers here.
+        // If this boid gets resurrected by a parent, the parent will write all
+        // necessary data. If not resurrected, the trail shader will hide it
+        // based on the alive flag in boidState.
+        // This avoids race conditions between dead boid writes and parent birth writes.
+        if (!myAlive) {
+            // Only update boidState to keep dead status
+            // Position/velocity buffers are intentionally NOT written to avoid
+            // race conditions with potential parent birth writes
+            return;
+        }
+    }
+    
     // Rebel behavior - different boids become rebels each cycle
     let rebelPeriod = 300u;   // ~5 seconds at 60fps per cycle
     let rebelDuration = 90u;  // ~1.5 seconds of rebel behavior
@@ -1160,8 +1290,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let isRebel = rebelHash < uniforms.rebels && timeInCycle < rebelDuration;
     let rebelFactor = select(1.0, 0.1, isRebel);
     
-    // Select algorithm
+    // Select algorithm - returns (acceleration, neighborInfluenceSum) when CA is enabled
     var acceleration: vec2<f32>;
+    var neighborInfluenceSum: f32 = 0.0;
+    
     switch (uniforms.algorithmMode) {
         case ALG_TOPOLOGICAL_KNN: { acceleration = algorithmTopologicalKNN(boidIndex, myPos, myVel, rebelFactor); }
         case ALG_SMOOTH_METRIC: { acceleration = algorithmSmoothMetric(boidIndex, myPos, myVel, rebelFactor); }
@@ -1170,6 +1302,22 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         case ALG_DENSITY_ADAPTIVE: { acceleration = algorithmDensityAdaptive(boidIndex, myPos, myVel, rebelFactor); }
         default: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
     }
+    
+    // ========================================================================
+    // CA SYSTEM: Force modulation based on own vitality (DISABLED FOR DEBUGGING)
+    // ========================================================================
+    // NOTE: Force modulation is disabled when force curves are at y=0 (default).
+    // The curves must be explicitly adjusted to enable vitality-based force changes.
+    // This prevents any unintended motion effects from CA alone.
+    //
+    // Uncomment below to enable force modulation:
+    // if (uniforms.caEnabled != 0u) {
+    //     let alignMod = getAlignmentModulation(myVitality);
+    //     let cohesionMod = getCohesionModulation(myVitality);
+    //     let sepMod = getSeparationModulation(myVitality);
+    //     let avgMod = (alignMod + cohesionMod + sepMod) / 3.0;
+    //     acceleration *= avgMod;
+    // }
     
     // Cursor interaction - Shape determines radial force, Vortex adds rotation
     // Allow interaction if mode is Attract/Repel OR if Vortex is enabled independently
@@ -1400,9 +1548,216 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let velMult = boundaryResult.zw;
     newVel = newVel * velMult;  // Flip velocity components when crossing flip boundaries
     
-    // Write output
+    // Write position and velocity output
     positionsOut[boidIndex] = newPos;
     velocitiesOut[boidIndex] = newVel;
+    
+    // ========================================================================
+    // CA SYSTEM: Update state (age, vitality, death, birth)
+    // ========================================================================
+    var newAge = myAge;
+    var newVitality = myVitality;
+    var newAlive = myAlive;
+    
+    if (uniforms.caEnabled != 0u) {
+        // Update age
+        newAge = myAge + uniforms.deltaTime * uniforms.timeScale;
+        
+        // ========================================================================
+        // CONTINUOUS FIELD CALCULATIONS (VITALITY + BIRTH)
+        // ========================================================================
+        // Use smooth kernel weighting (same as flocking forces) for continuous fields.
+        //
+        // vitalityInfluence = Σ smoothKernel(dist) × vitality × vitalityCurve(vitality)
+        // birthField = Σ smoothKernel(dist) × birthCurve(vitality)
+        //
+        // These are SEPARATE curves so you can control vitality dynamics and birth independently.
+        //
+        let myCellX = i32(newPos.x / uniforms.cellSize);
+        let myCellY = i32(newPos.y / uniforms.cellSize);
+        var weightedVitalitySum: f32 = 0.0;
+        var birthFieldSum: f32 = 0.0;
+        var totalWeight: f32 = 0.0;
+        
+        // 5x5 grid search (matching flocking algorithms)
+        for (var dy = -2i; dy <= 2i; dy++) {
+            for (var dx = -2i; dx <= 2i; dx++) {
+                let ncx = myCellX + dx;
+                let ncy = myCellY + dy;
+                if (ncx >= 0 && ncx < i32(uniforms.gridWidth) && ncy >= 0 && ncy < i32(uniforms.gridHeight)) {
+                    let nCellIdx = u32(ncy) * uniforms.gridWidth + u32(ncx);
+                    let cellStart = prefixSums[nCellIdx];
+                    let cellCount = cellCounts[nCellIdx];
+                    
+                    for (var i = 0u; i < min(cellCount, 64u); i++) {
+                        let otherIdx = sortedIndices[cellStart + i];
+                        if (otherIdx != boidIndex) {
+                            let otherPos = positionsIn[otherIdx];
+                            let dist = distance(newPos, otherPos);
+                            
+                            if (dist < uniforms.perception) {
+                                let otherState = boidState[otherIdx];
+                                let otherVitality = otherState.y;
+                                
+                                // Smooth kernel weight (same as flocking alignment/cohesion)
+                                let kernelWeight = smoothKernel(dist, uniforms.perception);
+                                
+                                // Accumulate weighted vitality for averaging
+                                weightedVitalitySum += kernelWeight * otherVitality;
+                                
+                                // Birth field: separate curve for birth dynamics
+                                let birthCurveWeight = getBirthContribution(otherVitality);
+                                birthFieldSum += kernelWeight * birthCurveWeight;
+                                
+                                totalWeight += kernelWeight;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // ========================================================================
+        // VITALITY DYNAMICS - Continuous Field Model
+        // ========================================================================
+        // Two independent mechanisms:
+        // 1. Vitality Influence curve: maps average neighborhood vitality → your vitality change
+        // 2. Birth Field: determines if you can reproduce (also helps survival)
+        //
+        // The birth field provides a survival bonus - clustered boids decay slower.
+        // This ensures populations can sustain even with vitality influence at 0.
+        
+        let dt = uniforms.deltaTime * uniforms.timeScale;
+        
+        // Calculate average neighborhood vitality (normalized to 0-1)
+        var avgNeighborVitality: f32 = 0.0;
+        if (totalWeight > 0.001) {
+            avgNeighborVitality = weightedVitalitySum / totalWeight;
+        }
+        
+        // Look up the vitality influence curve ONCE with the average
+        // X = average neighbor vitality (0-1), Y = influence multiplier (-1 to 1)
+        let curveInfluence = getVitalityContribution(avgNeighborVitality);
+        
+        // Gain multiplier controls overall sensitivity to neighbors
+        let gainMultiplier = uniforms.vitalityGain;
+        
+        // Neighbor influence: curve output scaled by gain and time
+        // Positive curve = neighbors boost your vitality, negative = drain
+        let neighborInfluence = curveInfluence * gainMultiplier * dt;
+        
+        // Natural decay (aging) - base death rate
+        var decay = 0.0;
+        if (uniforms.maxAge > 0.0) {
+            decay = dt / uniforms.maxAge;
+        }
+        
+        // Birth field provides survival bonus - being in a cluster slows decay
+        // This allows populations to sustain even with vitality influence curve at 0
+        // birthFieldSum > 0.5 means strong cluster = 50% slower decay
+        let survivalBonus = clamp(birthFieldSum, 0.0, 1.0) * 0.5;
+        let adjustedDecay = decay * (1.0 - survivalBonus);
+        
+        // Vitality update: neighbor influence minus adjusted decay
+        newVitality = clamp(myVitality + neighborInfluence - adjustedDecay, 0.0, 1.0);
+        
+        // Death when vitality depleted
+        if (newVitality <= 0.001) {
+            newAlive = false;
+            newVitality = 0.0;
+        }
+        
+        // ========================================================================
+        // BIRTH - Simple cluster-based reproduction
+        // ========================================================================
+        // Birth happens automatically when:
+        // 1. Boid's vitality exceeds birthVitalityThreshold
+        // 2. Birth field sum exceeds birthFieldThreshold
+        // 3. A dead slot is available (searches multiple candidates)
+        //
+        // birthFieldSum uses a SEPARATE curve from vitality influence,
+        // allowing independent control of birth vs vitality dynamics.
+        
+        // Use birthFieldThreshold for BOTH conditions (single slider controls birth ease)
+        // Lower threshold = easier birth (both lower vitality required AND lower field required)
+        let canBirth = myAlive && 
+                       newVitality > uniforms.birthFieldThreshold && 
+                       birthFieldSum > uniforms.birthFieldThreshold;
+        
+        if (canBirth) {
+            // Search for a dead slot across the entire population pool (including headroom)
+            // With 50k slots and starting population of ~5k, there's plenty of room for growth
+            var childSlot = 0xFFFFFFFFu; // Invalid
+            let maxSlots = uniforms.maxPopulation;
+            let baseSlot = (boidIndex + maxSlots / 2u) % maxSlots;
+            
+            // Try up to 16 different slots for better chance of finding dead slot
+            for (var attempt = 0u; attempt < 16u; attempt++) {
+                let candidateSlot = (baseSlot + attempt * 1031u) % maxSlots; // Prime stride for spread
+                let candidateState = boidState[candidateSlot];
+                if (candidateState.z < 0.5) { // Dead
+                    childSlot = candidateSlot;
+                    break;
+                }
+            }
+            
+            if (childSlot != 0xFFFFFFFFu) {
+                // Split vitality based on birthSplit parameter
+                let childVitality = newVitality * uniforms.birthSplit;
+                newVitality = newVitality * (1.0 - uniforms.birthSplit);
+                
+                // Offset both parent and child symmetrically to avoid overlap
+                // Their average position = original parent position (center of mass preserved)
+                let parentSpeed = length(newVel);
+                let offsetDist = uniforms.boidSize * 5.0;
+                var parentNewPos = newPos;
+                var childPos = newPos;
+                
+                if (parentSpeed > 0.001) {
+                    let dir = newVel / parentSpeed;
+                    // Parent moves forward, child moves backward
+                    parentNewPos = newPos + dir * offsetDist;
+                    childPos = newPos - dir * offsetDist;
+                } else {
+                    // No velocity - use random-ish offset based on boid index
+                    let angle = f32(boidIndex) * 0.618033988749 * 6.283185;
+                    let offsetDir = vec2<f32>(cos(angle), sin(angle));
+                    parentNewPos = newPos + offsetDir * offsetDist;
+                    childPos = newPos - offsetDir * offsetDist;
+                }
+                
+                // Update parent position (will be written below)
+                newPos = parentNewPos;
+                
+                // Child inherits parent's velocity
+                positionsOut[childSlot] = childPos;
+                velocitiesOut[childSlot] = newVel;
+                boidState[childSlot] = vec4<f32>(0.0, childVitality, 1.0, 0.0);
+                
+                // Update child's birth color based on spawn position (angle from canvas center)
+                // This ensures newborns get proper position-based coloring
+                let canvasCenterX = f32(uniforms.canvasWidth) * 0.5;
+                let canvasCenterY = f32(uniforms.canvasHeight) * 0.5;
+                let childAngle = atan2(childPos.y - canvasCenterY, childPos.x - canvasCenterX);
+                birthColors[childSlot] = (childAngle + 3.14159265) / (2.0 * 3.14159265); // Normalize to [0, 1]
+                
+                // Reset child's trail to proper base position (offset from center)
+                // This matches how trails are normally written
+                var childTrailPos = childPos;
+                let childSpeed = length(newVel);
+                if (childSpeed > 0.001) {
+                    let childDir = newVel / childSpeed;
+                    childTrailPos = childPos - childDir * 0.7 * uniforms.boidSize * 6.0;
+                }
+                for (var t = 0u; t < MAX_TRAIL_LENGTH; t++) {
+                    trails[childSlot * MAX_TRAIL_LENGTH + t] = childTrailPos;
+                }
+            }
+        }
+    }
+    
+    // Write CA state (in-place update)
+    boidState[boidIndex] = vec4<f32>(newAge, newVitality, select(0.0, 1.0, newAlive), 0.0);
     
     // Update trail - store at the BASE of the boid (x = -0.7 in local space), not the center
     // This ensures trails connect seamlessly to the triangle's back edge

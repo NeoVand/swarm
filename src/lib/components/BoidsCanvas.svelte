@@ -25,7 +25,10 @@
 		paintWall,
 		beginStroke,
 		endStrokeWithHollow,
-		wallsDirty
+		wallsDirty,
+		needsCAStateReset,
+		caCurves,
+		caCurvesDirty
 	} from '$lib/stores/simulation';
 
 	let canvas: HTMLCanvasElement;
@@ -67,6 +70,8 @@
 		if (needs && simulation) {
 			simulation.reallocateBuffers();
 			needsBufferReallocation.set(false);
+			// Re-upload curves from store after reallocation
+			caCurvesDirty.set(true);
 		}
 	});
 
@@ -81,6 +86,40 @@
 		if (needs && simulation) {
 			simulation.resetBoids();
 			needsSimulationReset.set(false);
+			// Re-upload curves from store after reset
+			caCurvesDirty.set(true);
+		}
+	});
+
+	// CA state reset subscription
+	const unsubCAStateReset = needsCAStateReset.subscribe((needs) => {
+		if (needs && simulation) {
+			simulation.resetCAState();
+			needsCAStateReset.set(false);
+			// Re-upload curves from store after CA reset
+			caCurvesDirty.set(true);
+		}
+	});
+
+	// CA curves update subscription
+	const unsubCACurves = caCurvesDirty.subscribe((dirty) => {
+		if (dirty && simulation) {
+			const curves = {
+				vitalityInfluence: [] as { x: number; y: number }[],
+				alignment: [] as { x: number; y: number }[],
+				cohesion: [] as { x: number; y: number }[],
+				separation: [] as { x: number; y: number }[],
+				birth: [] as { x: number; y: number }[]
+			};
+			caCurves.subscribe((c) => {
+				curves.vitalityInfluence = c.vitalityInfluence;
+				curves.alignment = c.alignment;
+				curves.cohesion = c.cohesion;
+				curves.separation = c.separation;
+				curves.birth = c.birth;
+			})();
+			simulation.updateCACurves(curves);
+			caCurvesDirty.set(false);
 		}
 	});
 
@@ -317,6 +356,9 @@
 				fps.set(newFps);
 			});
 
+			// Sync CA curves from store to GPU (ensures store and GPU are in sync)
+			caCurvesDirty.set(true);
+
 			// Ensure reallocation flag is clean after init
 			needsBufferReallocation.set(false);
 
@@ -360,6 +402,8 @@
 		unsubRealloc();
 		unsubTrailClear();
 		unsubSimulationReset();
+		unsubCAStateReset();
+		unsubCACurves();
 		unsubRunning();
 		unsubWallTool();
 		unsubWallsDirty();

@@ -20,6 +20,7 @@ struct Uniforms {
     boundaryMode: u32,
     cursorMode: u32,
     cursorShape: u32,
+    cursorVortex: u32,
     cursorForce: f32,
     cursorRadius: f32,
     cursorX: f32,
@@ -38,12 +39,28 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    // CA System parameters
+    caEnabled: u32,
+    agingEnabled: u32,
+    maxAge: f32,
+    vitalityGain: f32,
+    birthVitalityThreshold: f32,
+    birthFieldThreshold: f32,
+    vitalityConservation: f32,
+    birthSplit: f32,
+    ageSpread: f32,
+    populationCap: u32,
+    maxPopulation: u32,
 }
+
+// Special cell index for dead boids - they don't participate in spatial hash
+const INVALID_CELL: u32 = 0xFFFFFFFFu;
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> cellCounts: array<atomic<u32>>;
 @group(0) @binding(2) var<storage, read> positions: array<vec2<f32>>;
 @group(0) @binding(3) var<storage, read_write> boidCellIndices: array<u32>;
+@group(0) @binding(4) var<storage, read> boidState: array<vec4<f32>>;  // [age, vitality, alive, padding]
 
 fn getCellIndex(pos: vec2<f32>) -> u32 {
     let cellX = clamp(u32(pos.x / uniforms.cellSize), 0u, uniforms.gridWidth - 1u);
@@ -57,6 +74,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     if (boidIndex >= uniforms.boidCount) {
         return;
+    }
+    
+    // Skip dead boids - they shouldn't affect live boids' flocking
+    if (uniforms.caEnabled != 0u) {
+        let state = boidState[boidIndex];
+        let isAlive = state.z > 0.5;
+        if (!isAlive) {
+            // Mark as invalid - won't be included in spatial hash
+            boidCellIndices[boidIndex] = INVALID_CELL;
+            return;
+        }
     }
     
     let pos = positions[boidIndex];

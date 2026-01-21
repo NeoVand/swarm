@@ -16,6 +16,9 @@
 		canvasElement,
 		needsSimulationReset,
 		wallTool,
+		caCurves,
+		caCurvesDirty,
+		needsCAStateReset,
 		setAlignment,
 		setCohesion,
 		setSeparation,
@@ -45,6 +48,14 @@
 		setWallBrushSize,
 		setWallBrushShape,
 		clearWalls,
+		setCAEnabled,
+		setMaxAge,
+		setBirthFieldThreshold,
+		setBirthSplit,
+		setPopulationCap,
+		setMaxPopulation,
+		setCACurve,
+		resetCASystem,
 		BoundaryMode,
 		ColorMode,
 		ColorSpectrum,
@@ -53,8 +64,11 @@
 		AlgorithmMode,
 		WallTool,
 		WallBrushShape,
+		PopulationCap,
 		DEFAULT_PARAMS
 	} from '$lib/stores/simulation';
+	import InfluenceCurveEditor from './InfluenceCurveEditor.svelte';
+	import type { CurvePoint } from '$lib/webgpu/types';
 
 	let currentParams = $derived($params);
 	let isOpen = $derived($isPanelOpen);
@@ -62,6 +76,10 @@
 	let recording = $derived($isRecording);
 	let canvas = $derived($canvasElement);
 	let currentWallTool = $derived($wallTool);
+	let currentCACurves = $derived($caCurves);
+
+	// Active curve tab in the CA section
+	let activeCurveTab = $state<'vitality' | 'birth' | 'alignment' | 'cohesion' | 'separation'>('vitality');
 
 	let paletteDropdownOpen = $state(false);
 	let paletteDropdownRef = $state<HTMLDivElement | undefined>(undefined);
@@ -274,7 +292,7 @@
 
 	// Accordion - only one section open at a time
 	let openSection = $state<
-		'boids' | 'world' | 'interaction' | 'flocking' | 'dynamics' | 'algorithm'
+		'boids' | 'world' | 'interaction' | 'flocking' | 'dynamics' | 'algorithm' | 'cellular'
 	>('boids');
 
 	function toggleSection(section: typeof openSection) {
@@ -288,7 +306,8 @@
 		interaction: 4,
 		flocking: 5,
 		dynamics: 6,
-		algorithm: 7
+		algorithm: 7,
+		cellular: 8
 	};
 
 	// Start tour at a specific section
@@ -334,6 +353,11 @@
 		setCohesion(DEFAULT_PARAMS.cohesion);
 		setSeparation(DEFAULT_PARAMS.separation);
 		setPerception(DEFAULT_PARAMS.perception);
+	}
+
+	function resetCellularSection(e: Event): void {
+		e.stopPropagation();
+		resetCASystem();
 	}
 
 	function resetDynamicsSection(e: Event): void {
@@ -2860,6 +2884,236 @@
 					</div>
 				{/if}
 			</div>
+
+			<div class="section-divider"></div>
+			<!-- Cellular Rules (CA System) -->
+			<div id="section-cellular">
+				<button class="section-header" onclick={() => toggleSection('cellular')}>
+					<div class="section-title">
+						<svg
+							class="section-icon icon-emerald"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M12 2L2 7l10 5 10-5-10-5z" />
+							<path d="M2 17l10 5 10-5" />
+							<path d="M2 12l10 5 10-5" />
+						</svg>
+						<span class="section-label">Cellular</span>
+						{#if currentParams.caEnabled}
+							<span class="ca-badge">ON</span>
+						{/if}
+					</div>
+					<div class="section-actions">
+						{#if openSection === 'cellular'}
+							<span
+								class="section-action-btn"
+								role="button"
+								tabindex="0"
+								onclick={resetCellularSection}
+								onkeydown={(e) => handleKeydown(e, resetCellularSection)}
+								title="Reset"
+							>
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path
+										d="M3 3v5h5"
+									/></svg
+								>
+							</span>
+						{/if}
+						<svg
+							class="section-chevron"
+							class:open={openSection === 'cellular'}
+							viewBox="0 0 20 20"
+							fill="currentColor"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+					</div>
+				</button>
+				{#if openSection === 'cellular'}
+					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+						<!-- Simple on/off toggle -->
+						<div class="row">
+							<span class="label">Active</span>
+							<button
+								class="toggle-btn ca-master-toggle"
+								class:active={currentParams.caEnabled}
+								onclick={() => setCAEnabled(!currentParams.caEnabled)}
+								aria-label="Toggle CA System"
+							>
+								{currentParams.caEnabled ? 'ON' : 'OFF'}
+							</button>
+						</div>
+
+						{#if currentParams.caEnabled}
+							<!-- Core parameters -->
+							<div class="row">
+								<span class="label">Lifespan</span>
+								<input
+									type="range"
+									min="5"
+									max="60"
+									step="1"
+									value={currentParams.maxAge}
+									oninput={(e) => setMaxAge(parseInt(e.currentTarget.value))}
+									class="slider"
+									aria-label="Base lifespan in seconds"
+								/>
+								<span class="value">{currentParams.maxAge}s</span>
+							</div>
+
+							<div class="row">
+								<span class="label">Birth Threshold</span>
+								<input
+									type="range"
+									min="0"
+									max="1"
+									step="0.05"
+									value={currentParams.birthFieldThreshold}
+									oninput={(e) => setBirthFieldThreshold(parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Neighbor field strength required for birth"
+								/>
+								<span class="value">{currentParams.birthFieldThreshold.toFixed(2)}</span>
+							</div>
+
+							<div class="row">
+								<span class="label">Birth Split</span>
+								<input
+									type="range"
+									min="0.1"
+									max="0.9"
+									step="0.05"
+									value={currentParams.birthSplit}
+									oninput={(e) => setBirthSplit(parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Fraction of vitality given to child"
+								/>
+								<span class="value">{Math.round(currentParams.birthSplit * 100)}%</span>
+							</div>
+
+							<!-- Curve tabs - the core control for CA behavior -->
+							<div class="curve-tabs">
+								<button
+									class="curve-tab"
+									class:active={activeCurveTab === 'vitality'}
+									onclick={() => (activeCurveTab = 'vitality')}
+									title="How neighbors affect your vitality"
+								>
+									Influence
+								</button>
+								<button
+									class="curve-tab"
+									class:active={activeCurveTab === 'birth'}
+									onclick={() => (activeCurveTab = 'birth')}
+									title="How neighbors contribute to birth field"
+								>
+									Birth
+								</button>
+								<button
+									class="curve-tab"
+									class:active={activeCurveTab === 'alignment'}
+									onclick={() => (activeCurveTab = 'alignment')}
+									title="Alignment force modifier (0=normal)"
+								>
+									Align
+								</button>
+								<button
+									class="curve-tab"
+									class:active={activeCurveTab === 'cohesion'}
+									onclick={() => (activeCurveTab = 'cohesion')}
+									title="Cohesion force modifier (0=normal)"
+								>
+									Cohesion
+								</button>
+								<button
+									class="curve-tab"
+									class:active={activeCurveTab === 'separation'}
+									onclick={() => (activeCurveTab = 'separation')}
+									title="Separation force modifier (0=normal)"
+								>
+									Separate
+								</button>
+							</div>
+
+							<!-- Curve editor for selected tab -->
+							<div class="curve-editor-container">
+								{#if activeCurveTab === 'vitality'}
+									<InfluenceCurveEditor
+										points={currentCACurves.vitalityInfluence}
+										onChange={(pts: CurvePoint[]) => setCACurve('vitalityInfluence', pts)}
+										label="Avg Neighbor Vitality → Your Change"
+										xAxisLabel="Avg Neighbor Vitality"
+										yAxisLabel="Vitality Change"
+										yMin={-1}
+										yMax={1}
+										curveColor="#34d399"
+									/>
+								{:else if activeCurveTab === 'birth'}
+									<InfluenceCurveEditor
+										points={currentCACurves.birth}
+										onChange={(pts: CurvePoint[]) => setCACurve('birth', pts)}
+										label="Neighbor → Birth Field"
+										xAxisLabel="Neighbor Vitality"
+										yAxisLabel="Birth Contribution"
+										yMin={-1}
+										yMax={1}
+										curveColor="#a78bfa"
+									/>
+								{:else if activeCurveTab === 'alignment'}
+									<InfluenceCurveEditor
+										points={currentCACurves.alignment}
+										onChange={(pts: CurvePoint[]) => setCACurve('alignment', pts)}
+										label="Vitality → Align Force"
+										xAxisLabel="Your Vitality"
+										yAxisLabel="Force Offset"
+										yMin={-1}
+										yMax={1}
+										curveColor="#f472b6"
+									/>
+								{:else if activeCurveTab === 'cohesion'}
+									<InfluenceCurveEditor
+										points={currentCACurves.cohesion}
+										onChange={(pts: CurvePoint[]) => setCACurve('cohesion', pts)}
+										label="Vitality → Cohesion Force"
+										xAxisLabel="Your Vitality"
+										yAxisLabel="Force Offset"
+										yMin={-1}
+										yMax={1}
+										curveColor="#22d3ee"
+									/>
+								{:else if activeCurveTab === 'separation'}
+									<InfluenceCurveEditor
+										points={currentCACurves.separation}
+										onChange={(pts: CurvePoint[]) => setCACurve('separation', pts)}
+										label="Vitality → Separate Force"
+										xAxisLabel="Your Vitality"
+										yAxisLabel="Force Offset"
+										yMin={-1}
+										yMax={1}
+										curveColor="#fbbf24"
+									/>
+								{/if}
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}
@@ -3501,5 +3755,77 @@
 	}
 	:global(.driver-popover-arrow) {
 		display: none !important;
+	}
+
+	/* CA Section Styles */
+	.ca-badge {
+		font-size: 8px;
+		font-weight: 600;
+		padding: 1px 4px;
+		background: rgba(52, 211, 153, 0.2);
+		color: #34d399;
+		border-radius: 3px;
+		margin-left: 4px;
+	}
+
+	.ca-master-toggle {
+		padding: 4px 12px;
+		font-weight: 600;
+	}
+
+	.toggle-btn {
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 4px;
+		padding: 4px 10px;
+		font-size: 10px;
+		font-weight: 500;
+		color: rgb(113 113 122);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.toggle-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+	.toggle-btn.active {
+		background: rgba(52, 211, 153, 0.2);
+		border-color: rgba(52, 211, 153, 0.4);
+		color: #34d399;
+	}
+
+	.curve-tabs {
+		display: flex;
+		gap: 2px;
+		margin: 8px 0 4px 0;
+		background: rgba(0, 0, 0, 0.3);
+		padding: 2px;
+		border-radius: 6px;
+	}
+	.curve-tab {
+		flex: 1;
+		padding: 4px 6px;
+		font-size: 9px;
+		font-weight: 500;
+		text-align: center;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: rgb(113 113 122);
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.curve-tab:hover {
+		color: rgb(161 161 170);
+		background: rgba(255, 255, 255, 0.05);
+	}
+	.curve-tab.active {
+		background: rgba(255, 255, 255, 0.1);
+		color: rgb(228 228 231);
+	}
+
+	.curve-editor-container {
+		margin-top: 4px;
+		overflow: hidden;
+		max-width: 100%;
 	}
 </style>

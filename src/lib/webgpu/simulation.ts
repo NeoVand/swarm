@@ -1,6 +1,7 @@
 // Main simulation loop orchestration
 
 import type { GPUContext, SimulationBuffers, SimulationParams, CursorState } from './types';
+import type { CurvePoint } from './types';
 import {
 	createBuffers,
 	destroyBuffers,
@@ -11,6 +12,8 @@ import {
 	createBlockSumsBuffer,
 	updateWallTexture,
 	createWallTexture,
+	initializeCAState,
+	updateCACurves,
 	type BufferConfig
 } from './buffers';
 import { createComputePipelines, encodeComputePasses, type ComputeResources } from './compute';
@@ -40,6 +43,15 @@ export interface Simulation {
 	resetBoids: () => void;
 	isRunning: () => boolean;
 	updateWalls: () => void;
+	// CA System
+	updateCACurves: (curves: {
+		vitalityInfluence: CurvePoint[];
+		alignment: CurvePoint[];
+		cohesion: CurvePoint[];
+		separation: CurvePoint[];
+		birth: CurvePoint[];
+	}) => void;
+	resetCAState: () => void;
 }
 
 export function createSimulation(
@@ -58,9 +70,13 @@ export function createSimulation(
 	// Grid dimensions
 	let gridInfo = calculateGridDimensions(canvasWidth, canvasHeight, params.perception);
 
-	// Create buffers
+	// Create buffers with headroom for population growth
+	// maxPopulation defines buffer size, population is initial active count
+	const maxBoidCount = params.maxPopulation;
+	
 	let bufferConfig: BufferConfig = {
 		boidCount: params.population,
+		maxBoidCount,
 		trailLength: params.trailLength,
 		gridWidth: gridInfo.gridWidth,
 		gridHeight: gridInfo.gridHeight,
@@ -71,9 +87,12 @@ export function createSimulation(
 	let buffers: SimulationBuffers = createBuffers(device, bufferConfig);
 	let blockSumsBuffer = createBlockSumsBuffer(device, canvasWidth, canvasHeight);
 
-	// Initialize boid positions and velocities
-	initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
-	clearTrails(device, buffers, params.population, params.trailLength);
+	// Initialize boid positions and velocities (population active, rest as birth pool)
+	initializeBoids(device, buffers, params.population, maxBoidCount, canvasWidth, canvasHeight);
+	clearTrails(device, buffers, maxBoidCount);
+
+	// Initialize CA state (population alive with distributed vitality, rest dead as birth pool)
+	initializeCAState(device, buffers, params.population, maxBoidCount, params.maxAge, params.ageSpread);
 
 	// Initialize wall data
 	initWallData(canvasWidth, canvasHeight);
@@ -121,13 +140,14 @@ export function createSimulation(
 		trailHead = (trailHead + 1) % params.trailLength;
 
 		// Update uniform buffer
+		// Use maxPopulation for boidCount since dead boids return early
 		updateUniforms(device, buffers.uniforms, {
 			canvasWidth,
 			canvasHeight,
 			cellSize: gridInfo.cellSize,
 			gridWidth: gridInfo.gridWidth,
 			gridHeight: gridInfo.gridHeight,
-			boidCount: params.population,
+			boidCount: maxBoidCount, // Dispatch for all slots, dead ones return early
 			trailLength: params.trailLength,
 			trailHead,
 			params,
@@ -140,22 +160,22 @@ export function createSimulation(
 		// Create command encoder
 		const encoder = device.createCommandEncoder();
 
-		// Encode compute passes
+		// Encode compute passes (for all slots - dead boids return early)
 		encodeComputePasses(
 			encoder,
 			computeResources,
-			params.population,
+			maxBoidCount,
 			gridInfo.gridWidth * gridInfo.gridHeight,
 			readFromA
 		);
 
-		// Encode render pass
+		// Encode render pass (for all slots - dead boids are culled in shader)
 		const textureView = context.getCurrentTexture().createView();
 		encodeRenderPass(
 			encoder,
 			textureView,
 			renderResources,
-			params.population,
+			maxBoidCount,
 			params.trailLength,
 			readFromA
 		);
@@ -230,7 +250,7 @@ export function createSimulation(
 		computeResources = createComputePipelines(device, buffers, blockSumsBuffer);
 
 		// Clear trails on resize
-		clearTrails(device, buffers, params.population, params.trailLength);
+		clearTrails(device, buffers, maxBoidCount);
 		trailHead = 0;
 	}
 
@@ -245,9 +265,10 @@ export function createSimulation(
 		// Recalculate grid
 		gridInfo = calculateGridDimensions(canvasWidth, canvasHeight, params.perception);
 
-		// Create new buffers
+		// Create new buffers with max headroom
 		bufferConfig = {
 			boidCount: params.population,
+			maxBoidCount,
 			trailLength: params.trailLength,
 			gridWidth: gridInfo.gridWidth,
 			gridHeight: gridInfo.gridHeight,
@@ -258,9 +279,12 @@ export function createSimulation(
 		buffers = createBuffers(device, bufferConfig);
 		blockSumsBuffer = createBlockSumsBuffer(device, canvasWidth, canvasHeight);
 
-		// Reinitialize boids
-		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
-		clearTrails(device, buffers, params.population, params.trailLength);
+		// Reinitialize boids (population active, rest as birth pool)
+		initializeBoids(device, buffers, params.population, maxBoidCount, canvasWidth, canvasHeight);
+		clearTrails(device, buffers, maxBoidCount);
+
+		// Initialize CA state with age spread
+		initializeCAState(device, buffers, params.population, maxBoidCount, params.maxAge, params.ageSpread);
 
 		// Recreate pipelines with new buffers
 		computeResources = createComputePipelines(device, buffers, blockSumsBuffer);
@@ -277,19 +301,24 @@ export function createSimulation(
 	}
 
 	function doTrailClear(): void {
-		clearTrails(device, buffers, params.population, params.trailLength);
+		clearTrails(device, buffers, maxBoidCount);
 		trailHead = 0;
 	}
 
 	function resetBoids(): void {
 		// Reinitialize boid positions and velocities without reallocating buffers
-		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
-		clearTrails(device, buffers, params.population, params.trailLength);
+		initializeBoids(device, buffers, params.population, maxBoidCount, canvasWidth, canvasHeight);
+		clearTrails(device, buffers, maxBoidCount);
+
+		// Reset CA state with age spread (only boid state, not curves)
+		initializeCAState(device, buffers, params.population, maxBoidCount, params.maxAge, params.ageSpread);
 
 		// Reset state
 		readFromA = true;
 		frameCount = 0;
 		trailHead = 0;
+		
+		// Note: Curves should be re-uploaded via caCurvesDirty from the calling code
 	}
 
 	function doUpdateWalls(): void {
@@ -299,6 +328,20 @@ export function createSimulation(
 		const dims = getWallTextureDimensions();
 		updateWallTexture(device, buffers.wallTexture, wallData, dims.width, dims.height);
 		wallsDirty.set(false);
+	}
+
+	function doUpdateCACurves(curves: {
+		vitalityInfluence: CurvePoint[];
+		alignment: CurvePoint[];
+		cohesion: CurvePoint[];
+		separation: CurvePoint[];
+		birth: CurvePoint[];
+	}): void {
+		updateCACurves(device, buffers, curves);
+	}
+
+	function doResetCAState(): void {
+		initializeCAState(device, buffers, params.population, maxBoidCount, params.maxAge, params.ageSpread);
 	}
 
 	return {
@@ -312,6 +355,9 @@ export function createSimulation(
 		clearTrails: doTrailClear,
 		resetBoids,
 		isRunning: () => running,
-		updateWalls: doUpdateWalls
+		updateWalls: doUpdateWalls,
+		// CA System
+		updateCACurves: doUpdateCACurves,
+		resetCAState: doResetCAState
 	};
 }

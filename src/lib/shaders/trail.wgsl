@@ -39,6 +39,18 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    // CA System parameters
+    caEnabled: u32,
+    agingEnabled: u32,
+    maxAge: f32,
+    vitalityGain: f32,
+    birthVitalityThreshold: f32,
+    birthFieldThreshold: f32,
+    vitalityConservation: f32,
+    birthSplit: f32,
+    ageSpread: f32,
+    populationCap: u32,
+    maxPopulation: u32,
 }
 
 // Color modes
@@ -71,6 +83,7 @@ struct VertexOutput {
 @group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
 @group(0) @binding(3) var<storage, read> trails: array<vec2<f32>>;
 @group(0) @binding(4) var<storage, read> birthColors: array<f32>;
+@group(0) @binding(5) var<storage, read> boidState: array<vec4<f32>>;  // [age, vitality, alive, padding]
 
 fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
     let h = hsv.x;
@@ -261,10 +274,36 @@ fn vs_main(
     let segmentIndex = instanceIndex % (uniforms.trailLength - 1u);
     
     if (boidIndex >= uniforms.boidCount) {
-        output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0); // Off-screen in clip space
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
         return output;
+    }
+    
+    // CA System: Get boid vitality for trail fading
+    var boidVitality: f32 = 1.0;
+    if (uniforms.caEnabled != 0u) {
+        let state = boidState[boidIndex];
+        let boidAge = state.x;
+        let isAlive = state.z > 0.5;
+        boidVitality = state.y;
+        
+        if (!isAlive) {
+            // Dead boid - hide trail
+            output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0);
+            output.color = vec3<f32>(0.0);
+            output.alpha = 0.0;
+            return output;
+        }
+        
+        // Just-born boid (age < 0.2s) - skip trail to avoid stale position artifacts
+        // The position buffer needs a few frames to stabilize after birth
+        if (boidAge < 0.2) {
+            output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0);
+            output.color = vec3<f32>(0.0);
+            output.alpha = 0.0;
+            return output;
+        }
     }
     
     // Calculate trail indices (ring buffer)
@@ -300,9 +339,13 @@ fn vs_main(
         }
     }
     
-    // Skip if points are at origin (uninitialized)
-    if ((p1.x == 0.0 && p1.y == 0.0) || (p2.x == 0.0 && p2.y == 0.0)) {
-        output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    // Skip if points are at origin (uninitialized) or extremely off-screen
+    // This catches dead boids and prevents visual artifacts from stale data
+    let maxCoord = max(uniforms.canvasWidth, uniforms.canvasHeight) * 10.0;
+    if ((p1.x == 0.0 && p1.y == 0.0) || (p2.x == 0.0 && p2.y == 0.0) ||
+        abs(p1.x) > maxCoord || abs(p1.y) > maxCoord ||
+        abs(p2.x) > maxCoord || abs(p2.y) > maxCoord) {
+        output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0); // Off-screen in clip space
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
         return output;
@@ -313,7 +356,7 @@ fn vs_main(
         p2 = handleWrap(p1, p2);
         // If still wrapped after handling (shouldn't happen), skip
         if (isWrapped(p1, p2)) {
-            output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0); // Off-screen
             output.color = vec3<f32>(0.0);
             output.alpha = 0.0;
             return output;
@@ -329,7 +372,7 @@ fn vs_main(
     let len = length(dir);
     
     if (len < 0.001) {
-        output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0); // Off-screen
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
         return output;
@@ -455,9 +498,13 @@ fn vs_main(
     // Head: bright & opaque, Tail: darker & semi-transparent
     // Use linear fade for color (less aggressive than squared)
     let fadeFactor = 0.3 + alpha * 0.7;  // Range: 0.3 to 1.0 (not too dark at tail)
-    output.color = baseColor * fadeFactor;
-    // Alpha fades with age for smooth trail effect
-    output.alpha = 0.6 + alpha * 0.4;  // Range: 0.6 to 1.0
+    
+    // CA System: Modulate trail by boid vitality (dying boids have fading trails)
+    let vitalityFade = 0.3 + boidVitality * 0.7;  // Range: 0.3 to 1.0
+    
+    output.color = baseColor * fadeFactor * vitalityFade;
+    // Alpha fades with age AND vitality for smooth trail effect
+    output.alpha = (0.6 + alpha * 0.4) * vitalityFade;  // Vitality affects opacity too
     
     return output;
 }

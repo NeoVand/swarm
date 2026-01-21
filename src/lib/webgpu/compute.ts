@@ -19,6 +19,7 @@ export interface ComputeBindGroups {
 	scatter: GPUBindGroup;
 	simulateA: GPUBindGroup; // Read from A, write to B
 	simulateB: GPUBindGroup; // Read from B, write to A
+	ca: GPUBindGroup; // CA state (single buffer)
 }
 
 export interface ComputeResources {
@@ -96,7 +97,8 @@ export function createComputePipelines(
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
 			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
 			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }
+			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+			{ binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } } // boidState for CA alive check
 		]
 	});
 
@@ -112,7 +114,8 @@ export function createComputePipelines(
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.cellCounts } },
 			{ binding: 2, resource: { buffer: buffers.positionA } },
-			{ binding: 3, resource: { buffer: buffers.boidCellIndices } }
+			{ binding: 3, resource: { buffer: buffers.boidCellIndices } },
+			{ binding: 4, resource: { buffer: buffers.boidState } }
 		]
 	});
 
@@ -122,7 +125,8 @@ export function createComputePipelines(
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.cellCounts } },
 			{ binding: 2, resource: { buffer: buffers.positionB } },
-			{ binding: 3, resource: { buffer: buffers.boidCellIndices } }
+			{ binding: 3, resource: { buffer: buffers.boidCellIndices } },
+			{ binding: 4, resource: { buffer: buffers.boidState } }
 		]
 	});
 
@@ -194,6 +198,7 @@ export function createComputePipelines(
 	});
 
 	// === Simulate Pipeline ===
+	// Group 0: Core simulation buffers
 	const simulateBindGroupLayout = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
@@ -210,12 +215,23 @@ export function createComputePipelines(
 		]
 	});
 
+	// Group 1: CA System buffers (separate group to stay within storage buffer limits)
+	// Using texture for curves and single state buffer for in-place updates
+	const caBindGroupLayout = device.createBindGroupLayout({
+		entries: [
+			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // boidState (read_write)
+			{ binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'unfilterable-float', viewDimension: '1d' } }, // caCurvesTexture
+			{ binding: 2, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'non-filtering' } }, // caCurvesSampler
+			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } } // birthColors (for updating on birth)
+		]
+	});
+
 	const simulatePipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [simulateBindGroupLayout] }),
+		layout: device.createPipelineLayout({ bindGroupLayouts: [simulateBindGroupLayout, caBindGroupLayout] }),
 		compute: { module: simulateModule, entryPoint: 'main' }
 	});
 
-	// Bind group A: read from A, write to B
+	// Bind group A: read from A, write to B (positions, velocities)
 	const simulateBindGroupA = device.createBindGroup({
 		layout: simulateBindGroupLayout,
 		entries: [
@@ -233,7 +249,7 @@ export function createComputePipelines(
 		]
 	});
 
-	// Bind group B: read from B, write to A
+	// Bind group B: read from B, write to A (positions, velocities)
 	const simulateBindGroupB = device.createBindGroup({
 		layout: simulateBindGroupLayout,
 		entries: [
@@ -248,6 +264,17 @@ export function createComputePipelines(
 			{ binding: 8, resource: { buffer: buffers.trails } },
 			{ binding: 9, resource: buffers.wallTexture.createView() },
 			{ binding: 10, resource: buffers.wallSampler }
+		]
+	});
+
+	// CA bind group (single state buffer, no ping-pong needed)
+	const caBindGroup = device.createBindGroup({
+		layout: caBindGroupLayout,
+		entries: [
+			{ binding: 0, resource: { buffer: buffers.boidState } },
+			{ binding: 1, resource: buffers.caCurvesTexture.createView({ dimension: '1d' }) },
+			{ binding: 2, resource: buffers.caCurvesSampler },
+			{ binding: 3, resource: { buffer: buffers.birthColors } }
 		]
 	});
 
@@ -269,7 +296,8 @@ export function createComputePipelines(
 			prefixSumAggregate: prefixSumAggregateBindGroup,
 			scatter: scatterBindGroup,
 			simulateA: simulateBindGroupA,
-			simulateB: simulateBindGroupB
+			simulateB: simulateBindGroupB,
+			ca: caBindGroup
 		},
 		blockSumsBuffer
 	};
@@ -344,10 +372,13 @@ export function encodeComputePasses(
 	{
 		const pass = encoder.beginComputePass();
 		pass.setPipeline(resources.pipelines.simulate);
+		// Group 0: Core simulation buffers
 		pass.setBindGroup(
 			0,
 			readFromA ? resources.bindGroups.simulateA : resources.bindGroups.simulateB
 		);
+		// Group 1: CA system buffers (single state buffer, no ping-pong)
+		pass.setBindGroup(1, resources.bindGroups.ca);
 		pass.dispatchWorkgroups(boidWorkgroups);
 		pass.end();
 	}

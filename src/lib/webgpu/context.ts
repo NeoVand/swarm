@@ -118,12 +118,26 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 		// Request device with required features
 		let device: GPUDevice;
 		try {
+			// We need at least 9 storage buffers per stage (8 core + 1 CA state)
+			const requiredStorageBuffers = 10;
+			const adapterStorageLimit = adapter.limits.maxStorageBuffersPerShaderStage;
+			
+			console.log(`Adapter storage buffer limit: ${adapterStorageLimit}, requesting: ${requiredStorageBuffers}`);
+			
+			if (adapterStorageLimit < requiredStorageBuffers) {
+				console.warn(
+					`Adapter supports only ${adapterStorageLimit} storage buffers per stage, ` +
+					`but we need ${requiredStorageBuffers}. CA features may be limited.`
+				);
+			}
+			
 			device = await adapter.requestDevice({
 				requiredFeatures: [],
 				requiredLimits: {
 					maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
 					maxBufferSize: adapter.limits.maxBufferSize,
-					maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension
+					maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
+					maxStorageBuffersPerShaderStage: Math.min(requiredStorageBuffers, adapterStorageLimit)
 				}
 			});
 		} catch (e) {

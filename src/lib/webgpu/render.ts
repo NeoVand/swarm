@@ -44,7 +44,8 @@ export function createRenderPipelines(
 			},
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // birthColors
+			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // birthColors
+			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // boidState (CA)
 		]
 	});
 
@@ -82,14 +83,15 @@ export function createRenderPipelines(
 		}
 	});
 
-	// Bind groups for ping-pong
+	// Bind groups for ping-pong (boidState is single buffer, same for both)
 	const boidBindGroupA = device.createBindGroup({
 		layout: boidBindGroupLayout,
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionA } },
 			{ binding: 2, resource: { buffer: buffers.velocityA } },
-			{ binding: 3, resource: { buffer: buffers.birthColors } }
+			{ binding: 3, resource: { buffer: buffers.birthColors } },
+			{ binding: 4, resource: { buffer: buffers.boidState } }
 		]
 	});
 
@@ -99,7 +101,8 @@ export function createRenderPipelines(
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionB } },
 			{ binding: 2, resource: { buffer: buffers.velocityB } },
-			{ binding: 3, resource: { buffer: buffers.birthColors } }
+			{ binding: 3, resource: { buffer: buffers.birthColors } },
+			{ binding: 4, resource: { buffer: buffers.boidState } }
 		]
 	});
 
@@ -114,7 +117,8 @@ export function createRenderPipelines(
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // birthColors
+			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // birthColors
+			{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // boidState (CA)
 		]
 	});
 
@@ -160,7 +164,8 @@ export function createRenderPipelines(
 			{ binding: 1, resource: { buffer: buffers.positionA } },
 			{ binding: 2, resource: { buffer: buffers.velocityA } },
 			{ binding: 3, resource: { buffer: buffers.trails } },
-			{ binding: 4, resource: { buffer: buffers.birthColors } }
+			{ binding: 4, resource: { buffer: buffers.birthColors } },
+			{ binding: 5, resource: { buffer: buffers.boidState } }
 		]
 	});
 
@@ -171,7 +176,8 @@ export function createRenderPipelines(
 			{ binding: 1, resource: { buffer: buffers.positionB } },
 			{ binding: 2, resource: { buffer: buffers.velocityB } },
 			{ binding: 3, resource: { buffer: buffers.trails } },
-			{ binding: 4, resource: { buffer: buffers.birthColors } }
+			{ binding: 4, resource: { buffer: buffers.birthColors } },
+			{ binding: 5, resource: { buffer: buffers.boidState } }
 		]
 	});
 

@@ -39,6 +39,18 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    // CA System parameters
+    caEnabled: u32,
+    agingEnabled: u32,
+    maxAge: f32,
+    vitalityGain: f32,
+    birthVitalityThreshold: f32,
+    birthFieldThreshold: f32,
+    vitalityConservation: f32,
+    birthSplit: f32,
+    ageSpread: f32,
+    populationCap: u32,
+    maxPopulation: u32,
 }
 
 // Color modes
@@ -49,6 +61,7 @@ const COLOR_ACCELERATION: u32 = 3u;
 const COLOR_TURNING: u32 = 4u;
 const COLOR_NONE: u32 = 5u;
 const COLOR_DENSITY: u32 = 6u;
+const COLOR_VITALITY: u32 = 7u;  // CA system: color based on boid vitality
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -99,6 +112,7 @@ struct VertexOutput {
 @group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
 @group(0) @binding(3) var<storage, read> birthColors: array<f32>;
+@group(0) @binding(4) var<storage, read> boidState: array<vec4<f32>>;  // [age, vitality, alive, padding]
 
 // Triangle vertices for boid shape (pointing right)
 const BOID_VERTICES = array<vec2<f32>, 3>(
@@ -218,6 +232,26 @@ fn vs_main(
         output.alpha = 0.0;
         output.barycentric = vec3<f32>(0.0);
         return output;
+    }
+    
+    // CA System: Check if boid is alive (skip dead boids)
+    // Only read boidState when CA is enabled to avoid any buffer issues
+    var vitality = 1.0;
+    var isAlive = true;
+    
+    if (uniforms.caEnabled != 0u) {
+        let state = boidState[boidIndex];
+        vitality = state.y;
+        isAlive = state.z > 0.5;
+        
+        if (!isAlive) {
+            // Dead boid - don't render
+            output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0);
+            output.color = vec3<f32>(0.0);
+            output.alpha = 0.0;
+            output.barycentric = vec3<f32>(0.0);
+            return output;
+        }
     }
     
     let pos = positions[boidIndex];
@@ -369,6 +403,11 @@ fn vs_main(
             // POSITION MODE - Ultra fast, just read pre-computed birth color
             colorValue = birthColors[boidIndex];
         }
+        case COLOR_VITALITY: {
+            // CA VITALITY MODE - Color based on boid's life force
+            // 0.0 (dying/red) -> 0.5 (mid/yellow-green) -> 1.0 (healthy/green-cyan)
+            colorValue = vitality;
+        }
         default: {
             colorValue = 0.5;
         }
@@ -381,7 +420,16 @@ fn vs_main(
         colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
         output.color = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
     }
-    output.alpha = 1.0;
+    
+    // CA System: Modulate opacity based on vitality (dying boids fade out)
+    if (uniforms.caEnabled != 0u) {
+        // Vitality 0.0 -> alpha 0.3 (almost faded out)
+        // Vitality 0.5 -> alpha 0.7
+        // Vitality 1.0 -> alpha 1.0 (fully opaque)
+        output.alpha = 0.3 + vitality * 0.7;
+    } else {
+        output.alpha = 1.0;
+    }
     
     // Barycentric coordinates for smooth edge shading
     let vertIdx = vertexIndex % 3u;
