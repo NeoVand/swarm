@@ -168,7 +168,7 @@ export function createDefaultSpecies(id: number, population: number): Species {
 		hue: SPECIES_HUES[id] || (id * 51) % 360,
 		saturation: 70, // Default saturation
 		lightness: 55, // Default lightness
-		alphaMode: AlphaMode.Solid, // Default: fully opaque
+		alphaMode: AlphaMode.Turning, // Default: alpha based on turning
 		population,
 		// Per-species visual parameters
 		size: 1.5, // Default boid size

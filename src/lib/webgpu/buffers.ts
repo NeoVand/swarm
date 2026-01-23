@@ -435,7 +435,7 @@ export function updateSpeciesParams(
 		data[offset + 14] = s.cursorResponse ?? 1; // 1 = Repel by default
 		data[offset + 15] = s.cursorVortex ? 1.0 : 0.0; // 1 = vortex enabled
 		// vec4[4]
-		data[offset + 16] = s.alphaMode ?? 0; // 0 = Solid by default
+		data[offset + 16] = s.alphaMode ?? 3; // 3 = Turning by default
 		data[offset + 17] = 0; // unused
 		data[offset + 18] = 0; // unused
 		data[offset + 19] = 0; // unused
