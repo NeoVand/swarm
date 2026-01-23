@@ -28,8 +28,10 @@ import {
 	getWallData,
 	getWallTextureDimensions,
 	initWallData,
-	wallsDirty
+	wallsDirty,
+	params as paramsStore
 } from '$lib/stores/simulation';
+import { get } from 'svelte/store';
 
 export interface Simulation {
 	start: () => void;
@@ -250,6 +252,10 @@ export function createSimulation(
 		const wasRunning = running;
 		stop();
 
+		// Get the latest params directly from the store to avoid race conditions
+		// This ensures we have the most up-to-date species data when adding/removing species
+		params = { ...get(paramsStore) };
+
 		// Destroy old buffers
 		destroyBuffers(buffers);
 		blockSumsBuffer.destroy();
@@ -329,6 +335,8 @@ export function createSimulation(
 	}
 
 	function doUpdateSpecies(): void {
+		// Get the latest params to avoid race conditions
+		params = { ...get(paramsStore) };
 		// Update species parameters and interaction matrix
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);

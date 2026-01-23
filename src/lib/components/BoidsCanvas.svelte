@@ -322,7 +322,13 @@
 			const optimalPopulation = calculateOptimalPopulation(canvas.width, canvas.height);
 
 			// Update params with optimal population directly (without triggering reallocation flag)
-			params.update((p) => ({ ...p, population: optimalPopulation }));
+			// IMPORTANT: Also update the first species' population to match, otherwise
+			// there's a mismatch that causes new species to not appear
+			params.update((p) => ({
+				...p,
+				population: optimalPopulation,
+				species: p.species.map((s, i) => (i === 0 ? { ...s, population: optimalPopulation } : s))
+			}));
 
 			// Get params for simulation init
 			let initParams: SimulationParams;
