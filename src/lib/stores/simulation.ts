@@ -14,6 +14,7 @@ import {
 	CursorShape,
 	CursorResponse,
 	AlgorithmMode,
+	AlphaMode,
 	WallTool,
 	WallBrushShape,
 	HeadShape,
@@ -615,6 +616,11 @@ export function setSpeciesCursorVortex(id: number, cursorVortex: boolean): void 
 	updateSpecies(id, { cursorVortex });
 }
 
+// Set species alpha mode
+export function setSpeciesAlphaMode(id: number, alphaMode: AlphaMode): void {
+	updateSpecies(id, { alphaMode });
+}
+
 // Play/pause toggle
 export function togglePlayPause(): void {
 	isRunning.update((running) => !running);
@@ -638,6 +644,7 @@ export {
 	CursorShape,
 	CursorResponse,
 	AlgorithmMode,
+	AlphaMode,
 	WallTool,
 	WallBrushShape,
 	HeadShape,

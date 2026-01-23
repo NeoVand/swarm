@@ -124,8 +124,9 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
 	// vec4[2]: [saturation, lightness, size, trailLength]
 	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
+	// vec4[4]: [alphaMode, unused, unused, unused]
 	const speciesParams = device.createBuffer({
-		size: MAX_SPECIES * 4 * 16, // 7 species * 4 vec4s * 16 bytes per vec4
+		size: MAX_SPECIES * 5 * 16, // 7 species * 5 vec4s * 16 bytes per vec4
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
@@ -402,16 +403,17 @@ export function updateSpeciesParams(
 	buffer: GPUBuffer,
 	species: Species[]
 ): void {
-	// Layout: 4 vec4s per species (16 floats = 64 bytes per species)
+	// Layout: 5 vec4s per species (20 floats = 80 bytes per species)
 	// vec4[0]: [alignment, cohesion, separation, perception]
 	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
 	// vec4[2]: [saturation, lightness, size, trailLength]
 	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
-	const data = new Float32Array(MAX_SPECIES * 4 * 4);
+	// vec4[4]: [alphaMode, unused, unused, unused]
+	const data = new Float32Array(MAX_SPECIES * 5 * 4);
 
 	for (const s of species) {
 		if (s.id >= MAX_SPECIES) continue;
-		const offset = s.id * 16;
+		const offset = s.id * 20;
 		// vec4[0]
 		data[offset + 0] = s.alignment;
 		data[offset + 1] = s.cohesion;
@@ -432,6 +434,11 @@ export function updateSpeciesParams(
 		data[offset + 13] = s.cursorForce ?? 0.5;
 		data[offset + 14] = s.cursorResponse ?? 1; // 1 = Repel by default
 		data[offset + 15] = s.cursorVortex ? 1.0 : 0.0; // 1 = vortex enabled
+		// vec4[4]
+		data[offset + 16] = s.alphaMode ?? 0; // 0 = Solid by default
+		data[offset + 17] = 0; // unused
+		data[offset + 18] = 0; // unused
+		data[offset + 19] = 0; // unused
 	}
 
 	device.queue.writeBuffer(buffer, 0, data);

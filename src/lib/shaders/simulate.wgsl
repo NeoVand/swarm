@@ -183,7 +183,7 @@ const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
 
 // Multi-species buffers (separate bind group to stay under storage buffer limit)
 @group(1) @binding(0) var<storage, read> speciesIds: array<u32>;
-@group(1) @binding(1) var<uniform> speciesParams: array<vec4<f32>, 28>;  // 7 species * 4 vec4s per species
+@group(1) @binding(1) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s per species
 @group(1) @binding(2) var<uniform> interactionMatrix: array<vec4<f32>, 49>;  // 7*7 entries
 
 // Species constants
@@ -226,47 +226,47 @@ fn getSpeciesParam(speciesId: u32, paramIdx: u32) -> f32 {
 
 // Convenience functions for per-species parameters
 fn getSpeciesAlignment(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 0u].x;
+    return speciesParams[speciesId * 5u + 0u].x;
 }
 
 fn getSpeciesCohesion(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 0u].y;
+    return speciesParams[speciesId * 5u + 0u].y;
 }
 
 fn getSpeciesSeparation(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 0u].z;
+    return speciesParams[speciesId * 5u + 0u].z;
 }
 
 fn getSpeciesPerception(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 0u].w;
+    return speciesParams[speciesId * 5u + 0u].w;
 }
 
 fn getSpeciesMaxSpeed(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 1u].x;
+    return speciesParams[speciesId * 5u + 1u].x;
 }
 
 fn getSpeciesMaxForce(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 1u].y;
+    return speciesParams[speciesId * 5u + 1u].y;
 }
 
 fn getSpeciesSize(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].z;
+    return speciesParams[speciesId * 5u + 2u].z;
 }
 
 fn getSpeciesRebels(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 3u].x;
+    return speciesParams[speciesId * 5u + 3u].x;
 }
 
 fn getSpeciesCursorForce(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 3u].y;
+    return speciesParams[speciesId * 5u + 3u].y;
 }
 
 fn getSpeciesCursorResponse(speciesId: u32) -> u32 {
-    return u32(speciesParams[speciesId * 4u + 3u].z);
+    return u32(speciesParams[speciesId * 5u + 3u].z);
 }
 
 fn getSpeciesCursorVortex(speciesId: u32) -> bool {
-    return speciesParams[speciesId * 4u + 3u].w > 0.5;
+    return speciesParams[speciesId * 5u + 3u].w > 0.5;
 }
 
 // Get interaction matrix entry: [behavior, strength, range, padding]

@@ -53,6 +53,7 @@
 		setSpeciesCursorForce,
 		setSpeciesCursorResponse,
 		setSpeciesCursorVortex,
+		setSpeciesAlphaMode,
 		setActiveSpecies,
 		CursorResponse,
 		BoundaryMode,
@@ -61,6 +62,7 @@
 		CursorMode,
 		CursorShape,
 		AlgorithmMode,
+		AlphaMode,
 		WallTool,
 		WallBrushShape,
 		DEFAULT_PARAMS
@@ -113,6 +115,8 @@
 	let algorithmDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let colorPickerOpen = $state(false);
 	let colorPickerRef = $state<HTMLDivElement | undefined>(undefined);
+	let alphaDropdownOpen = $state(false);
+	let alphaDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 
 	// Population preview (for live display while dragging slider)
 	let populationPreview = $state<number | null>(null);
@@ -461,10 +465,19 @@
 		if (colorPickerOpen && colorPickerRef && !colorPickerRef.contains(event.target as Node)) {
 			colorPickerOpen = false;
 		}
+		if (alphaDropdownOpen && alphaDropdownRef && !alphaDropdownRef.contains(event.target as Node)) {
+			alphaDropdownOpen = false;
+		}
 	}
 
 	$effect(() => {
-		if (paletteDropdownOpen || colorizeDropdownOpen || algorithmDropdownOpen || colorPickerOpen) {
+		if (
+			paletteDropdownOpen ||
+			colorizeDropdownOpen ||
+			algorithmDropdownOpen ||
+			colorPickerOpen ||
+			alphaDropdownOpen
+		) {
 			document.addEventListener('click', handleClickOutside);
 			return () => document.removeEventListener('click', handleClickOutside);
 		}
@@ -1357,6 +1370,14 @@
 		{ value: AlgorithmMode.DensityAdaptive, label: 'Density Adaptive' }
 	];
 
+	const alphaModeOptions = [
+		{ value: AlphaMode.Solid, label: 'Solid' },
+		{ value: AlphaMode.Direction, label: 'Direction' },
+		{ value: AlphaMode.Speed, label: 'Speed' },
+		{ value: AlphaMode.Turning, label: 'Turning' },
+		{ value: AlphaMode.Acceleration, label: 'Acceleration' }
+	];
+
 	// Cursor toggle indicator position - based on per-species cursorResponse
 	let cursorModeIndex = $derived(
 		activeSpecies?.cursorResponse === CursorResponse.Ignore
@@ -1982,32 +2003,15 @@
 						</div>
 						<div class="row">
 							{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
-								<!-- Species color picker -->
+								<!-- Color swatch that opens picker -->
 								<span class="label">Color</span>
-								<div class="relative flex-1" bind:this={colorPickerRef}>
+								<div class="relative" bind:this={colorPickerRef}>
 									<button
-										class="sel flex w-full items-center gap-2 text-left"
+										class="color-swatch-btn"
+										style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
 										onclick={() => (colorPickerOpen = !colorPickerOpen)}
 										aria-label="Species Color"
-									>
-										<div
-											class="color-preview-swatch"
-											style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
-										></div>
-										<span class="flex-1 truncate">{activeSpecies.name}</span>
-										<svg
-											class="h-3 w-3 opacity-50 transition-transform"
-											class:rotate-180={colorPickerOpen}
-											viewBox="0 0 20 20"
-											fill="currentColor"
-										>
-											<path
-												fill-rule="evenodd"
-												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-												clip-rule="evenodd"
-											/>
-										</svg>
-									</button>
+									></button>
 									{#if colorPickerOpen}
 										<div
 											class="color-picker-panel"
@@ -2018,8 +2022,6 @@
 												class="sl-picker"
 												role="slider"
 												aria-label="Saturation and Lightness"
-												aria-valuemin={0}
-												aria-valuemax={100}
 												aria-valuenow={activeSpecies.saturation}
 												tabindex={0}
 												style="background: linear-gradient(to bottom, white, hsl({activeSpecies.hue}, 100%, 50%), black)"
@@ -2047,9 +2049,7 @@
 													window.addEventListener('mouseup', onUp);
 												}}
 											>
-												<!-- Saturation gradient overlay -->
 												<div class="sl-saturation-overlay"></div>
-												<!-- Picker indicator -->
 												<div
 													class="sl-indicator"
 													style="left: {activeSpecies.saturation}%; top: {100 -
@@ -2070,6 +2070,52 @@
 													aria-label="Hue"
 												/>
 											</div>
+										</div>
+									{/if}
+								</div>
+								<!-- Alpha mode dropdown with label -->
+								<span class="label" style="width: auto; margin-left: 12px;">Alpha</span>
+								<div class="relative flex-1" bind:this={alphaDropdownRef}>
+									<button
+										class="sel flex w-full items-center gap-1 text-left"
+										onclick={() => (alphaDropdownOpen = !alphaDropdownOpen)}
+										aria-label="Alpha Mode"
+										aria-expanded={alphaDropdownOpen}
+									>
+										<span class="flex-1 truncate text-[9px]"
+											>{alphaModeOptions.find((o) => o.value === activeSpecies.alphaMode)?.label ??
+												'Solid'}</span
+										>
+										<svg
+											class="h-3 w-3 opacity-50 transition-transform"
+											class:rotate-180={alphaDropdownOpen}
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									</button>
+									{#if alphaDropdownOpen}
+										<div
+											class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 overflow-y-auto rounded-md"
+											transition:slide={{ duration: 150, easing: cubicOut }}
+										>
+											{#each alphaModeOptions as opt (opt.value)}
+												<button
+													class="dropdown-item flex w-full items-center gap-2 px-3 py-2 text-left text-[10px]"
+													class:active={activeSpecies.alphaMode === opt.value}
+													onclick={() => {
+														setSpeciesAlphaMode(activeSpecies.id, opt.value);
+														alphaDropdownOpen = false;
+													}}
+												>
+													<span>{opt.label}</span>
+												</button>
+											{/each}
 										</div>
 									{/if}
 								</div>
@@ -3714,19 +3760,24 @@
 		color: rgb(161 161 170);
 	}
 
-	.color-preview-swatch {
-		width: 16px;
-		height: 16px;
-		border-radius: 3px;
-		flex-shrink: 0;
+	.color-swatch-btn {
+		width: 28px;
+		height: 28px;
+		border-radius: 4px;
 		border: 1px solid rgba(255, 255, 255, 0.2);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.color-swatch-btn:hover {
+		border-color: rgba(255, 255, 255, 0.4);
+		transform: scale(1.05);
 	}
 
 	.color-picker-panel {
 		position: absolute;
 		top: 100%;
 		left: 0;
-		right: 0;
 		margin-top: 4px;
 		padding: 10px;
 		background: rgba(15, 15, 20, 0.98);
@@ -3734,12 +3785,13 @@
 		border-radius: 8px;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 		z-index: 60;
+		width: 160px;
 	}
 
 	.sl-picker {
 		position: relative;
 		width: 100%;
-		height: 120px;
+		height: 100px;
 		border-radius: 6px;
 		cursor: crosshair;
 		overflow: hidden;
@@ -3755,8 +3807,8 @@
 
 	.sl-indicator {
 		position: absolute;
-		width: 14px;
-		height: 14px;
+		width: 12px;
+		height: 12px;
 		border-radius: 50%;
 		border: 2px solid white;
 		box-shadow:
@@ -3767,12 +3819,12 @@
 	}
 
 	.hue-strip-container {
-		margin-top: 10px;
+		margin-top: 8px;
 	}
 
 	.hue-strip {
 		width: 100%;
-		height: 14px;
+		height: 12px;
 		-webkit-appearance: none;
 		appearance: none;
 		background: linear-gradient(
@@ -3785,29 +3837,24 @@
 			hsl(300, 100%, 50%),
 			hsl(360, 100%, 50%)
 		);
-		border-radius: 7px;
+		border-radius: 6px;
 		cursor: pointer;
 	}
 
 	.hue-strip::-webkit-slider-thumb {
 		-webkit-appearance: none;
-		width: 18px;
-		height: 18px;
+		width: 14px;
+		height: 14px;
 		border-radius: 50%;
 		background: white;
 		border: 2px solid rgba(0, 0, 0, 0.2);
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 		cursor: pointer;
-		transition: transform 0.1s ease;
-	}
-
-	.hue-strip::-webkit-slider-thumb:hover {
-		transform: scale(1.12);
 	}
 
 	.hue-strip::-moz-range-thumb {
-		width: 18px;
-		height: 18px;
+		width: 14px;
+		height: 14px;
 		border-radius: 50%;
 		background: white;
 		border: 2px solid rgba(0, 0, 0, 0.2);

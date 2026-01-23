@@ -100,7 +100,7 @@ struct VertexOutput {
 @group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
 @group(0) @binding(3) var<storage, read> birthColors: array<f32>;
 @group(0) @binding(4) var<storage, read> speciesIds: array<u32>;
-@group(0) @binding(5) var<uniform> speciesParams: array<vec4<f32>, 28>;  // 7 species * 4 vec4s per species
+@group(0) @binding(5) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s per species
 
 // Species constants
 const MAX_SPECIES: u32 = 7u;
@@ -115,13 +115,21 @@ const SHAPE_ARROW: u32 = 4u;
 // Max triangles per shape (hexagon needs 6)
 const MAX_SHAPE_TRIANGLES: u32 = 6u;
 
-// Get species parameter by index (0-11)
+// Alpha modes for per-species transparency
+const ALPHA_SOLID: u32 = 0u;
+const ALPHA_DIRECTION: u32 = 1u;
+const ALPHA_SPEED: u32 = 2u;
+const ALPHA_TURNING: u32 = 3u;
+const ALPHA_ACCELERATION: u32 = 4u;
+
+// Get species parameter by index (0-19)
 // vec4[0]: [alignment, cohesion, separation, perception]
 // vec4[1]: [maxSpeed, maxForce, hue, headShape]
 // vec4[2]: [saturation, lightness, size, trailLength]
-// vec4[3]: [rebels, cursorForce, cursorResponse, unused]
+// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
+// vec4[4]: [alphaMode, unused, unused, unused]
 fn getSpeciesParam(speciesId: u32, paramIdx: u32) -> f32 {
-    let vec4Idx = speciesId * 4u + paramIdx / 4u;
+    let vec4Idx = speciesId * 5u + paramIdx / 4u;
     let componentIdx = paramIdx % 4u;
     let v = speciesParams[vec4Idx];
     switch (componentIdx) {
@@ -134,39 +142,43 @@ fn getSpeciesParam(speciesId: u32, paramIdx: u32) -> f32 {
 
 // Convenience functions for common species params
 fn getSpeciesHue(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 1u].z;  // vec4[1].z = hue
+    return speciesParams[speciesId * 5u + 1u].z;  // vec4[1].z = hue
 }
 
 fn getSpeciesHeadShape(speciesId: u32) -> u32 {
-    return u32(speciesParams[speciesId * 4u + 1u].w);  // vec4[1].w = headShape
+    return u32(speciesParams[speciesId * 5u + 1u].w);  // vec4[1].w = headShape
 }
 
 fn getSpeciesSaturation(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].x;  // vec4[2].x = saturation
+    return speciesParams[speciesId * 5u + 2u].x;  // vec4[2].x = saturation
 }
 
 fn getSpeciesLightness(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].y;  // vec4[2].y = lightness
+    return speciesParams[speciesId * 5u + 2u].y;  // vec4[2].y = lightness
 }
 
 fn getSpeciesSize(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].z;  // vec4[2].z = size
+    return speciesParams[speciesId * 5u + 2u].z;  // vec4[2].z = size
 }
 
 fn getSpeciesTrailLength(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].w;  // vec4[2].w = trailLength
+    return speciesParams[speciesId * 5u + 2u].w;  // vec4[2].w = trailLength
 }
 
 fn getSpeciesRebels(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 3u].x;  // vec4[3].x = rebels
+    return speciesParams[speciesId * 5u + 3u].x;  // vec4[3].x = rebels
 }
 
 fn getSpeciesCursorForce(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 3u].y;  // vec4[3].y = cursorForce
+    return speciesParams[speciesId * 5u + 3u].y;  // vec4[3].y = cursorForce
 }
 
 fn getSpeciesCursorResponse(speciesId: u32) -> u32 {
-    return u32(speciesParams[speciesId * 4u + 3u].z);  // vec4[3].z = cursorResponse
+    return u32(speciesParams[speciesId * 5u + 3u].z);  // vec4[3].z = cursorResponse
+}
+
+fn getSpeciesAlphaMode(speciesId: u32) -> u32 {
+    return u32(speciesParams[speciesId * 5u + 4u].x);  // vec4[4].x = alphaMode
 }
 
 // Generate vertex position for different shapes
@@ -587,17 +599,53 @@ fn vs_main(
     // For "None" mode, skip sensitivity adjustment to keep it uniform
     if (uniforms.colorMode == COLOR_NONE) {
         output.color = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
+        output.alpha = 1.0;
     } else if (uniforms.colorMode == COLOR_SPECIES) {
         // For Species mode, use full HSL with species hue, saturation, and lightness
         let hue = colorValue;  // Already normalized 0-1
         let sat = getSpeciesSaturation(speciesId);
         let light = getSpeciesLightness(speciesId);
         output.color = hslToRgb(hue, sat, light);
+        
+        // Calculate alpha based on per-species alpha mode
+        let alphaMode = getSpeciesAlphaMode(speciesId);
+        var alpha = 1.0;
+        switch (alphaMode) {
+            case ALPHA_SOLID: {
+                alpha = 1.0;
+            }
+            case ALPHA_DIRECTION: {
+                // Alpha based on direction - boids facing right are more visible
+                let dirAlpha = (angle + 3.14159265) / (2.0 * 3.14159265);
+                alpha = 0.3 + dirAlpha * 0.7;
+            }
+            case ALPHA_SPEED: {
+                // Alpha based on speed - faster boids are more visible
+                let speedAlpha = clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
+                alpha = 0.3 + speedAlpha * 0.7;
+            }
+            case ALPHA_TURNING: {
+                // Alpha based on angle sectors - creates banding effect
+                let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
+                let turnAlpha = abs(sin(angleNorm * 6.28318530)); // Oscillating alpha
+                alpha = 0.3 + turnAlpha * 0.7;
+            }
+            case ALPHA_ACCELERATION: {
+                // Alpha based on speed ratio (proxy for acceleration state)
+                let accAlpha = clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
+                // Invert so slower/accelerating boids are more visible
+                alpha = 0.3 + (1.0 - accAlpha) * 0.7;
+            }
+            default: {
+                alpha = 1.0;
+            }
+        }
+        output.alpha = alpha;
     } else {
         colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
         output.color = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
+        output.alpha = 1.0;
     }
-    output.alpha = 1.0;
     
     return output;
 }

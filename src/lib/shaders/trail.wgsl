@@ -51,22 +51,33 @@ const COLOR_NONE: u32 = 5u;
 const COLOR_DENSITY: u32 = 6u;
 const COLOR_SPECIES: u32 = 7u;
 
-// Get species color params from speciesParams buffer (4 vec4s per species)
+// Get species color params from speciesParams buffer (5 vec4s per species)
 fn getSpeciesHue(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 1u].z;  // vec4[1].z = hue (normalized 0-1)
+    return speciesParams[speciesId * 5u + 1u].z;  // vec4[1].z = hue (normalized 0-1)
 }
 
 fn getSpeciesSaturation(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].x;  // vec4[2].x = saturation
+    return speciesParams[speciesId * 5u + 2u].x;  // vec4[2].x = saturation
 }
 
 fn getSpeciesLightness(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].y;  // vec4[2].y = lightness
+    return speciesParams[speciesId * 5u + 2u].y;  // vec4[2].y = lightness
 }
 
 fn getSpeciesTrailLength(speciesId: u32) -> f32 {
-    return speciesParams[speciesId * 4u + 2u].w;  // vec4[2].w = trailLength
+    return speciesParams[speciesId * 5u + 2u].w;  // vec4[2].w = trailLength
 }
+
+fn getSpeciesAlphaMode(speciesId: u32) -> u32 {
+    return u32(speciesParams[speciesId * 5u + 4u].x);  // vec4[4].x = alphaMode
+}
+
+// Alpha modes for per-species transparency
+const ALPHA_SOLID: u32 = 0u;
+const ALPHA_DIRECTION: u32 = 1u;
+const ALPHA_SPEED: u32 = 2u;
+const ALPHA_TURNING: u32 = 3u;
+const ALPHA_ACCELERATION: u32 = 4u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -90,7 +101,7 @@ struct VertexOutput {
 @group(0) @binding(3) var<storage, read> trails: array<vec2<f32>>;
 @group(0) @binding(4) var<storage, read> birthColors: array<f32>;
 @group(0) @binding(5) var<storage, read> speciesIds: array<u32>;
-@group(0) @binding(6) var<uniform> speciesParams: array<vec4<f32>, 28>;  // 7 species * 4 vec4s
+@group(0) @binding(6) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s
 
 fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
     let h = hsv.x;
@@ -348,7 +359,7 @@ fn vs_main(
         if (speed > 0.001) {
             let dir = vel / speed;
             // Offset exactly to the triangle's base: 0.7 * boidSize * 6.0
-            let boidSize = speciesParams[speciesId * 4u + 2u].z;  // vec4[2].z = size
+            let boidSize = speciesParams[speciesId * 5u + 2u].z;  // vec4[2].z = size
             let baseOffset = 0.7 * boidSize * 6.0;
             p2 = currentPos - dir * baseOffset;
         } else {
@@ -409,7 +420,7 @@ fn vs_main(
     // Width tapers from head (thick) to tail (thin)
     // Slightly narrower than triangle base to fit inside the dark edge shading
     let ageRatio = f32(age) / f32(speciesTrailLen - 1u);
-    let speciesSize = speciesParams[speciesId * 4u + 2u].z;  // vec4[2].z = size
+    let speciesSize = speciesParams[speciesId * 5u + 2u].z;  // vec4[2].z = size
     let baseWidth = speciesSize * 2.4;  // Narrower to fit within triangle's bright center
     let width1 = baseWidth * (1.0 - ageRatio * 0.95);
     
@@ -506,6 +517,8 @@ fn vs_main(
     
     // Get the base color from spectrum
     var baseColor: vec3<f32>;
+    var speciesAlphaFactor = 1.0;  // Per-species alpha mode contribution
+    
     if (uniforms.colorMode == COLOR_NONE) {
         baseColor = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
     } else if (uniforms.colorMode == COLOR_SPECIES) {
@@ -514,6 +527,38 @@ fn vs_main(
         let sat = getSpeciesSaturation(speciesId);
         let light = getSpeciesLightness(speciesId);
         baseColor = hslToRgb(colorValue, sat, light);
+        
+        // Calculate per-species alpha based on alpha mode
+        let alphaMode = getSpeciesAlphaMode(speciesId);
+        switch (alphaMode) {
+            case ALPHA_SOLID: {
+                speciesAlphaFactor = 1.0;
+            }
+            case ALPHA_DIRECTION: {
+                // Alpha based on direction
+                let dirAlpha = (angle + 3.14159265) / (2.0 * 3.14159265);
+                speciesAlphaFactor = 0.3 + dirAlpha * 0.7;
+            }
+            case ALPHA_SPEED: {
+                // Alpha based on speed - faster boids are more visible
+                let speedAlpha = clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
+                speciesAlphaFactor = 0.3 + speedAlpha * 0.7;
+            }
+            case ALPHA_TURNING: {
+                // Alpha based on angle sectors - creates banding effect
+                let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
+                let turnAlpha = abs(sin(angleNorm * 6.28318530));
+                speciesAlphaFactor = 0.3 + turnAlpha * 0.7;
+            }
+            case ALPHA_ACCELERATION: {
+                // Alpha based on speed ratio (proxy for acceleration state)
+                let accAlpha = clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
+                speciesAlphaFactor = 0.3 + (1.0 - accAlpha) * 0.7;
+            }
+            default: {
+                speciesAlphaFactor = 1.0;
+            }
+        }
     } else {
         colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
         baseColor = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
@@ -524,8 +569,9 @@ fn vs_main(
     // Use linear fade for color (less aggressive than squared)
     let fadeFactor = 0.3 + alpha * 0.7;  // Range: 0.3 to 1.0 (not too dark at tail)
     output.color = baseColor * fadeFactor;
-    // Alpha fades with age for smooth trail effect
-    output.alpha = 0.6 + alpha * 0.4;  // Range: 0.6 to 1.0
+    // Alpha fades with age for smooth trail effect, multiplied by species alpha mode
+    let baseAlpha = 0.6 + alpha * 0.4;  // Range: 0.6 to 1.0
+    output.alpha = baseAlpha * speciesAlphaFactor;
     
     return output;
 }

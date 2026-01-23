@@ -31,6 +31,15 @@ export enum ColorSpectrum {
 	Mono = 4
 }
 
+// Alpha mode for per-species transparency variation
+export enum AlphaMode {
+	Solid = 0, // No alpha variation, fully opaque
+	Direction = 1, // Alpha based on movement direction
+	Speed = 2, // Alpha based on speed
+	Turning = 3, // Alpha based on turning rate
+	Acceleration = 4 // Alpha based on acceleration
+}
+
 export enum CursorMode {
 	Off = 0,
 	Attract = 1,
@@ -109,6 +118,7 @@ export interface Species {
 	hue: number; // Base hue for this species (0-360)
 	saturation: number; // Color saturation (0-100)
 	lightness: number; // Color lightness (0-100)
+	alphaMode: AlphaMode; // What determines alpha/transparency for this species
 	population: number; // Count of boids in this species
 
 	// Per-species visual/rendering parameters
@@ -158,6 +168,7 @@ export function createDefaultSpecies(id: number, population: number): Species {
 		hue: SPECIES_HUES[id] || (id * 51) % 360,
 		saturation: 70, // Default saturation
 		lightness: 55, // Default lightness
+		alphaMode: AlphaMode.Solid, // Default: fully opaque
 		population,
 		// Per-species visual parameters
 		size: 1.5, // Default boid size
