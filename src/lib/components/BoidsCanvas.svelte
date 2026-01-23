@@ -5,6 +5,7 @@
 	import type { GPUContext, SimulationParams, CursorState } from '$lib/webgpu/types';
 	import {
 		CursorMode,
+		CursorResponse,
 		CursorShape,
 		WallTool,
 		WallBrushShape,
@@ -25,7 +26,8 @@
 		paintWall,
 		beginStroke,
 		endStrokeWithHollow,
-		wallsDirty
+		wallsDirty,
+		speciesDirty
 	} from '$lib/stores/simulation';
 
 	let canvas: HTMLCanvasElement;
@@ -60,6 +62,21 @@
 	const unsubWallsDirty = wallsDirty.subscribe((dirty) => {
 		if (dirty && simulation) {
 			simulation.updateWalls();
+		}
+	});
+
+	// Reactive cursor state based on active species
+	$: activeSpeciesForCursor = currentParams?.species?.find(
+		(s) => s.id === currentParams?.activeSpeciesId
+	);
+	$: speciesCursorResponse = activeSpeciesForCursor?.cursorResponse ?? CursorResponse.Ignore;
+	$: speciesCursorVortex = activeSpeciesForCursor?.cursorVortex ?? false;
+	$: hasCursorInteraction = speciesCursorResponse !== CursorResponse.Ignore || speciesCursorVortex;
+
+	const unsubSpeciesDirty = speciesDirty.subscribe((dirty) => {
+		if (dirty && simulation) {
+			simulation.updateSpecies();
+			speciesDirty.set(false);
 		}
 	});
 
@@ -363,6 +380,7 @@
 		unsubRunning();
 		unsubWallTool();
 		unsubWallsDirty();
+		unsubSpeciesDirty();
 		canvasElement.set(null);
 		simulation?.destroy();
 		destroyWebGPU(gpuContext);
@@ -431,14 +449,13 @@
 	{/if}
 
 	<!-- Custom cursor overlay for boid interaction (shows alongside wall tool cursor) -->
-	{#if currentCursor?.isActive && (currentParams?.cursorMode !== CursorMode.Off || currentParams?.cursorVortex)}
+	{#if currentCursor?.isActive && hasCursorInteraction}
 		{@const radius = currentParams?.cursorRadius ?? 50}
-		{@const mode = currentParams?.cursorMode ?? CursorMode.Off}
-		{@const isAttract = mode === CursorMode.Attract}
-		{@const isRepel = mode === CursorMode.Repel}
-		{@const isVortexOnly = mode === CursorMode.Off && currentParams?.cursorVortex}
+		{@const isAttract = speciesCursorResponse === CursorResponse.Attract}
+		{@const isRepel = speciesCursorResponse === CursorResponse.Repel}
+		{@const isVortexOnly = speciesCursorResponse === CursorResponse.Ignore && speciesCursorVortex}
 		{@const shape = currentParams?.cursorShape ?? CursorShape.Disk}
-		{@const hasVortex = currentParams?.cursorVortex ?? false}
+		{@const hasVortex = speciesCursorVortex}
 		{@const color = isVortexOnly ? '249, 115, 22' : isAttract ? '6, 182, 212' : '244, 63, 94'}
 		{@const baseOpacity = currentCursor.isPressed ? 0.9 : 0.6}
 		{@const spinClass = hasVortex

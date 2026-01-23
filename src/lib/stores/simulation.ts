@@ -4,16 +4,23 @@ import { writable, derived } from 'svelte/store';
 import {
 	type SimulationParams,
 	type CursorState,
+	type Species,
+	type InteractionRule,
 	DEFAULT_PARAMS,
 	BoundaryMode,
 	ColorMode,
 	ColorSpectrum,
 	CursorMode,
 	CursorShape,
+	CursorResponse,
 	AlgorithmMode,
 	WallTool,
 	WallBrushShape,
-	WALL_TEXTURE_SCALE
+	HeadShape,
+	InteractionBehavior,
+	MAX_SPECIES,
+	WALL_TEXTURE_SCALE,
+	createDefaultSpecies
 } from '$lib/webgpu/types';
 
 // Main simulation parameters store
@@ -76,6 +83,9 @@ export const needsSimulationReset = writable(false);
 // Wall drawing state
 export const wallTool = writable<WallTool>(WallTool.None);
 export const wallsDirty = writable(false);
+
+// Species dirty flag (triggers GPU buffer update)
+export const speciesDirty = writable(false);
 
 // Wall texture data (CPU-side buffer)
 // Initialized lazily based on canvas dimensions
@@ -384,6 +394,227 @@ export function setWallTool(value: WallTool): void {
 	wallTool.set(value);
 }
 
+// ============================================================================
+// SPECIES MANAGEMENT
+// ============================================================================
+
+// Set active species for editing
+export function setActiveSpecies(id: number): void {
+	params.update((p) => ({ ...p, activeSpeciesId: id }));
+}
+
+// Get the currently active species
+export function getActiveSpecies(p: SimulationParams): Species | undefined {
+	return p.species.find((s) => s.id === p.activeSpeciesId);
+}
+
+// Add a new species
+export function addSpecies(): void {
+	params.update((p) => {
+		if (p.species.length >= MAX_SPECIES) return p;
+
+		// Find the next available ID
+		const usedIds = new Set(p.species.map((s) => s.id));
+		let newId = 0;
+		while (usedIds.has(newId) && newId < MAX_SPECIES) newId++;
+
+		if (newId >= MAX_SPECIES) return p;
+
+		// Calculate population for new species (split from total or add small amount)
+		const newPopulation = Math.min(500, Math.floor(p.population * 0.1));
+
+		const newSpecies = createDefaultSpecies(newId, newPopulation);
+		const newTotalPopulation = p.population + newPopulation;
+
+		return {
+			...p,
+			species: [...p.species, newSpecies],
+			population: newTotalPopulation,
+			activeSpeciesId: newId
+		};
+	});
+	// Trigger buffer reallocation to add new boids for the new species
+	needsBufferReallocation.set(true);
+}
+
+// Remove a species (must have at least one)
+export function removeSpecies(id: number): void {
+	params.update((p) => {
+		if (p.species.length <= 1) return p;
+
+		const species = p.species.find((s) => s.id === id);
+		if (!species) return p;
+
+		const newSpecies = p.species.filter((s) => s.id !== id);
+		const newTotalPopulation = p.population - species.population;
+
+		// If we're removing the active species, switch to first available
+		const newActiveId = p.activeSpeciesId === id ? newSpecies[0].id : p.activeSpeciesId;
+
+		return {
+			...p,
+			species: newSpecies,
+			population: Math.max(500, newTotalPopulation),
+			activeSpeciesId: newActiveId
+		};
+	});
+	needsBufferReallocation.set(true);
+}
+
+// Update a species property
+export function updateSpecies(id: number, updates: Partial<Species>): void {
+	params.update((p) => {
+		const newSpecies = p.species.map((s) => (s.id === id ? { ...s, ...updates } : s));
+
+		// Recalculate total population if population changed
+		let newTotalPopulation = p.population;
+		if (updates.population !== undefined) {
+			newTotalPopulation = newSpecies.reduce((sum, s) => sum + s.population, 0);
+		}
+
+		return {
+			...p,
+			species: newSpecies,
+			population: newTotalPopulation
+		};
+	});
+
+	// Trigger buffer reallocation if population changed
+	if (updates.population !== undefined) {
+		needsBufferReallocation.set(true);
+	} else {
+		// Otherwise just update species buffers
+		speciesDirty.set(true);
+	}
+}
+
+// Update species flocking parameters (convenience function)
+export function updateSpeciesFlocking(
+	id: number,
+	param: 'alignment' | 'cohesion' | 'separation' | 'perception' | 'maxSpeed' | 'maxForce',
+	value: number
+): void {
+	updateSpecies(id, { [param]: value });
+}
+
+// Add an interaction rule to a species
+export function addInteractionRule(speciesId: number, rule: InteractionRule): void {
+	params.update((p) => {
+		const newSpecies = p.species.map((s) => {
+			if (s.id !== speciesId) return s;
+			return {
+				...s,
+				interactions: [...s.interactions, rule]
+			};
+		});
+		return { ...p, species: newSpecies };
+	});
+	speciesDirty.set(true);
+}
+
+// Update an interaction rule
+export function updateInteractionRule(
+	speciesId: number,
+	ruleIndex: number,
+	updates: Partial<InteractionRule>
+): void {
+	params.update((p) => {
+		const newSpecies = p.species.map((s) => {
+			if (s.id !== speciesId) return s;
+			const newInteractions = [...s.interactions];
+			if (ruleIndex >= 0 && ruleIndex < newInteractions.length) {
+				newInteractions[ruleIndex] = { ...newInteractions[ruleIndex], ...updates };
+			}
+			return { ...s, interactions: newInteractions };
+		});
+		return { ...p, species: newSpecies };
+	});
+	speciesDirty.set(true);
+}
+
+// Remove an interaction rule
+export function removeInteractionRule(speciesId: number, ruleIndex: number): void {
+	params.update((p) => {
+		const newSpecies = p.species.map((s) => {
+			if (s.id !== speciesId) return s;
+			const newInteractions = s.interactions.filter((_, i) => i !== ruleIndex);
+			return { ...s, interactions: newInteractions };
+		});
+		return { ...p, species: newSpecies };
+	});
+	speciesDirty.set(true);
+}
+
+// Set species head shape
+export function setSpeciesHeadShape(id: number, shape: HeadShape): void {
+	updateSpecies(id, { headShape: shape });
+}
+
+// Set species hue
+export function setSpeciesHue(id: number, hue: number): void {
+	updateSpecies(id, { hue });
+}
+
+// Set species saturation
+export function setSpeciesSaturation(id: number, saturation: number): void {
+	updateSpecies(id, { saturation });
+}
+
+// Set species lightness
+export function setSpeciesLightness(id: number, lightness: number): void {
+	updateSpecies(id, { lightness });
+}
+
+// Set species color (hue, saturation, lightness)
+export function setSpeciesColor(
+	id: number,
+	hue: number,
+	saturation: number,
+	lightness: number
+): void {
+	updateSpecies(id, { hue, saturation, lightness });
+}
+
+// Set species name
+export function setSpeciesName(id: number, name: string): void {
+	updateSpecies(id, { name });
+}
+
+// Set species population
+export function setSpeciesPopulation(id: number, population: number): void {
+	updateSpecies(id, { population });
+}
+
+// Set species size (boid size)
+export function setSpeciesSize(id: number, size: number): void {
+	updateSpecies(id, { size });
+}
+
+// Set species trail length
+export function setSpeciesTrailLength(id: number, trailLength: number): void {
+	updateSpecies(id, { trailLength });
+}
+
+// Set species rebels percentage
+export function setSpeciesRebels(id: number, rebels: number): void {
+	updateSpecies(id, { rebels });
+}
+
+// Set species cursor force
+export function setSpeciesCursorForce(id: number, cursorForce: number): void {
+	updateSpecies(id, { cursorForce });
+}
+
+// Set species cursor response
+export function setSpeciesCursorResponse(id: number, cursorResponse: CursorResponse): void {
+	updateSpecies(id, { cursorResponse });
+}
+
+// Set species cursor vortex
+export function setSpeciesCursorVortex(id: number, cursorVortex: boolean): void {
+	updateSpecies(id, { cursorVortex });
+}
+
 // Play/pause toggle
 export function togglePlayPause(): void {
 	isRunning.update((running) => !running);
@@ -405,8 +636,16 @@ export {
 	ColorSpectrum,
 	CursorMode,
 	CursorShape,
+	CursorResponse,
 	AlgorithmMode,
 	WallTool,
 	WallBrushShape,
-	DEFAULT_PARAMS
+	HeadShape,
+	InteractionBehavior,
+	MAX_SPECIES,
+	DEFAULT_PARAMS,
+	createDefaultSpecies
 };
+
+// Export types
+export type { Species, InteractionRule };

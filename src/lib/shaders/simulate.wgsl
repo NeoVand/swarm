@@ -181,6 +181,106 @@ const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
 @group(0) @binding(9) var wallTexture: texture_2d<f32>;
 @group(0) @binding(10) var wallSampler: sampler;
 
+// Multi-species buffers (separate bind group to stay under storage buffer limit)
+@group(1) @binding(0) var<storage, read> speciesIds: array<u32>;
+@group(1) @binding(1) var<uniform> speciesParams: array<vec4<f32>, 28>;  // 7 species * 4 vec4s per species
+@group(1) @binding(2) var<uniform> interactionMatrix: array<vec4<f32>, 49>;  // 7*7 entries
+
+// Species constants
+const MAX_SPECIES: u32 = 7u;
+
+// Species params layout: 2 vec4s per species (8 floats total)
+// vec4[0]: [alignment, cohesion, separation, perception]
+// vec4[1]: [maxSpeed, maxForce, hue, headShape]
+
+// Interaction matrix indices
+const IM_BEHAVIOR: u32 = 0u;
+const IM_STRENGTH: u32 = 1u;
+const IM_RANGE: u32 = 2u;
+
+// Interaction behaviors
+const BEHAVIOR_IGNORE: u32 = 0u;
+const BEHAVIOR_AVOID: u32 = 1u;
+const BEHAVIOR_PURSUE: u32 = 2u;
+const BEHAVIOR_ATTRACT: u32 = 3u;
+const BEHAVIOR_MIRROR: u32 = 4u;
+const BEHAVIOR_ORBIT: u32 = 5u;
+
+// Get species parameter by index (0-15)
+// 4 vec4s per species: 
+// [0]: [alignment, cohesion, separation, perception]
+// [1]: [maxSpeed, maxForce, hue, headShape]
+// [2]: [saturation, lightness, size, trailLength]
+// [3]: [rebels, cursorForce, cursorResponse, unused]
+fn getSpeciesParam(speciesId: u32, paramIdx: u32) -> f32 {
+    let vec4Idx = speciesId * 4u + paramIdx / 4u;
+    let componentIdx = paramIdx % 4u;
+    let v = speciesParams[vec4Idx];
+    switch (componentIdx) {
+        case 0u: { return v.x; }
+        case 1u: { return v.y; }
+        case 2u: { return v.z; }
+        default: { return v.w; }
+    }
+}
+
+// Convenience functions for per-species parameters
+fn getSpeciesAlignment(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 0u].x;
+}
+
+fn getSpeciesCohesion(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 0u].y;
+}
+
+fn getSpeciesSeparation(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 0u].z;
+}
+
+fn getSpeciesPerception(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 0u].w;
+}
+
+fn getSpeciesMaxSpeed(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 1u].x;
+}
+
+fn getSpeciesMaxForce(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 1u].y;
+}
+
+fn getSpeciesSize(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].z;
+}
+
+fn getSpeciesRebels(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 3u].x;
+}
+
+fn getSpeciesCursorForce(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 3u].y;
+}
+
+fn getSpeciesCursorResponse(speciesId: u32) -> u32 {
+    return u32(speciesParams[speciesId * 4u + 3u].z);
+}
+
+fn getSpeciesCursorVortex(speciesId: u32) -> bool {
+    return speciesParams[speciesId * 4u + 3u].w > 0.5;
+}
+
+// Get interaction matrix entry: [behavior, strength, range, padding]
+fn getInteraction(fromSpecies: u32, toSpecies: u32, entryIdx: u32) -> f32 {
+    let matrixIdx = fromSpecies * MAX_SPECIES + toSpecies;
+    let v = interactionMatrix[matrixIdx];
+    switch (entryIdx) {
+        case 0u: { return v.x; }  // behavior
+        case 1u: { return v.y; }  // strength
+        case 2u: { return v.z; }  // range
+        default: { return v.w; }  // padding
+    }
+}
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -639,7 +739,15 @@ const OVERLAP_PUSH_STRENGTH: f32 = 2.0;     // Force when boids overlap
 // ALGORITHM 0: TOPOLOGICAL K-NN
 // ============================================================================
 
-fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speciesId: u32, rebelFactor: f32) -> vec2<f32> {
+    // Get per-species parameters
+    let spAlignment = getSpeciesAlignment(speciesId);
+    let spCohesion = getSpeciesCohesion(speciesId);
+    let spSeparation = getSpeciesSeparation(speciesId);
+    let spPerception = getSpeciesPerception(speciesId);
+    let spMaxForce = getSpeciesMaxForce(speciesId);
+    let spSize = getSpeciesSize(speciesId);
+    
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
     let k = min(uniforms.kNeighbors, MAX_K_NEIGHBORS);
@@ -653,7 +761,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     
     var separationSum = vec2<f32>(0.0);
     var separationCount = 0u;
-    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
+    let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
@@ -714,7 +822,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
         let otherIdx = knnIndex[i];
         let otherPos = positionsIn[otherIdx];
         let dist = sqrt(knnDistSq[i]);
-        let weight = smoothKernel(dist, uniforms.perception);
+        let weight = smoothKernel(dist, spPerception);
         if (weight > 0.0) {
             // Transform neighbor velocity for alignment across flip boundaries
             let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
@@ -727,16 +835,16 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
     var acceleration = vec2<f32>(0.0);
     
     if (totalWeight > 0.0) {
-        if (uniforms.alignment > 0.0) {
-            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        if (spAlignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, spMaxForce) * spAlignment * rebelFactor;
         }
-        if (uniforms.cohesion > 0.0) {
-            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
+        if (spCohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, spMaxForce) * spCohesion * rebelFactor;
         }
     }
     
-    if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
+    if (separationCount > 0u && spSeparation > 0.0) {
+        acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
     
     return acceleration;
@@ -746,7 +854,15 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, r
 // ALGORITHM 1: SMOOTH METRIC
 // ============================================================================
 
-fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speciesId: u32, rebelFactor: f32) -> vec2<f32> {
+    // Get per-species parameters
+    let spAlignment = getSpeciesAlignment(speciesId);
+    let spCohesion = getSpeciesCohesion(speciesId);
+    let spSeparation = getSpeciesSeparation(speciesId);
+    let spPerception = getSpeciesPerception(speciesId);
+    let spMaxForce = getSpeciesMaxForce(speciesId);
+    let spSize = getSpeciesSize(speciesId);
+    
     let jitterSeed = uniforms.frameCount * 7u;
     let jitterX = (hash(jitterSeed) - 0.5) * uniforms.cellSize * 0.3;
     let jitterY = (hash(jitterSeed + 1u) - 0.5) * uniforms.cellSize * 0.3;
@@ -759,7 +875,7 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
-    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
+    let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
@@ -789,7 +905,7 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
                 }
                 
                 let dist = sqrt(distSq);
-                let weight = smoothKernel(dist, uniforms.perception);
+                let weight = smoothKernel(dist, spPerception);
                 
                 if (weight > 0.0) {
                     // Transform neighbor velocity for alignment across flip boundaries
@@ -810,16 +926,16 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
     var acceleration = vec2<f32>(0.0);
     
     if (totalWeight > 0.0) {
-        if (uniforms.alignment > 0.0) {
-            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        if (spAlignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, spMaxForce) * spAlignment * rebelFactor;
         }
-        if (uniforms.cohesion > 0.0) {
-            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
+        if (spCohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, spMaxForce) * spCohesion * rebelFactor;
         }
     }
     
-    if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
+    if (separationCount > 0u && spSeparation > 0.0) {
+        acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
     
     return acceleration;
@@ -829,7 +945,15 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, reb
 // ALGORITHM 2: HASH-FREE (Per-boid randomized grid - no global seams)
 // ============================================================================
 
-fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speciesId: u32, rebelFactor: f32) -> vec2<f32> {
+    // Get per-species parameters
+    let spAlignment = getSpeciesAlignment(speciesId);
+    let spCohesion = getSpeciesCohesion(speciesId);
+    let spSeparation = getSpeciesSeparation(speciesId);
+    let spPerception = getSpeciesPerception(speciesId);
+    let spMaxForce = getSpeciesMaxForce(speciesId);
+    let spSize = getSpeciesSize(speciesId);
+    
     let offsetX = hash(boidIndex * 73856093u) * uniforms.cellSize;
     let offsetY = hash(boidIndex * 19349663u) * uniforms.cellSize;
     let shiftedPos = myPos + vec2<f32>(offsetX, offsetY);
@@ -841,8 +965,8 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
     var separationSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
-    let perception = uniforms.perception;
-    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
+    let perception = spPerception;
+    let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
@@ -893,16 +1017,16 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
     var acceleration = vec2<f32>(0.0);
     
     if (totalWeight > 0.0) {
-        if (uniforms.alignment > 0.0) {
-            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        if (spAlignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, spMaxForce) * spAlignment * rebelFactor;
         }
-        if (uniforms.cohesion > 0.0) {
-            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
+        if (spCohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, spMaxForce) * spCohesion * rebelFactor;
         }
     }
     
-    if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
+    if (separationCount > 0u && spSeparation > 0.0) {
+        acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
     
     return acceleration;
@@ -912,7 +1036,15 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFa
 // ALGORITHM 3: STOCHASTIC SAMPLING
 // ============================================================================
 
-fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speciesId: u32, rebelFactor: f32) -> vec2<f32> {
+    // Get per-species parameters
+    let spAlignment = getSpeciesAlignment(speciesId);
+    let spCohesion = getSpeciesCohesion(speciesId);
+    let spSeparation = getSpeciesSeparation(speciesId);
+    let spPerception = getSpeciesPerception(speciesId);
+    let spMaxForce = getSpeciesMaxForce(speciesId);
+    let spSize = getSpeciesSize(speciesId);
+    
     let cfg = getBoundaryConfig();
     var alignmentSum = vec2<f32>(0.0);
     var cohesionSum = vec2<f32>(0.0);
@@ -920,8 +1052,8 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     var totalWeight = 0.0;
     var separationCount = 0u;
     
-    let perception = uniforms.perception;
-    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
+    let perception = spPerception;
+    let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     let numSamples = uniforms.sampleCount;
     var baseSeed = boidIndex * 1000003u + uniforms.frameCount * 31337u;
     
@@ -1030,16 +1162,16 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
     var acceleration = vec2<f32>(0.0);
     
     if (totalWeight > 0.0) {
-        if (uniforms.alignment > 0.0) {
-            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        if (spAlignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, spMaxForce) * spAlignment * rebelFactor;
         }
-        if (uniforms.cohesion > 0.0) {
-            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor;
+        if (spCohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, spMaxForce) * spCohesion * rebelFactor;
         }
     }
     
-    if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
+    if (separationCount > 0u && spSeparation > 0.0) {
+        acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
     
     return acceleration;
@@ -1049,7 +1181,15 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebel
 // ALGORITHM 4: DENSITY ADAPTIVE
 // ============================================================================
 
-fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, rebelFactor: f32) -> vec2<f32> {
+fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speciesId: u32, rebelFactor: f32) -> vec2<f32> {
+    // Get per-species parameters
+    let spAlignment = getSpeciesAlignment(speciesId);
+    let spCohesion = getSpeciesCohesion(speciesId);
+    let spSeparation = getSpeciesSeparation(speciesId);
+    let spPerception = getSpeciesPerception(speciesId);
+    let spMaxForce = getSpeciesMaxForce(speciesId);
+    let spSize = getSpeciesSize(speciesId);
+    
     let offsetX = hash(boidIndex * 73856093u) * uniforms.cellSize;
     let offsetY = hash(boidIndex * 19349663u) * uniforms.cellSize;
     let shiftedPos = myPos + vec2<f32>(offsetX, offsetY);
@@ -1063,8 +1203,8 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     var separationCount = 0u;
     var localDensity = 0.0;
     
-    let perception = uniforms.perception;
-    let separationRadius = max(SEPARATION_BASE_RADIUS, uniforms.boidSize * 12.0);
+    let perception = spPerception;
+    let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
@@ -1122,19 +1262,143 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     var acceleration = vec2<f32>(0.0);
     
     if (totalWeight > 0.0) {
-        if (uniforms.alignment > 0.0) {
-            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, uniforms.maxForce) * uniforms.alignment * rebelFactor;
+        if (spAlignment > 0.0) {
+            acceleration += limitMagnitude(alignmentSum / totalWeight - myVel, spMaxForce) * spAlignment * rebelFactor;
         }
-        if (uniforms.cohesion > 0.0) {
-            acceleration += limitMagnitude(cohesionSum / totalWeight, uniforms.maxForce) * uniforms.cohesion * rebelFactor * cohesionMod;
+        if (spCohesion > 0.0) {
+            acceleration += limitMagnitude(cohesionSum / totalWeight, spMaxForce) * spCohesion * rebelFactor * cohesionMod;
         }
     }
     
-    if (separationCount > 0u && uniforms.separation > 0.0) {
-        acceleration += limitMagnitude(separationSum, uniforms.maxForce * SEPARATION_FORCE_MULT) * uniforms.separation;
+    if (separationCount > 0u && spSeparation > 0.0) {
+        acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
     
     return acceleration;
+}
+
+// ============================================================================
+// INTER-SPECIES FORCE CALCULATION
+// ============================================================================
+
+fn calculateInterSpeciesForce(
+    boidIndex: u32,
+    myPos: vec2<f32>,
+    myVel: vec2<f32>,
+    mySpecies: u32
+) -> vec2<f32> {
+    var interForce = vec2<f32>(0.0);
+    let myCellX = i32(myPos.x / uniforms.cellSize);
+    let myCellY = i32(myPos.y / uniforms.cellSize);
+    
+    // Per-behavior accumulators
+    var avoidSum = vec2<f32>(0.0);
+    var avoidCount = 0u;
+    var pursueSum = vec2<f32>(0.0);
+    var pursueCount = 0u;
+    var attractSum = vec2<f32>(0.0);
+    var attractWeight = 0.0;
+    var mirrorSum = vec2<f32>(0.0);
+    var mirrorWeight = 0.0;
+    var orbitSum = vec2<f32>(0.0);
+    var orbitCount = 0u;
+    
+    // Search neighbors in 3x3 grid
+    for (var dy = -1i; dy <= 1i; dy++) {
+        for (var dx = -1i; dx <= 1i; dx++) {
+            let cx = myCellX + dx;
+            let cy = myCellY + dy;
+            
+            if (!shouldSearchCell(cx, cy)) { continue; }
+            
+            let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
+            let cellStart = prefixSums[cellIdx];
+            let cellCount = cellCounts[cellIdx];
+            
+            for (var i = 0u; i < cellCount && i < 32u; i++) {
+                let otherIdx = sortedIndices[cellStart + i];
+                if (otherIdx == boidIndex) { continue; }
+                
+                let otherSpecies = speciesIds[otherIdx];
+                if (otherSpecies == mySpecies) { continue; } // Skip same species
+                
+                // Get interaction rule for my species -> other species
+                let behavior = u32(getInteraction(mySpecies, otherSpecies, IM_BEHAVIOR));
+                let strength = getInteraction(mySpecies, otherSpecies, IM_STRENGTH);
+                var range = getInteraction(mySpecies, otherSpecies, IM_RANGE);
+                
+                if (behavior == BEHAVIOR_IGNORE || strength < 0.01) { continue; }
+                
+                // Use species-specific perception if range not specified
+                if (range < 1.0) { range = getSpeciesPerception(mySpecies); }
+                
+                let otherPos = positionsIn[otherIdx];
+                let delta = getNeighborDelta(myPos, otherPos);
+                let distSq = dot(delta, delta);
+                let rangeSq = range * range;
+                
+                if (distSq > rangeSq || distSq < 0.1) { continue; }
+                
+                let dist = sqrt(distSq);
+                let weight = smoothKernel(dist, range);
+                let dir = delta / dist;
+                
+                switch (behavior) {
+                    case BEHAVIOR_AVOID: {
+                        // Flee: force away from other species
+                        let avoidWeight = separationKernel(dist, range) * strength;
+                        avoidSum -= dir * avoidWeight;
+                        avoidCount++;
+                    }
+                    case BEHAVIOR_PURSUE: {
+                        // Hunt: force toward other species
+                        pursueSum += delta * weight * strength;
+                        pursueCount++;
+                    }
+                    case BEHAVIOR_ATTRACT: {
+                        // Gentle attraction
+                        attractSum += delta * weight * strength;
+                        attractWeight += weight;
+                    }
+                    case BEHAVIOR_MIRROR: {
+                        // Match their velocity
+                        let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                        mirrorSum += otherVel * weight * strength;
+                        mirrorWeight += weight;
+                    }
+                    case BEHAVIOR_ORBIT: {
+                        // Perpendicular force (orbit around them)
+                        let perpDir = vec2<f32>(-dir.y, dir.x);
+                        orbitSum += perpDir * weight * strength;
+                        orbitCount++;
+                    }
+                    default: {}
+                }
+            }
+        }
+    }
+    
+    // Combine forces using per-species maxForce
+    let maxForce = getSpeciesMaxForce(mySpecies);
+    
+    if (avoidCount > 0u) {
+        interForce += limitMagnitude(avoidSum, maxForce * 4.0);
+    }
+    if (pursueCount > 0u) {
+        interForce += limitMagnitude(pursueSum / f32(pursueCount), maxForce * 2.0);
+    }
+    if (attractWeight > 0.0) {
+        interForce += limitMagnitude(attractSum / attractWeight, maxForce);
+    }
+    if (mirrorWeight > 0.0) {
+        let targetVel = mirrorSum / mirrorWeight;
+        interForce += limitMagnitude(targetVel - myVel, maxForce);
+    }
+    if (orbitCount > 0u) {
+        interForce += limitMagnitude(orbitSum / f32(orbitCount), maxForce * 2.0);
+    }
+    
+    return interForce;
 }
 
 // ============================================================================
@@ -1148,6 +1412,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     let myPos = positionsIn[boidIndex];
     let myVel = velocitiesIn[boidIndex];
+    let mySpecies = speciesIds[boidIndex];
+    
+    // Get per-species parameters
+    let speciesRebels = getSpeciesRebels(mySpecies);
+    let speciesMaxSpeed = getSpeciesMaxSpeed(mySpecies);
+    let speciesMaxForce = getSpeciesMaxForce(mySpecies);
     
     // Rebel behavior - different boids become rebels each cycle
     let rebelPeriod = 300u;   // ~5 seconds at 60fps per cycle
@@ -1157,23 +1427,32 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Hash includes cycle number so DIFFERENT boids are selected each cycle
     let rebelHash = hash(boidIndex * 7919u + cycleNumber * 104729u);
-    let isRebel = rebelHash < uniforms.rebels && timeInCycle < rebelDuration;
+    let isRebel = rebelHash < speciesRebels && timeInCycle < rebelDuration;
     let rebelFactor = select(1.0, 0.1, isRebel);
     
-    // Select algorithm
+    // Select algorithm - pass species ID for per-species parameters
     var acceleration: vec2<f32>;
     switch (uniforms.algorithmMode) {
-        case ALG_TOPOLOGICAL_KNN: { acceleration = algorithmTopologicalKNN(boidIndex, myPos, myVel, rebelFactor); }
-        case ALG_SMOOTH_METRIC: { acceleration = algorithmSmoothMetric(boidIndex, myPos, myVel, rebelFactor); }
-        case ALG_HASH_FREE: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
-        case ALG_STOCHASTIC: { acceleration = algorithmStochastic(boidIndex, myPos, myVel, rebelFactor); }
-        case ALG_DENSITY_ADAPTIVE: { acceleration = algorithmDensityAdaptive(boidIndex, myPos, myVel, rebelFactor); }
-        default: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, rebelFactor); }
+        case ALG_TOPOLOGICAL_KNN: { acceleration = algorithmTopologicalKNN(boidIndex, myPos, myVel, mySpecies, rebelFactor); }
+        case ALG_SMOOTH_METRIC: { acceleration = algorithmSmoothMetric(boidIndex, myPos, myVel, mySpecies, rebelFactor); }
+        case ALG_HASH_FREE: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, mySpecies, rebelFactor); }
+        case ALG_STOCHASTIC: { acceleration = algorithmStochastic(boidIndex, myPos, myVel, mySpecies, rebelFactor); }
+        case ALG_DENSITY_ADAPTIVE: { acceleration = algorithmDensityAdaptive(boidIndex, myPos, myVel, mySpecies, rebelFactor); }
+        default: { acceleration = algorithmHashFree(boidIndex, myPos, myVel, mySpecies, rebelFactor); }
     }
     
+    // Add inter-species forces
+    acceleration += calculateInterSpeciesForce(boidIndex, myPos, myVel, mySpecies);
+    
     // Cursor interaction - Shape determines radial force, Vortex adds rotation
-    // Allow interaction if mode is Attract/Repel OR if Vortex is enabled independently
-    if ((uniforms.cursorMode != 0u || uniforms.cursorVortex != 0u) && uniforms.cursorActive != 0u) {
+    // Per-species cursor response: 0 = Attract, 1 = Repel, 2 = Ignore
+    let speciesCursorResponse = getSpeciesCursorResponse(mySpecies);
+    let speciesCursorForce = getSpeciesCursorForce(mySpecies);
+    let speciesCursorVortex = getSpeciesCursorVortex(mySpecies);
+    
+    // Skip cursor interaction if species ignores cursor AND vortex is off for this species
+    // Allow interaction if species responds OR if vortex is enabled for this species
+    if ((speciesCursorResponse != 2u || speciesCursorVortex) && uniforms.cursorActive != 0u) {
         let cursorPos = vec2<f32>(uniforms.cursorX, uniforms.cursorY);
         let toCursor = getNeighborDelta(myPos, cursorPos);
         let cursorDist = length(toCursor);
@@ -1191,6 +1470,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let extendedRange = select(1.0, 2.0, isPressed);  // 2x range when pressed
         var cursorForce = vec2<f32>(0.0);
         
+        // Determine effective cursor mode from per-species response
+        // Species cursorResponse: 0 = Attract, 1 = Repel, 2 = Ignore
+        // Map to effectiveCursorMode: 0 = Off, 1 = Attract, 2 = Repel
+        var effectiveCursorMode = 0u;
+        if (speciesCursorResponse == 0u) {
+            effectiveCursorMode = 1u;  // Attract
+        } else if (speciesCursorResponse == 1u) {
+            effectiveCursorMode = 2u;  // Repel
+        }
+        // speciesCursorResponse == 2u (Ignore) leaves effectiveCursorMode as 0 (Off)
+        
         if (cursorDist > 0.5) {
             let towardCenter = normalize(toCursor);
             let awayFromCenter = -towardCenter;
@@ -1199,8 +1489,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let tangent = vec2<f32>(towardCenter.y, -towardCenter.x);
             
             // Step 1: Calculate radial force based on shape (Ring or Disk)
-            // Only apply radial forces if mode is Attract or Repel (not Off)
-            if (uniforms.cursorMode != 0u) {
+            // Only apply radial forces if effective mode is Attract or Repel (not Off)
+            if (effectiveCursorMode != 0u) {
             switch (uniforms.cursorShape) {
                 case CURSOR_RING: {
                     // Ring attractor: boids orbit the circumference
@@ -1208,15 +1498,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     if (cursorDist < totalRadius) {
                         let distFromRing = cursorDist - radius;
                         
-                        if (uniforms.cursorMode == 1u) {
+                        if (effectiveCursorMode == 1u) {
                             if (distFromRing > 0.0) {
                                 // Outside: pull inward toward ring
                                 let pull = smoothKernel(distFromRing, influenceRange);
-                                cursorForce = towardCenter * pull * strength * uniforms.cursorForce * 2.5;
+                                cursorForce = towardCenter * pull * strength * speciesCursorForce * 2.5;
                             } else {
                                 // Inside: push outward toward ring
                                 let push = smoothKernel(-distFromRing, radius);
-                                cursorForce = awayFromCenter * push * strength * uniforms.cursorForce * 3.0;
+                                cursorForce = awayFromCenter * push * strength * speciesCursorForce * 3.0;
                             }
                         } else {
                             // Repel: push away from entire ring area
@@ -1231,7 +1521,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                                 repelWeight = 1.0 - (outerDist / influenceRange);
                                 repelWeight = repelWeight * repelWeight;
                             }
-                            cursorForce = awayFromCenter * repelWeight * strength * uniforms.cursorForce * 4.0;
+                            cursorForce = awayFromCenter * repelWeight * strength * speciesCursorForce * 4.0;
                         }
                     }
                 }
@@ -1240,17 +1530,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let diskRadius = radius;
                     let edgeWidth = radius * 0.5;
                     
-                    if (uniforms.cursorMode == 1u) {
+                    if (effectiveCursorMode == 1u) {
                         // Attract: contain boids within disk
                         if (cursorDist > diskRadius) {
                             // Outside disk: pull toward the edge
                             let distFromEdge = cursorDist - diskRadius;
                             let pull = smoothKernel(distFromEdge, edgeWidth * 2.0);
-                            cursorForce = towardCenter * pull * strength * uniforms.cursorForce * 3.0;
+                            cursorForce = towardCenter * pull * strength * speciesCursorForce * 3.0;
                         } else if (cursorDist < diskRadius * 0.3) {
                             // Too close to center: gentle push outward to distribute
                             let push = 1.0 - (cursorDist / (diskRadius * 0.3));
-                            cursorForce = awayFromCenter * push * strength * uniforms.cursorForce * 0.5;
+                            cursorForce = awayFromCenter * push * strength * speciesCursorForce * 0.5;
                         }
                     } else {
                         // Repel: clear boids from disk area
@@ -1268,7 +1558,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                                 weight = 1.0 - (edgeDist / edgeWidth);
                                 weight = weight * weight; // Quadratic falloff at edge
                             }
-                            cursorForce = awayFromCenter * weight * strength * uniforms.cursorForce * 4.0;
+                            cursorForce = awayFromCenter * weight * strength * speciesCursorForce * 4.0;
                         }
                     }
                 }
@@ -1276,7 +1566,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     // Fallback to disk behavior
                     if (cursorDist < influenceRange) {
                         let weight = smoothKernel(cursorDist, influenceRange);
-                        cursorForce = towardCenter * weight * strength * uniforms.cursorForce * 2.0;
+                        cursorForce = towardCenter * weight * strength * speciesCursorForce * 2.0;
                     }
                 }
             }
@@ -1294,31 +1584,31 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         let t = 1.0 - (extendedDist / extendedWidth);
                         let falloff = t * t * t;  // Cubic falloff for smooth decay
                         
-                        if (uniforms.cursorMode == 1u) {
+                        if (effectiveCursorMode == 1u) {
                             // Attract: gentle pull
-                            cursorForce = towardCenter * falloff * strength * uniforms.cursorForce * 1.5;
+                            cursorForce = towardCenter * falloff * strength * speciesCursorForce * 1.5;
                         } else {
                             // Repel: gentle push
-                            cursorForce = awayFromCenter * falloff * strength * uniforms.cursorForce * 2.0;
+                            cursorForce = awayFromCenter * falloff * strength * speciesCursorForce * 2.0;
                         }
                     }
                 }
             }
             } // End of cursorMode != 0 check for radial forces
             
-            // Step 2: Add vortex (rotation) force if enabled - independent of shape
-            if (uniforms.cursorVortex != 0u) {
+            // Step 2: Add vortex (rotation) force if enabled for this species
+            if (speciesCursorVortex) {
                 // Different behavior based on cursor mode:
                 // - Attract (1): vortex applies INSIDE - boids spiral inward
                 // - Repel (2): vortex applies OUTSIDE - boids spiral around the perimeter
                 // - Off (0): pure vortex - rotation around cursor with smooth falloff
-                if (uniforms.cursorMode == 1u) {
+                if (effectiveCursorMode == 1u) {
                     // Attract + vortex: rotate inside the influence area
                     if (cursorDist < influenceRange) {
                         let vortexWeight = smoothKernel(cursorDist, influenceRange);
-                        cursorForce += tangent * vortexWeight * strength * uniforms.cursorForce * 3.0;
+                        cursorForce += tangent * vortexWeight * strength * speciesCursorForce * 3.0;
                     }
-                } else if (uniforms.cursorMode == 2u) {
+                } else if (effectiveCursorMode == 2u) {
                     // Repel + vortex: rotate OUTSIDE the cursor area
                     // Apply rotation to boids that are outside the main radius but within an outer ring
                     let innerRadius = radius;
@@ -1335,7 +1625,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                             vortexWeight = 1.0 - (outerDist / outerRange);
                             vortexWeight = vortexWeight * vortexWeight; // Quadratic falloff
                         }
-                        cursorForce += -tangent * vortexWeight * strength * uniforms.cursorForce * 4.0;
+                        cursorForce += -tangent * vortexWeight * strength * speciesCursorForce * 4.0;
                     }
                 } else {
                     // Vortex only (mode Off): pure rotation around cursor
@@ -1356,7 +1646,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         }
                         // Stronger force when pressed: 4.0 normal, 8.0 when pressed
                         let pressedBoost = select(1.0, 2.0, isPressed);
-                        cursorForce += tangent * vortexWeight * strength * uniforms.cursorForce * 4.0 * pressedBoost;
+                        cursorForce += tangent * vortexWeight * strength * speciesCursorForce * 4.0 * pressedBoost;
                     }
                 }
             }
@@ -1370,7 +1660,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (uniforms.noise > 0.0) {
         let noiseVec = random2(boidIndex * 31u + uniforms.frameCount * 17u);
         // Scale by maxSpeed * 0.15 so noise=1 gives substantial perturbation
-        acceleration += noiseVec * uniforms.noise * uniforms.maxSpeed * 0.15;
+        acceleration += noiseVec * uniforms.noise * speciesMaxSpeed * 0.15;
     }
     
     // Apply soft steering for bouncy boundaries
@@ -1379,15 +1669,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Apply wall avoidance (user-drawn obstacles)
     newVel = applyWallAvoidance(myPos, newVel);
     
-    newVel = limitMagnitude(newVel, uniforms.maxSpeed);
+    newVel = limitMagnitude(newVel, speciesMaxSpeed);
     
     // Minimum speed
     let speed = length(newVel);
-    if (speed < uniforms.maxSpeed * 0.3) {
+    if (speed < speciesMaxSpeed * 0.3) {
         if (speed > 0.001) {
-            newVel = normalize(newVel) * uniforms.maxSpeed * 0.3;
+            newVel = normalize(newVel) * speciesMaxSpeed * 0.3;
         } else {
-            newVel = normalize(random2(boidIndex * 13u + uniforms.frameCount * 23u)) * uniforms.maxSpeed * 0.3;
+            newVel = normalize(random2(boidIndex * 13u + uniforms.frameCount * 23u)) * speciesMaxSpeed * 0.3;
         }
     }
     
@@ -1406,12 +1696,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Update trail - store at the BASE of the boid (x = -0.7 in local space), not the center
     // This ensures trails connect seamlessly to the triangle's back edge
+    let speciesSize = getSpeciesSize(mySpecies);
     let finalSpeed = length(newVel);
     var trailPos = newPos;
     if (finalSpeed > 0.001) {
         let trailDir = newVel / finalSpeed;
         // Offset to the triangle's base: 0.7 * boidSize * 6.0
-        trailPos = newPos - trailDir * 0.7 * uniforms.boidSize * 6.0;
+        trailPos = newPos - trailDir * 0.7 * speciesSize * 6.0;
     }
     // Use MAX_TRAIL_LENGTH for buffer stride so changing trailLength doesn't shift data
     trails[boidIndex * MAX_TRAIL_LENGTH + uniforms.trailHead] = trailPos;

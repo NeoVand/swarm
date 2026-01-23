@@ -1,7 +1,7 @@
 // Buffer creation and management
 
-import type { SimulationBuffers, SimulationParams, CursorState } from './types';
-import { WORKGROUP_SIZE, WALL_TEXTURE_SCALE } from './types';
+import type { SimulationBuffers, SimulationParams, CursorState, Species } from './types';
+import { WORKGROUP_SIZE, WALL_TEXTURE_SCALE, MAX_SPECIES } from './types';
 
 export interface BufferConfig {
 	boidCount: number;
@@ -112,6 +112,30 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		addressModeV: 'clamp-to-edge'
 	});
 
+	// Species ID buffer: u32 per boid (which species each boid belongs to)
+	const speciesIds = device.createBuffer({
+		size: boidCount * 4,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+
+	// Species parameters buffer: per-species flocking params (UNIFORM buffer)
+	// Layout: 2 vec4s per species (8 floats = 32 bytes per species)
+	// vec4[0]: [alignment, cohesion, separation, perception]
+	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
+	// vec4[2]: [saturation, lightness, size, trailLength]
+	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
+	const speciesParams = device.createBuffer({
+		size: MAX_SPECIES * 4 * 16, // 7 species * 4 vec4s * 16 bytes per vec4
+		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+	});
+
+	// Interaction matrix: MAX_SPECIES × MAX_SPECIES (UNIFORM buffer)
+	// Each entry is a vec4: [behavior, strength, range, padding]
+	const interactionMatrix = device.createBuffer({
+		size: MAX_SPECIES * MAX_SPECIES * 16, // 49 vec4s * 16 bytes
+		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+	});
+
 	return {
 		positionA,
 		positionB,
@@ -127,7 +151,10 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		trailHead,
 		birthColors,
 		wallTexture,
-		wallSampler
+		wallSampler,
+		speciesIds,
+		speciesParams,
+		interactionMatrix
 	};
 }
 
@@ -146,6 +173,9 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.trailHead.destroy();
 	buffers.birthColors.destroy();
 	buffers.wallTexture.destroy();
+	buffers.speciesIds.destroy();
+	buffers.speciesParams.destroy();
+	buffers.interactionMatrix.destroy();
 }
 
 export function initializeBoids(
@@ -153,7 +183,8 @@ export function initializeBoids(
 	buffers: SimulationBuffers,
 	boidCount: number,
 	canvasWidth: number,
-	canvasHeight: number
+	canvasHeight: number,
+	species?: Species[]
 ): void {
 	// Safe spawn margin - keep boids away from edges and corners
 	// This matches the BOUNDARY_INSET (30) in simulate.wgsl plus extra padding
@@ -170,8 +201,26 @@ export function initializeBoids(
 	// Create initial positions (random within safe area) and birth colors
 	const positions = new Float32Array(boidCount * 2);
 	const birthColors = new Float32Array(boidCount);
+	const speciesIds = new Uint32Array(boidCount);
 	const centerX = canvasWidth * 0.5;
 	const centerY = canvasHeight * 0.5;
+
+	// Calculate species assignments based on population counts
+	const speciesRanges: { id: number; start: number; end: number }[] = [];
+	if (species && species.length > 0) {
+		let offset = 0;
+		for (const s of species) {
+			speciesRanges.push({
+				id: s.id,
+				start: offset,
+				end: offset + s.population
+			});
+			offset += s.population;
+		}
+	} else {
+		// Default: all boids belong to species 0
+		speciesRanges.push({ id: 0, start: 0, end: boidCount });
+	}
 
 	for (let i = 0; i < boidCount; i++) {
 		const x = safeMinX + Math.random() * safeWidth;
@@ -182,6 +231,16 @@ export function initializeBoids(
 		// Compute birth color based on angle from canvas center (rainbow wheel)
 		const angle = Math.atan2(y - centerY, x - centerX);
 		birthColors[i] = (angle + Math.PI) / (2 * Math.PI); // Normalize to [0, 1]
+
+		// Assign species based on ranges
+		let assignedSpecies = 0;
+		for (const range of speciesRanges) {
+			if (i >= range.start && i < range.end) {
+				assignedSpecies = range.id;
+				break;
+			}
+		}
+		speciesIds[i] = assignedSpecies;
 	}
 
 	// Create initial velocities (random directions, moderate speed)
@@ -199,6 +258,7 @@ export function initializeBoids(
 	device.queue.writeBuffer(buffers.velocityA, 0, velocities);
 	device.queue.writeBuffer(buffers.velocityB, 0, velocities);
 	device.queue.writeBuffer(buffers.birthColors, 0, birthColors);
+	device.queue.writeBuffer(buffers.speciesIds, 0, speciesIds);
 }
 
 export function clearTrails(
@@ -334,6 +394,92 @@ export function createBlockSumsBuffer(
 		size: Math.max(numBlocks * 4, 4),
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
+}
+
+// Update species parameters buffer
+export function updateSpeciesParams(
+	device: GPUDevice,
+	buffer: GPUBuffer,
+	species: Species[]
+): void {
+	// Layout: 4 vec4s per species (16 floats = 64 bytes per species)
+	// vec4[0]: [alignment, cohesion, separation, perception]
+	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
+	// vec4[2]: [saturation, lightness, size, trailLength]
+	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
+	const data = new Float32Array(MAX_SPECIES * 4 * 4);
+
+	for (const s of species) {
+		if (s.id >= MAX_SPECIES) continue;
+		const offset = s.id * 16;
+		// vec4[0]
+		data[offset + 0] = s.alignment;
+		data[offset + 1] = s.cohesion;
+		data[offset + 2] = s.separation;
+		data[offset + 3] = s.perception;
+		// vec4[1]
+		data[offset + 4] = s.maxSpeed;
+		data[offset + 5] = s.maxForce;
+		data[offset + 6] = s.hue / 360.0; // Normalize to [0, 1]
+		data[offset + 7] = s.headShape;
+		// vec4[2]
+		data[offset + 8] = (s.saturation ?? 70) / 100.0; // Normalize to [0, 1]
+		data[offset + 9] = (s.lightness ?? 55) / 100.0; // Normalize to [0, 1]
+		data[offset + 10] = s.size ?? 1.5;
+		data[offset + 11] = s.trailLength ?? 30;
+		// vec4[3]
+		data[offset + 12] = s.rebels ?? 0.02;
+		data[offset + 13] = s.cursorForce ?? 0.5;
+		data[offset + 14] = s.cursorResponse ?? 1; // 1 = Repel by default
+		data[offset + 15] = s.cursorVortex ? 1.0 : 0.0; // 1 = vortex enabled
+	}
+
+	device.queue.writeBuffer(buffer, 0, data);
+}
+
+// Update interaction matrix buffer
+export function updateInteractionMatrix(
+	device: GPUDevice,
+	buffer: GPUBuffer,
+	species: Species[]
+): void {
+	// Layout: MAX_SPECIES × MAX_SPECIES vec4s
+	// Each vec4: [behavior, strength, range, padding]
+	const data = new Float32Array(MAX_SPECIES * MAX_SPECIES * 4);
+
+	// Default: all interactions are "ignore" (behavior = 0, strength = 0)
+	// This is already initialized to zeros
+
+	for (const s of species) {
+		if (s.id >= MAX_SPECIES) continue;
+
+		for (const rule of s.interactions) {
+			if (rule.targetSpecies === -1) {
+				// Apply to all other species
+				for (let targetId = 0; targetId < MAX_SPECIES; targetId++) {
+					if (targetId === s.id) continue; // Skip self
+					// Only set if no specific rule exists (specific rules take priority)
+					const offset = (s.id * MAX_SPECIES + targetId) * 4;
+					// Check if already set by a specific rule
+					if (data[offset + 0] === 0 && data[offset + 1] === 0) {
+						data[offset + 0] = rule.behavior;
+						data[offset + 1] = rule.strength;
+						data[offset + 2] = rule.range;
+						data[offset + 3] = 0; // padding
+					}
+				}
+			} else if (rule.targetSpecies >= 0 && rule.targetSpecies < MAX_SPECIES) {
+				// Specific target species - always overwrite
+				const offset = (s.id * MAX_SPECIES + rule.targetSpecies) * 4;
+				data[offset + 0] = rule.behavior;
+				data[offset + 1] = rule.strength;
+				data[offset + 2] = rule.range;
+				data[offset + 3] = 0; // padding
+			}
+		}
+	}
+
+	device.queue.writeBuffer(buffer, 0, data);
 }
 
 // Update wall texture from CPU data

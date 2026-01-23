@@ -19,7 +19,8 @@ export enum ColorMode {
 	Acceleration = 3,
 	Turning = 4,
 	None = 5,
-	Density = 6
+	Density = 6,
+	Species = 7
 }
 
 export enum ColorSpectrum {
@@ -60,6 +61,131 @@ export enum WallBrushShape {
 	Ring = 1 // Hollow ring
 }
 
+// ============================================================================
+// MULTI-SPECIES SYSTEM
+// ============================================================================
+
+export const MAX_SPECIES = 7;
+
+// Head shapes for distinguishing species visually (proper polygons)
+export enum HeadShape {
+	Triangle = 0, // 3-sided polygon
+	Square = 1, // 4-sided polygon
+	Pentagon = 2, // 5-sided polygon
+	Hexagon = 3, // 6-sided polygon
+	Arrow = 4 // Arrow/chevron shape
+}
+
+// Inter-species interaction behaviors
+export enum InteractionBehavior {
+	Ignore = 0, // No interaction
+	Avoid = 1, // Flee from other species
+	Pursue = 2, // Chase/hunt other species
+	Attract = 3, // Gentle attraction toward other species
+	Mirror = 4, // Match their velocity (alignment with other species)
+	Orbit = 5 // Circle around them (perpendicular force)
+}
+
+// Per-species cursor response
+export enum CursorResponse {
+	Attract = 0, // Species is attracted to cursor
+	Repel = 1, // Species is repelled by cursor
+	Ignore = 2 // Species ignores cursor
+}
+
+// Interaction rule for how one species interacts with another
+export interface InteractionRule {
+	targetSpecies: number | -1; // -1 means "all others"
+	behavior: InteractionBehavior;
+	strength: number; // 0 to 1 (intensity of the interaction)
+	range: number; // Perception range for this interaction (0 = use default perception)
+}
+
+// Species definition
+export interface Species {
+	id: number; // 0 to MAX_SPECIES-1
+	name: string; // User-editable name
+	headShape: HeadShape;
+	hue: number; // Base hue for this species (0-360)
+	saturation: number; // Color saturation (0-100)
+	lightness: number; // Color lightness (0-100)
+	population: number; // Count of boids in this species
+
+	// Per-species visual/rendering parameters
+	size: number; // Boid size for this species
+	trailLength: number; // Trail length for this species
+
+	// Per-species flocking parameters
+	alignment: number;
+	cohesion: number;
+	separation: number;
+	perception: number;
+	maxSpeed: number;
+	maxForce: number;
+	rebels: number; // Percentage of rebels in this species (0-1)
+
+	// Per-species cursor interaction
+	cursorForce: number; // How strongly this species responds to cursor
+	cursorResponse: CursorResponse; // How this species responds to cursor
+	cursorVortex: boolean; // Whether this species responds to vortex/rotation
+
+	// Inter-species interaction rules
+	interactions: InteractionRule[];
+}
+
+// Default species colors (hues)
+export const SPECIES_HUES = [
+	210, // Blue
+	0, // Red
+	120, // Green
+	45, // Orange
+	280, // Purple
+	180, // Cyan
+	330 // Pink
+];
+
+// Default species names
+export const SPECIES_NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta'];
+
+// Create a default species
+export function createDefaultSpecies(id: number, population: number): Species {
+	// Cycle through available shapes (0-4: Triangle, Square, Pentagon, Hexagon, Arrow)
+	const numShapes = 5;
+	return {
+		id,
+		name: SPECIES_NAMES[id] || `Species ${id + 1}`,
+		headShape: (id % numShapes) as HeadShape,
+		hue: SPECIES_HUES[id] || (id * 51) % 360,
+		saturation: 70, // Default saturation
+		lightness: 55, // Default lightness
+		population,
+		// Per-species visual parameters
+		size: 1.5, // Default boid size
+		trailLength: 30, // Default trail length
+		// Flocking parameters
+		alignment: 1.3,
+		cohesion: 0.6,
+		separation: 1.5,
+		perception: 80,
+		maxSpeed: 4,
+		maxForce: 0.1,
+		rebels: 0.02, // 2% rebels by default
+		// Cursor interaction
+		cursorForce: 0.5, // Medium response to cursor
+		cursorResponse: CursorResponse.Repel, // Default: repelled by cursor
+		cursorVortex: false, // Default: no vortex response
+		// Inter-species interactions
+		interactions: [
+			{
+				targetSpecies: -1, // All others
+				behavior: InteractionBehavior.Avoid,
+				strength: 0.5,
+				range: 0 // Use default perception
+			}
+		]
+	};
+}
+
 export interface SimulationParams {
 	alignment: number;
 	cohesion: number;
@@ -91,6 +217,9 @@ export interface SimulationParams {
 	// Wall drawing
 	wallBrushSize: number; // Brush size for pencil/eraser (10-100 pixels)
 	wallBrushShape: WallBrushShape; // Brush shape
+	// Multi-species
+	species: Species[]; // Array of species definitions
+	activeSpeciesId: number; // Currently selected species in UI
 }
 
 export interface CursorState {
@@ -123,6 +252,10 @@ export interface SimulationBuffers {
 	birthColors: GPUBuffer; // Stores initial position-based color per boid
 	wallTexture: GPUTexture; // Stores wall data for obstacle avoidance
 	wallSampler: GPUSampler; // Sampler for wall texture
+	// Multi-species buffers
+	speciesIds: GPUBuffer; // u32 per boid - which species each boid belongs to
+	speciesParams: GPUBuffer; // Per-species flocking parameters (alignment, cohesion, etc.)
+	interactionMatrix: GPUBuffer; // MAX_SPECIES × MAX_SPECIES interaction rules
 }
 
 export interface ComputePipelines {
@@ -175,7 +308,10 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	timeScale: 1.0, // Normal speed
 	// Wall drawing
 	wallBrushSize: 30, // Default brush size
-	wallBrushShape: WallBrushShape.Solid // Default brush shape
+	wallBrushShape: WallBrushShape.Solid, // Default brush shape
+	// Multi-species defaults
+	species: [createDefaultSpecies(0, 7000)],
+	activeSpeciesId: 0
 };
 
 /**

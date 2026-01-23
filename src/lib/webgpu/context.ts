@@ -118,12 +118,25 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 		// Request device with required features
 		let device: GPUDevice;
 		try {
+			// We need 9 storage buffers in the compute shader for multi-species support
+			// (8 original + 1 for speciesIds)
+			const requiredStorageBuffers = 9;
+			const adapterStorageLimit = adapter.limits.maxStorageBuffersPerShaderStage;
+
+			if (adapterStorageLimit < requiredStorageBuffers) {
+				console.warn(
+					`Adapter only supports ${adapterStorageLimit} storage buffers, but we need ${requiredStorageBuffers}. Multi-species features may not work.`
+				);
+			}
+
 			device = await adapter.requestDevice({
 				requiredFeatures: [],
 				requiredLimits: {
 					maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
 					maxBufferSize: adapter.limits.maxBufferSize,
-					maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension
+					maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
+					// Request higher storage buffer limit for multi-species support
+					maxStorageBuffersPerShaderStage: Math.min(requiredStorageBuffers, adapterStorageLimit)
 				}
 			});
 		} catch (e) {

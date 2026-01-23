@@ -7,7 +7,10 @@
 	import { base } from '$app/paths';
 	import PaletteIcon from './PaletteIcon.svelte';
 	import TopologySelector from './TopologySelector.svelte';
+	import SpeciesSelector from './SpeciesSelector.svelte';
+	import InteractionsPanel from './InteractionsPanel.svelte';
 	import { TOPOLOGY_NAMES } from '$lib/utils/topologyMeshes';
+	import { HeadShape } from '$lib/webgpu/types';
 	import {
 		params,
 		isPanelOpen,
@@ -23,15 +26,9 @@
 		setMaxSpeed,
 		setMaxForce,
 		setNoise,
-		setRebels,
 		setBoundaryMode,
-		setCursorMode,
 		setCursorShape,
-		setCursorVortex,
-		setCursorForce,
 		setCursorRadius,
-		setBoidSize,
-		setTrailLength,
 		setColorMode,
 		setColorSpectrum,
 		setPopulation,
@@ -45,6 +42,19 @@
 		setWallBrushSize,
 		setWallBrushShape,
 		clearWalls,
+		setSpeciesPopulation,
+		updateSpeciesFlocking,
+		getActiveSpecies,
+		setSpeciesHue,
+		setSpeciesColor,
+		setSpeciesSize,
+		setSpeciesTrailLength,
+		setSpeciesRebels,
+		setSpeciesCursorForce,
+		setSpeciesCursorResponse,
+		setSpeciesCursorVortex,
+		setActiveSpecies,
+		CursorResponse,
 		BoundaryMode,
 		ColorMode,
 		ColorSpectrum,
@@ -57,11 +67,43 @@
 	} from '$lib/stores/simulation';
 
 	let currentParams = $derived($params);
+	let activeSpecies = $derived(getActiveSpecies($params));
 	let isOpen = $derived($isPanelOpen);
 	let isPlaying = $derived($isRunning);
 	let recording = $derived($isRecording);
 	let canvas = $derived($canvasElement);
 	let currentWallTool = $derived($wallTool);
+
+	// Helper function to generate SVG path for boid shape (for quick species selector)
+	function getQuickBoidPath(shape: HeadShape, cx: number, cy: number, size: number): string {
+		const s = size;
+		// Generate polygon points for n-sided polygon
+		const polygon = (n: number): string => {
+			const points: string[] = [];
+			for (let i = 0; i < n; i++) {
+				const angle = (i * 2 * Math.PI) / n - Math.PI / 2; // Start from top
+				const x = cx + s * Math.cos(angle);
+				const y = cy + s * Math.sin(angle);
+				points.push(`${x} ${y}`);
+			}
+			return `M ${points.join(' L ')} Z`;
+		};
+
+		switch (shape) {
+			case HeadShape.Triangle:
+				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
+			case HeadShape.Square:
+				return `M ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} L ${cx} ${cy - s} Z`;
+			case HeadShape.Pentagon:
+				return polygon(5);
+			case HeadShape.Hexagon:
+				return polygon(6);
+			case HeadShape.Arrow:
+				return `M ${cx + s} ${cy} L ${cx - s * 0.5} ${cy + s * 0.6} L ${cx - s * 0.2} ${cy} L ${cx - s * 0.5} ${cy - s * 0.6} Z`;
+			default:
+				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
+		}
+	}
 
 	let paletteDropdownOpen = $state(false);
 	let paletteDropdownRef = $state<HTMLDivElement | undefined>(undefined);
@@ -69,50 +111,61 @@
 	let colorizeDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let algorithmDropdownOpen = $state(false);
 	let algorithmDropdownRef = $state<HTMLDivElement | undefined>(undefined);
+	let colorPickerOpen = $state(false);
+	let colorPickerRef = $state<HTMLDivElement | undefined>(undefined);
 
 	// Population preview (for live display while dragging slider)
 	let populationPreview = $state<number | null>(null);
 
-	// Remember last cursor mode for toggle behavior (default to Repel to match DEFAULT_PARAMS)
-	let lastCursorMode = $state<typeof CursorMode.Attract | typeof CursorMode.Repel>(
-		CursorMode.Repel
+	// Remember last cursor response for toggle behavior (default to Repel)
+	let lastCursorResponse = $state<typeof CursorResponse.Attract | typeof CursorResponse.Repel>(
+		CursorResponse.Repel
 	);
 
 	// Remember last vortex state for restoring
 	let lastVortexState = $state<boolean>(false);
 
-	// Handle cursor mode toggle with memory
+	// Handle cursor mode toggle with memory - controls per-species cursorResponse
 	function handleCursorModeToggle(
 		mode: typeof CursorMode.Off | typeof CursorMode.Attract | typeof CursorMode.Repel
 	) {
+		if (!activeSpecies) return;
+
+		// Current species response
+		const currentResponse = activeSpecies.cursorResponse ?? CursorResponse.Repel;
+
 		if (mode === CursorMode.Off) {
-			// Power button: toggle all interaction on/off
-			const isAnyActive = currentParams.cursorMode !== CursorMode.Off || currentParams.cursorVortex;
-			if (isAnyActive) {
-				// Turn everything off, but remember states
-				if (currentParams.cursorMode !== CursorMode.Off) {
-					lastCursorMode = currentParams.cursorMode as
-						| typeof CursorMode.Attract
-						| typeof CursorMode.Repel;
+			// Power button: toggle interaction on/off for this species
+			const speciesVortex = activeSpecies.cursorVortex ?? false;
+			const isActive = currentResponse !== CursorResponse.Ignore || speciesVortex;
+			if (isActive) {
+				// Turn off, but remember state
+				if (currentResponse !== CursorResponse.Ignore) {
+					lastCursorResponse = currentResponse as
+						| typeof CursorResponse.Attract
+						| typeof CursorResponse.Repel;
 				}
-				lastVortexState = currentParams.cursorVortex;
-				setCursorMode(CursorMode.Off);
-				setCursorVortex(false);
+				lastVortexState = speciesVortex;
+				setSpeciesCursorResponse(activeSpecies.id, CursorResponse.Ignore);
+				setSpeciesCursorVortex(activeSpecies.id, false);
 			} else {
 				// Restore previous state
-				setCursorMode(lastCursorMode);
-				setCursorVortex(lastVortexState);
+				setSpeciesCursorResponse(activeSpecies.id, lastCursorResponse);
+				setSpeciesCursorVortex(activeSpecies.id, lastVortexState);
 			}
 		} else {
 			// Attract/Repel button: toggle self off, or switch to this mode
-			if (currentParams.cursorMode === mode) {
+			const targetResponse =
+				mode === CursorMode.Attract ? CursorResponse.Attract : CursorResponse.Repel;
+
+			if (currentResponse === targetResponse) {
 				// Same mode clicked: turn off (but remember this mode)
-				lastCursorMode = mode;
-				setCursorMode(CursorMode.Off);
+				lastCursorResponse = targetResponse;
+				setSpeciesCursorResponse(activeSpecies.id, CursorResponse.Ignore);
 			} else {
 				// Different mode: switch to it
-				lastCursorMode = mode;
-				setCursorMode(mode);
+				lastCursorResponse = targetResponse;
+				setSpeciesCursorResponse(activeSpecies.id, targetResponse);
 			}
 		}
 	}
@@ -274,7 +327,7 @@
 
 	// Accordion - only one section open at a time
 	let openSection = $state<
-		'boids' | 'world' | 'interaction' | 'flocking' | 'dynamics' | 'algorithm'
+		'boids' | 'world' | 'interaction' | 'species' | 'flocking' | 'dynamics' | 'algorithm'
 	>('boids');
 
 	function toggleSection(section: typeof openSection) {
@@ -282,13 +335,15 @@
 	}
 
 	// Section tour step indices (for jumping to specific cards)
+	// Order: Welcome(0), Controls(1), Boids(2), Interaction(3), Species(4), Flocking(5), World(6), Dynamics(7), Algorithm(8)
 	const sectionTourSteps: Record<typeof openSection, number> = {
 		boids: 2,
-		world: 3,
-		interaction: 4,
+		interaction: 3,
+		species: 4,
 		flocking: 5,
-		dynamics: 6,
-		algorithm: 7
+		world: 6,
+		dynamics: 7,
+		algorithm: 8
 	};
 
 	// Start tour at a specific section
@@ -304,9 +359,11 @@
 	// Reset functions for each section
 	function resetBoidsSection(e: Event): void {
 		e.stopPropagation();
-		setPopulation(DEFAULT_PARAMS.population);
-		setBoidSize(DEFAULT_PARAMS.boidSize);
-		setTrailLength(DEFAULT_PARAMS.trailLength);
+		if (activeSpecies) {
+			setSpeciesSize(activeSpecies.id, 1.5);
+			setSpeciesTrailLength(activeSpecies.id, 30);
+			setSpeciesRebels(activeSpecies.id, 0.02);
+		}
 		setColorMode(DEFAULT_PARAMS.colorMode);
 		setColorSpectrum(DEFAULT_PARAMS.colorSpectrum);
 	}
@@ -314,18 +371,22 @@
 	function resetWorldSection(e: Event): void {
 		e.stopPropagation();
 		setBoundaryMode(DEFAULT_PARAMS.boundaryMode);
+		// Reset wall tools
+		setWallTool(WallTool.None);
+		setWallBrushSize(DEFAULT_PARAMS.wallBrushSize);
+		setWallBrushShape(DEFAULT_PARAMS.wallBrushShape);
 	}
 
 	function resetInteractionSection(e: Event): void {
 		e.stopPropagation();
-		setCursorMode(DEFAULT_PARAMS.cursorMode);
-		setCursorVortex(DEFAULT_PARAMS.cursorVortex);
 		setCursorShape(DEFAULT_PARAMS.cursorShape);
 		setCursorRadius(DEFAULT_PARAMS.cursorRadius);
-		setCursorForce(DEFAULT_PARAMS.cursorForce);
-		setWallTool(WallTool.None);
-		setWallBrushSize(DEFAULT_PARAMS.wallBrushSize);
-		setWallBrushShape(DEFAULT_PARAMS.wallBrushShape);
+		// Reset per-species cursor settings
+		if (activeSpecies) {
+			setSpeciesCursorForce(activeSpecies.id, 0.5);
+			setSpeciesCursorResponse(activeSpecies.id, CursorResponse.Repel);
+			setSpeciesCursorVortex(activeSpecies.id, false);
+		}
 	}
 
 	function resetFlockingSection(e: Event): void {
@@ -341,7 +402,6 @@
 		setMaxSpeed(DEFAULT_PARAMS.maxSpeed);
 		setMaxForce(DEFAULT_PARAMS.maxForce);
 		setNoise(DEFAULT_PARAMS.noise);
-		setRebels(DEFAULT_PARAMS.rebels);
 		setTimeScale(DEFAULT_PARAMS.timeScale);
 	}
 
@@ -398,10 +458,13 @@
 		) {
 			algorithmDropdownOpen = false;
 		}
+		if (colorPickerOpen && colorPickerRef && !colorPickerRef.contains(event.target as Node)) {
+			colorPickerOpen = false;
+		}
 	}
 
 	$effect(() => {
-		if (paletteDropdownOpen || colorizeDropdownOpen || algorithmDropdownOpen) {
+		if (paletteDropdownOpen || colorizeDropdownOpen || algorithmDropdownOpen || colorPickerOpen) {
 			document.addEventListener('click', handleClickOutside);
 			return () => document.removeEventListener('click', handleClickOutside);
 		}
@@ -439,7 +502,8 @@
 			ColorMode.Neighbors,
 			ColorMode.Density,
 			ColorMode.Acceleration,
-			ColorMode.Turning
+			ColorMode.Turning,
+			ColorMode.Species
 		];
 		const algorithmModes = [
 			AlgorithmMode.TopologicalKNN,
@@ -521,8 +585,8 @@
 
 			case '4':
 				event.preventDefault();
-				if (currentParams) {
-					setCursorVortex(!currentParams.cursorVortex);
+				if (activeSpecies) {
+					setSpeciesCursorVortex(activeSpecies.id, !activeSpecies.cursorVortex);
 				}
 				break;
 
@@ -590,6 +654,19 @@
 				const shapeIndex = cursorShapes.indexOf(currentShape);
 				const nextShape = cursorShapes[(shapeIndex + 1) % cursorShapes.length];
 				setCursorShape(nextShape);
+				break;
+			}
+
+			// Cycle through species
+			case 'n': {
+				event.preventDefault();
+				if (currentParams && currentParams.species.length > 1) {
+					const currentIndex = currentParams.species.findIndex(
+						(s) => s.id === currentParams.activeSpeciesId
+					);
+					const nextIndex = (currentIndex + 1) % currentParams.species.length;
+					setActiveSpecies(currentParams.species[nextIndex].id);
+				}
 				break;
 			}
 
@@ -663,17 +740,17 @@
 
 			case ']':
 				event.preventDefault();
-				if (currentParams) {
-					const newTrail = Math.min(currentParams.trailLength + 10, 100);
-					setTrailLength(newTrail);
+				if (activeSpecies) {
+					const newTrail = Math.min((activeSpecies.trailLength ?? 30) + 10, 100);
+					setSpeciesTrailLength(activeSpecies.id, newTrail);
 				}
 				break;
 
 			case '[':
 				event.preventDefault();
-				if (currentParams) {
-					const newTrail = Math.max(currentParams.trailLength - 10, 1);
-					setTrailLength(newTrail);
+				if (activeSpecies) {
+					const newTrail = Math.max((activeSpecies.trailLength ?? 30) - 10, 1);
+					setSpeciesTrailLength(activeSpecies.id, newTrail);
 				}
 				break;
 
@@ -701,9 +778,9 @@
 			case 'arrowleft':
 				if (!isOpen) {
 					event.preventDefault();
-					if (currentParams) {
-						const newSize = Math.max(currentParams.boidSize - 0.5, 0.5);
-						setBoidSize(newSize);
+					if (activeSpecies) {
+						const newSize = Math.max((activeSpecies.size ?? 1.5) - 0.5, 0.2);
+						setSpeciesSize(activeSpecies.id, newSize);
 					}
 				}
 				break;
@@ -711,9 +788,9 @@
 			case 'arrowright':
 				if (!isOpen) {
 					event.preventDefault();
-					if (currentParams) {
-						const newSize = Math.min(currentParams.boidSize + 0.5, 10);
-						setBoidSize(newSize);
+					if (activeSpecies) {
+						const newSize = Math.min((activeSpecies.size ?? 1.5) + 0.5, 3);
+						setSpeciesSize(activeSpecies.id, newSize);
 					}
 				}
 				break;
@@ -894,13 +971,14 @@
 							</svg>
 							<span>Boids</span>
 						</div>`,
-						description: `<p>Control the swarm population and appearance:</p>
+						description: `<p>Control the swarm appearance (per-species):</p>
 							<ul>
 								<li><strong>Population</strong> — Number of boids${kbd('+ -', isTouch)}</li>
 								<li><strong>Size</strong> — Scale of each boid${kbd('← →', isTouch)}</li>
 								<li><strong>Trail</strong> — Motion trail length${kbd('[ ]', isTouch)}</li>
+								<li><strong>Rebels</strong> — Boids ignoring rules</li>
 								<li><strong>Colorize</strong> — Color property${kbd('C', isTouch)}</li>
-								<li><strong>Palette</strong> — Color spectrum${kbd('P', isTouch)}</li>
+								<li><strong>Palette/Color</strong> — Color spectrum${kbd('P', isTouch)}</li>
 							</ul>`,
 						side: 'left',
 						align: 'start'
@@ -909,64 +987,19 @@
 						openSection = 'boids';
 					}
 				},
-				// Step 3: World (topology grid)
-				{
-					element: '#section-world',
-					popover: {
-						title: `<div style="display: flex; align-items: center; gap: 8px;">
-							<svg viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-								<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-							</svg>
-							<span>World</span>
-						</div>`,
-						description: `<p>Choose from 9 topologies in a 3×3 grid:${kbd('B', isTouch)}</p>
-							<p style="font-size: 11px; margin: 8px 0 4px 0;">Edge behaviors:</p>
-							<div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px;">
-								<div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
-									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
-										<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.18"/>
-										<rect x="5" y="5" width="7" height="14" fill="currentColor" opacity="0.5"/>
-									</svg>
-									<span><strong>Bounce</strong> — Reflect off walls</span>
-								</div>
-								<div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
-									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
-										<rect x="5" y="5" width="14" height="14" fill="currentColor" opacity="0.25"/>
-										<line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/>
-									</svg>
-									<span><strong>Wrap</strong> — Teleport to opposite side</span>
-								</div>
-								<div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
-									<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; flex-shrink: 0;">
-										<polygon points="5,5 12,12 5,19" fill="currentColor" opacity="0.4"/>
-										<polygon points="19,5 12,12 19,19" fill="currentColor" opacity="0.4"/>
-										<line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="currentColor" stroke-width="1.2"/>
-										<line x1="17.5" y1="6.5" x2="6.5" y2="17.5" stroke="currentColor" stroke-width="1.2"/>
-									</svg>
-									<span><strong>Flip</strong> — Wrap + mirror direction</span>
-								</div>
-							</div>
-							<p style="font-size: 10px; color: #71717a;">Columns = horizontal edges, Rows = vertical edges. Click any topology to select it!</p>`,
-						side: 'left',
-						align: 'start'
-					},
-					onHighlightStarted: () => {
-						openSection = 'world';
-					}
-				},
-				// Step 4: Interaction
+				// Step 3: Interaction (cursor only, walls moved to World)
 				{
 					element: '#section-interaction',
 					popover: {
 						title: `<div style="display: flex; align-items: center; gap: 8px;">
-							<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
 								<path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/>
 								<path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/>
 								<path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/>
 							</svg>
 							<span>Interaction</span>
 						</div>`,
-						description: `<p><strong style="color: #e4e4e7;">Force</strong> — ${isTouch ? 'Touch' : 'Move cursor over'} canvas:</p>
+						description: `<p><strong style="color: #e4e4e7;">Cursor Force</strong> — ${isTouch ? 'Touch' : 'Move cursor over'} canvas (per-species):</p>
 							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
 								<div style="display: flex; align-items: center; gap: 8px;">
 									<svg viewBox="0 0 24 24" style="width: 15px; height: 15px; flex-shrink: 0;">
@@ -1000,35 +1033,63 @@
 									<span><strong>Vortex</strong> — Spin${kbd('4', isTouch)}</span>
 								</div>
 							</div>
-							<p style="margin-top: 10px;"><strong style="color: #e4e4e7;">Walls</strong> — Draw obstacles that deflect boids:</p>
-							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
-										<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-										<path d="m15 5 4 4"/>
-									</svg>
-									<span><strong>Pencil</strong> — Draw walls${kbd('6', isTouch)}</span>
-								</div>
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
-										<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/>
-										<path d="M22 21H7"/><path d="m5 11 9 9"/>
-									</svg>
-									<span><strong>Eraser</strong> — Remove walls${kbd('7', isTouch)}</span>
-								</div>
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
-										<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-									</svg>
-									<span><strong>Clear</strong> — Delete all walls${kbd('8', isTouch)}</span>
-								</div>
-							</div>
-							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">${isTouch ? 'Press and hold' : 'Click'} canvas to boost force! Toggle draw mode${kbd('5', isTouch)}</p>`,
+							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">${isTouch ? 'Press and hold' : 'Click'} canvas to boost force! Each species can respond differently.</p>`,
 						side: 'left',
 						align: 'start'
 					},
 					onHighlightStarted: () => {
 						openSection = 'interaction';
+					}
+				},
+				// Step 4: Species (NEW)
+				{
+					element: '#section-species',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<circle cx="12" cy="12" r="3"/>
+								<path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+								<path d="m4.93 4.93 2.83 2.83m8.48 8.48 2.83 2.83m0-14.14-2.83 2.83m-8.48 8.48-2.83 2.83"/>
+							</svg>
+							<span>Species</span>
+						</div>`,
+						description: `<p>Create multiple swarms with unique behaviors:${kbd('N', isTouch)}</p>
+							<ul>
+								<li><strong>Add/Remove</strong> — Manage up to 7 species</li>
+								<li><strong>Quick Select</strong> — Click icons in header</li>
+								<li><strong>Interactions</strong> — Define how species interact:</li>
+							</ul>
+							<div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px; font-size: 11px;">
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>
+									<span><strong>Ignore</strong> — No interaction</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M12 8 L12 1 M9 4 L12 1 L15 4"/><path d="M7.5 13.5 L1.5 19.5"/><path d="M16.5 13.5 L22.5 19.5"/></svg>
+									<span><strong>Avoid</strong> — Flee from others</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><circle cx="12" cy="12" r="3" fill="#fb923c"/><path d="M12 1v5M12 18v5M23 12h-5M6 12H1"/></svg>
+									<span><strong>Pursue</strong> — Chase/hunt others</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M12 1 L12 8 M9 5 L12 8 L15 5"/><path d="M1.5 19.5 L7.5 13.5"/><path d="M22.5 19.5 L16.5 13.5"/></svg>
+									<span><strong>Attract</strong> — Gentle attraction</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M4 12h4m8 0h4"/><path d="M8 8h8v8H8z"/></svg>
+									<span><strong>Mirror</strong> — Match velocity</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><circle cx="12" cy="12" r="8" stroke-dasharray="4 3"/><circle cx="12" cy="12" r="2" fill="#f97316"/></svg>
+									<span><strong>Orbit</strong> — Circle around</span>
+								</div>
+							</div>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => {
+						openSection = 'species';
 					}
 				},
 				// Step 5: Flocking
@@ -1041,7 +1102,7 @@
 							</svg>
 							<span>Flocking</span>
 						</div>`,
-						description: `<p>The three classic rules of boids:</p>
+						description: `<p>The three classic boid rules (per-species):</p>
 							<ul>
 								<li><strong>Align</strong> — Match neighbors' heading${kbd('Q− W+', isTouch)}</li>
 								<li><strong>Cohesion</strong> — Move toward group center${kbd('E− D+', isTouch)}</li>
@@ -1055,7 +1116,46 @@
 						openSection = 'flocking';
 					}
 				},
-				// Step 6: Dynamics
+				// Step 6: World (topology + walls)
+				{
+					element: '#section-world',
+					popover: {
+						title: `<div style="display: flex; align-items: center; gap: 8px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+							</svg>
+							<span>World</span>
+						</div>`,
+						description: `<p><strong style="color: #e4e4e7;">Topology</strong> — 9 topologies in a 3×3 grid:${kbd('B', isTouch)}</p>
+							<div style="display: flex; flex-direction: column; gap: 3px; margin: 6px 0; font-size: 11px;">
+								<div><strong>Bounce</strong> — Reflect off edges</div>
+								<div><strong>Wrap</strong> — Teleport to opposite side</div>
+								<div><strong>Flip</strong> — Wrap + mirror direction</div>
+							</div>
+							<p style="margin-top: 8px;"><strong style="color: #e4e4e7;">Walls</strong> — Draw obstacles:</p>
+							<div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px; font-size: 11px;">
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+									<span><strong>Pencil</strong> — Draw walls${kbd('6', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/></svg>
+									<span><strong>Eraser</strong> — Remove walls${kbd('7', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 6px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+									<span><strong>Clear</strong> — Delete all${kbd('8', isTouch)}</span>
+								</div>
+							</div>
+							<p style="margin-top: 6px; font-size: 10px; color: #71717a;">Toggle draw mode${kbd('5', isTouch)}</p>`,
+						side: 'left',
+						align: 'start'
+					},
+					onHighlightStarted: () => {
+						openSection = 'world';
+					}
+				},
+				// Step 7: Dynamics
 				{
 					element: '#section-dynamics',
 					popover: {
@@ -1070,7 +1170,6 @@
 								<li><strong>Speed</strong> — Maximum velocity${kbd('↑ ↓', isTouch)}</li>
 								<li><strong>Force</strong> — Turning agility</li>
 								<li><strong>Noise</strong> — Random perturbation</li>
-								<li><strong>Rebels</strong> — Boids ignoring rules</li>
 								<li><strong>Time</strong> — Simulation speed</li>
 							</ul>`,
 						side: 'left',
@@ -1080,7 +1179,7 @@
 						openSection = 'dynamics';
 					}
 				},
-				// Step 7: Algorithm
+				// Step 8: Algorithm
 				{
 					element: '#section-algorithm',
 					popover: {
@@ -1124,7 +1223,7 @@
 							<p style="margin-bottom: 8px; color: #a1a1aa; font-size: 11px;">All keyboard shortcuts:</p>
 							<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; font-size: 9px;">
 								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
-									<div style="font-weight: 600; color: #22d3ee; margin-bottom: 2px; font-size: 10px;">Force</div>
+									<div style="font-weight: 600; color: #f87171; margin-bottom: 2px; font-size: 10px;">Force</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">1</kbd> Toggle On/Off</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">2</kbd> Attract</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">3</kbd> Repel</div>
@@ -1152,11 +1251,11 @@
 								</div>
 								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
 									<div style="font-weight: 600; color: #a78bfa; margin-bottom: 2px; font-size: 10px;">Cycle Options</div>
+									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">N</kbd> Species</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">B</kbd> Boundary</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">C</kbd> Color Mode</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">P</kbd> Palette</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">A</kbd> Algorithm</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">T</kbd> Cursor Shape</div>
 								</div>
 								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
 									<div style="font-weight: 600; color: #fbbf24; margin-bottom: 2px; font-size: 10px;">Adjustments</div>
@@ -1234,6 +1333,7 @@
 	const colorOptions = [
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Speed, label: 'Speed' },
+		{ value: ColorMode.Species, label: 'Species' },
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
 		{ value: ColorMode.Density, label: 'Position' },
 		{ value: ColorMode.Acceleration, label: 'Acceleration' },
@@ -1257,11 +1357,11 @@
 		{ value: AlgorithmMode.DensityAdaptive, label: 'Density Adaptive' }
 	];
 
-	// Cursor toggle indicator position
+	// Cursor toggle indicator position - based on per-species cursorResponse
 	let cursorModeIndex = $derived(
-		currentParams.cursorMode === CursorMode.Off
+		activeSpecies?.cursorResponse === CursorResponse.Ignore
 			? 0
-			: currentParams.cursorMode === CursorMode.Attract
+			: activeSpecies?.cursorResponse === CursorResponse.Attract
 				? 1
 				: 2
 	);
@@ -1549,20 +1649,24 @@
 							<span class="label">Population</span>
 							<input
 								type="range"
-								min="500"
-								max="50000"
-								step="500"
-								value={currentParams.population}
+								min="100"
+								max="20000"
+								step="100"
+								value={activeSpecies?.population ?? 7000}
 								oninput={(e) => (populationPreview = parseInt(e.currentTarget.value))}
 								onchange={(e) => {
-									setPopulation(parseInt(e.currentTarget.value));
+									if (activeSpecies) {
+										setSpeciesPopulation(activeSpecies.id, parseInt(e.currentTarget.value));
+									}
 									populationPreview = null;
 								}}
 								class="slider"
 								aria-label="Population"
 							/>
 							<span class="value"
-								>{((populationPreview ?? currentParams.population) / 1000).toFixed(1)}k</span
+								>{((populationPreview ?? activeSpecies?.population ?? 7000) / 1000).toFixed(
+									1
+								)}k</span
 							>
 						</div>
 						<div class="row">
@@ -1572,12 +1676,14 @@
 								min="0.2"
 								max="3"
 								step="0.1"
-								value={currentParams.boidSize}
-								oninput={(e) => setBoidSize(parseFloat(e.currentTarget.value))}
+								value={activeSpecies?.size ?? 1.5}
+								oninput={(e) =>
+									activeSpecies &&
+									setSpeciesSize(activeSpecies.id, parseFloat(e.currentTarget.value))}
 								class="slider"
 								aria-label="Boid Size"
 							/>
-							<span class="value">{currentParams.boidSize.toFixed(1)}</span>
+							<span class="value">{(activeSpecies?.size ?? 1.5).toFixed(1)}</span>
 						</div>
 						<div class="row">
 							<span class="label">Trail</span>
@@ -1586,12 +1692,14 @@
 								min="1"
 								max="100"
 								step="1"
-								value={currentParams.trailLength}
-								oninput={(e) => setTrailLength(parseInt(e.currentTarget.value))}
+								value={activeSpecies?.trailLength ?? 30}
+								oninput={(e) =>
+									activeSpecies &&
+									setSpeciesTrailLength(activeSpecies.id, parseInt(e.currentTarget.value))}
 								class="slider"
 								aria-label="Trail"
 							/>
-							<span class="value">{currentParams.trailLength}</span>
+							<span class="value">{activeSpecies?.trailLength ?? 30}</span>
 						</div>
 						<div class="row">
 							<span class="label">Colorize</span>
@@ -1699,6 +1807,24 @@
 											stroke-linejoin="round"
 											><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path
 												d="M21 3v5h-5"
+											/></svg
+										>
+									{:else if currentParams.colorMode === ColorMode.Species}
+										<!-- Lucide: shapes (species) -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path
+												d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
+											/><rect x="3" y="14" width="7" height="7" rx="1" /><circle
+												cx="17.5"
+												cy="17.5"
+												r="3.5"
 											/></svg
 										>
 									{/if}
@@ -1828,6 +1954,24 @@
 															d="M21 3v5h-5"
 														/></svg
 													>
+												{:else if opt.value === ColorMode.Species}
+													<!-- Lucide: shapes (species) -->
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path
+															d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
+														/><rect x="3" y="14" width="7" height="7" rx="1" /><circle
+															cx="17.5"
+															cy="17.5"
+															r="3.5"
+														/></svg
+													>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
@@ -1837,142 +1981,162 @@
 							</div>
 						</div>
 						<div class="row">
-							<span class="label">Palette</span>
-							<div class="relative flex-1" bind:this={paletteDropdownRef}>
-								<button
-									class="sel flex w-full items-center gap-2 text-left"
-									onclick={() => (paletteDropdownOpen = !paletteDropdownOpen)}
-									aria-label="Palette"
-									aria-expanded={paletteDropdownOpen}
-								>
-									<PaletteIcon spectrum={currentParams.colorSpectrum} size={18} />
-									<span class="flex-1 truncate"
-										>{spectrumOptions.find((o) => o.value === currentParams.colorSpectrum)
-											?.label}</span
+							{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
+								<!-- Species color picker -->
+								<span class="label">Color</span>
+								<div class="relative flex-1" bind:this={colorPickerRef}>
+									<button
+										class="sel flex w-full items-center gap-2 text-left"
+										onclick={() => (colorPickerOpen = !colorPickerOpen)}
+										aria-label="Species Color"
 									>
-									<svg
-										class="h-3 w-3 opacity-50 transition-transform"
-										class:rotate-180={paletteDropdownOpen}
-										viewBox="0 0 20 20"
-										fill="currentColor"
-									>
-										<path
-											fill-rule="evenodd"
-											d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-											clip-rule="evenodd"
-										/>
-									</svg>
-								</button>
-								{#if paletteDropdownOpen}
-									<div
-										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 overflow-y-auto rounded-md"
-										transition:slide={{ duration: 150, easing: cubicOut }}
-									>
-										{#each spectrumOptions as opt (opt.value)}
-											<button
-												class="dropdown-item flex w-full items-center gap-2 px-3 py-2 text-left text-[10px]"
-												class:active={currentParams.colorSpectrum === opt.value}
-												onclick={() => selectPalette(opt.value)}
+										<div
+											class="color-preview-swatch"
+											style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
+										></div>
+										<span class="flex-1 truncate">{activeSpecies.name}</span>
+										<svg
+											class="h-3 w-3 opacity-50 transition-transform"
+											class:rotate-180={colorPickerOpen}
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									</button>
+									{#if colorPickerOpen}
+										<div
+											class="color-picker-panel"
+											transition:slide={{ duration: 150, easing: cubicOut }}
+										>
+											<!-- 2D Saturation/Lightness picker -->
+											<div
+												class="sl-picker"
+												role="slider"
+												aria-label="Saturation and Lightness"
+												aria-valuemin={0}
+												aria-valuemax={100}
+												aria-valuenow={activeSpecies.saturation}
+												tabindex={0}
+												style="background: linear-gradient(to bottom, white, hsl({activeSpecies.hue}, 100%, 50%), black)"
+												onmousedown={(e) => {
+													const rect = e.currentTarget.getBoundingClientRect();
+													const updateSL = (clientX: number, clientY: number) => {
+														const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+														const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+														const saturation = Math.round(x * 100);
+														const lightness = Math.round((1 - y) * 100);
+														setSpeciesColor(
+															activeSpecies.id,
+															activeSpecies.hue,
+															saturation,
+															lightness
+														);
+													};
+													updateSL(e.clientX, e.clientY);
+													const onMove = (ev: MouseEvent) => updateSL(ev.clientX, ev.clientY);
+													const onUp = () => {
+														window.removeEventListener('mousemove', onMove);
+														window.removeEventListener('mouseup', onUp);
+													};
+													window.addEventListener('mousemove', onMove);
+													window.addEventListener('mouseup', onUp);
+												}}
 											>
-												<PaletteIcon spectrum={opt.value} size={18} />
-												<span>{opt.label}</span>
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</div>
+												<!-- Saturation gradient overlay -->
+												<div class="sl-saturation-overlay"></div>
+												<!-- Picker indicator -->
+												<div
+													class="sl-indicator"
+													style="left: {activeSpecies.saturation}%; top: {100 -
+														activeSpecies.lightness}%"
+												></div>
+											</div>
+											<!-- Hue strip -->
+											<div class="hue-strip-container">
+												<input
+													type="range"
+													class="hue-strip"
+													min="0"
+													max="360"
+													step="1"
+													value={activeSpecies.hue}
+													oninput={(e) =>
+														setSpeciesHue(activeSpecies.id, parseInt(e.currentTarget.value))}
+													aria-label="Hue"
+												/>
+											</div>
+										</div>
+									{/if}
+								</div>
+							{:else}
+								<!-- Palette dropdown -->
+								<span class="label">Palette</span>
+								<div class="relative flex-1" bind:this={paletteDropdownRef}>
+									<button
+										class="sel flex w-full items-center gap-2 text-left"
+										onclick={() => (paletteDropdownOpen = !paletteDropdownOpen)}
+										aria-label="Palette"
+										aria-expanded={paletteDropdownOpen}
+									>
+										<PaletteIcon spectrum={currentParams.colorSpectrum} size={18} />
+										<span class="flex-1 truncate"
+											>{spectrumOptions.find((o) => o.value === currentParams.colorSpectrum)
+												?.label}</span
+										>
+										<svg
+											class="h-3 w-3 opacity-50 transition-transform"
+											class:rotate-180={paletteDropdownOpen}
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									</button>
+									{#if paletteDropdownOpen}
+										<div
+											class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 overflow-y-auto rounded-md"
+											transition:slide={{ duration: 150, easing: cubicOut }}
+										>
+											{#each spectrumOptions as opt (opt.value)}
+												<button
+													class="dropdown-item flex w-full items-center gap-2 px-3 py-2 text-left text-[10px]"
+													class:active={currentParams.colorSpectrum === opt.value}
+													onclick={() => selectPalette(opt.value)}
+												>
+													<PaletteIcon spectrum={opt.value} size={18} />
+													<span>{opt.label}</span>
+												</button>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							{/if}
 						</div>
-					</div>
-				{/if}
-			</div>
-
-			<div class="section-divider"></div>
-			<!-- World - 3D Topology Selector -->
-			<div id="section-world">
-				<button class="section-header" onclick={() => toggleSection('world')}>
-					<div class="section-title">
-						<svg
-							class="section-icon icon-rose"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<circle cx="12" cy="12" r="10" />
-							<path
-								d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+						<div class="row">
+							<span class="label">Rebels</span>
+							<input
+								type="range"
+								min="0"
+								max="0.2"
+								step="0.01"
+								value={activeSpecies?.rebels ?? 0.02}
+								oninput={(e) =>
+									activeSpecies &&
+									setSpeciesRebels(activeSpecies.id, parseFloat(e.currentTarget.value))}
+								class="slider"
+								aria-label="Rebels"
 							/>
-						</svg>
-						<span class="section-label"
-							>World <span class="section-value"
-								>({TOPOLOGY_NAMES[currentParams.boundaryMode] ?? 'Plane'})</span
-							></span
-						>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'world'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('world');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('world'))}
-								title="Help"
-							>
-								<svg viewBox="0 0 20 20" fill="currentColor"
-									><path
-										fill-rule="evenodd"
-										d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"
-										clip-rule="evenodd"
-									/></svg
-								>
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetWorldSection}
-								onkeydown={(e) => handleKeydown(e, resetWorldSection)}
-								title="Reset"
-							>
-								<svg
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path
-										d="M3 3v5h5"
-									/></svg
-								>
-							</span>
-						{/if}
-						<svg
-							class="section-chevron"
-							class:open={openSection === 'world'}
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-								clip-rule="evenodd"
-							/>
-						</svg>
-					</div>
-				</button>
-				{#if openSection === 'world'}
-					<div
-						class="section-content topology-section"
-						transition:slide={{ duration: 150, easing: cubicOut }}
-					>
-						<TopologySelector currentMode={currentParams.boundaryMode} />
+							<span class="value">{((activeSpecies?.rebels ?? 0.02) * 100).toFixed(0)}%</span>
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -1983,7 +2147,7 @@
 				<button class="section-header" onclick={() => toggleSection('interaction')}>
 					<div class="section-title">
 						<svg
-							class="section-icon icon-cyan"
+							class="section-icon icon-red"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
@@ -2064,10 +2228,10 @@
 					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 						<div class="row">
 							<span class="label">Force</span>
-							<!-- Force buttons: Attract, Repel, Vortex -->
+							<!-- Force buttons: Attract, Repel, Vortex - controls per-species response -->
 							<div class="cursor-toggle cursor-toggle-4">
-								<!-- Sliding indicator for attract/repel (hidden when mode is Off) -->
-								{#if currentParams.cursorMode !== CursorMode.Off}
+								<!-- Sliding indicator for attract/repel (hidden when species ignores cursor) -->
+								{#if activeSpecies?.cursorResponse !== CursorResponse.Ignore}
 									<div
 										class="cursor-toggle-indicator"
 										style="transform: translateX({cursorModeIndex * 100}%)"
@@ -2076,11 +2240,11 @@
 
 								<button
 									class="cursor-toggle-btn power-btn"
-									class:active={currentParams.cursorMode !== CursorMode.Off ||
-										currentParams.cursorVortex}
+									class:active={activeSpecies?.cursorResponse !== CursorResponse.Ignore ||
+										activeSpecies?.cursorVortex}
 									onclick={() => handleCursorModeToggle(CursorMode.Off)}
 									aria-label="Toggle Cursor"
-									title="Toggle interaction on/off"
+									title="Toggle interaction on/off for this species"
 								>
 									<svg
 										viewBox="0 0 24 24"
@@ -2096,10 +2260,10 @@
 								</button>
 								<button
 									class="cursor-toggle-btn attract"
-									class:active={currentParams.cursorMode === CursorMode.Attract}
+									class:active={activeSpecies?.cursorResponse === CursorResponse.Attract}
 									onclick={() => handleCursorModeToggle(CursorMode.Attract)}
 									aria-label="Attract"
-									title="Attract boids (click again to turn off)"
+									title="Attract this species (click again to turn off)"
 								>
 									<svg viewBox="0 0 24 24" class="h-5 w-5">
 										<g
@@ -2118,10 +2282,10 @@
 								</button>
 								<button
 									class="cursor-toggle-btn repel"
-									class:active={currentParams.cursorMode === CursorMode.Repel}
+									class:active={activeSpecies?.cursorResponse === CursorResponse.Repel}
 									onclick={() => handleCursorModeToggle(CursorMode.Repel)}
 									aria-label="Repel"
-									title="Repel boids (click again to turn off)"
+									title="Repel this species (click again to turn off)"
 								>
 									<svg viewBox="0 0 24 24" class="h-5 w-5">
 										<g
@@ -2140,10 +2304,12 @@
 								</button>
 								<button
 									class="cursor-toggle-btn vortex"
-									class:active={currentParams.cursorVortex}
-									onclick={() => setCursorVortex(!currentParams.cursorVortex)}
+									class:active={activeSpecies?.cursorVortex}
+									onclick={() =>
+										activeSpecies &&
+										setSpeciesCursorVortex(activeSpecies.id, !activeSpecies.cursorVortex)}
 									aria-label="Vortex"
-									title="Add rotation (can combine with attract/repel)"
+									title="Add rotation for this species (can combine with attract/repel)"
 								>
 									<svg
 										viewBox="0 0 24 24"
@@ -2224,21 +2390,379 @@
 								min="0"
 								max="1"
 								step="0.05"
-								value={currentParams.cursorForce}
-								oninput={(e) => setCursorForce(parseFloat(e.currentTarget.value))}
+								value={activeSpecies?.cursorForce ?? 0.5}
+								oninput={(e) =>
+									activeSpecies &&
+									setSpeciesCursorForce(activeSpecies.id, parseFloat(e.currentTarget.value))}
 								class="slider"
 								aria-label="Cursor Force"
 							/>
-							<span class="value">{currentParams.cursorForce.toFixed(2)}</span>
+							<span class="value">{(activeSpecies?.cursorForce ?? 0.5).toFixed(2)}</span>
 						</div>
+					</div>
+				{/if}
+			</div>
 
-						<!-- Wall Drawing Tools -->
-						<div class="subsection-divider"></div>
-						<div class="subsection-header">
-							<span class="subsection-label">Walls</span>
+			<div class="section-divider"></div>
+			<!-- Species Interactions -->
+			<div id="section-species">
+				<button class="section-header" onclick={() => toggleSection('species')}>
+					<div class="section-title">
+						<svg
+							class="section-icon icon-indigo"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<circle cx="12" cy="12" r="3" />
+							<path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
+							<path
+								d="m4.93 4.93 2.83 2.83m8.48 8.48 2.83 2.83m0-14.14-2.83 2.83m-8.48 8.48-2.83 2.83"
+							/>
+						</svg>
+						<span class="section-label">Species</span>
+					</div>
+					<!-- Quick species selector - only when collapsed and multiple species -->
+					{#if openSection !== 'species' && currentParams.species.length > 1}
+						<div class="quick-species-selector">
+							{#each currentParams.species as species (species.id)}
+								<span
+									class="quick-species-btn"
+									class:selected={species.id === currentParams.activeSpeciesId}
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										setActiveSpecies(species.id);
+									}}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.stopPropagation();
+											setActiveSpecies(species.id);
+										}
+									}}
+									title={species.name}
+									style="--species-color: hsl({species.hue}, {species.saturation ??
+										70}%, {species.lightness ?? 55}%)"
+								>
+									<svg viewBox="0 0 20 20" class="quick-species-icon">
+										<path
+											d={getQuickBoidPath(species.headShape, 10, 10, 6)}
+											fill="var(--species-color)"
+										/>
+									</svg>
+									{#if species.id === currentParams.activeSpeciesId}
+										<span class="quick-species-ring"></span>
+									{/if}
+								</span>
+							{/each}
+						</div>
+					{/if}
+					<div class="section-actions">
+						{#if openSection === 'species'}
+							<span
+								class="section-action-btn"
+								role="button"
+								tabindex="0"
+								onclick={(e) => {
+									e.stopPropagation();
+									startTourAtSection('species');
+								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('species'))}
+								title="Help"
+							>
+								<svg viewBox="0 0 20 20" fill="currentColor"
+									><path
+										fill-rule="evenodd"
+										d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"
+										clip-rule="evenodd"
+									/></svg
+								>
+							</span>
+						{/if}
+						<svg
+							class="section-chevron"
+							class:open={openSection === 'species'}
+							viewBox="0 0 20 20"
+							fill="currentColor"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+					</div>
+				</button>
+				{#if openSection === 'species'}
+					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+						<SpeciesSelector />
+						<InteractionsPanel />
+					</div>
+				{/if}
+			</div>
+
+			<div class="section-divider"></div>
+			<!-- Flocking -->
+			<div id="section-flocking">
+				<button class="section-header" onclick={() => toggleSection('flocking')}>
+					<div class="section-title">
+						<svg
+							class="section-icon icon-pink"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+							<circle cx="9" cy="7" r="4" />
+							<path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+						</svg>
+						<span class="section-label">Flocking</span>
+					</div>
+					<div class="section-actions">
+						{#if openSection === 'flocking'}
+							<span
+								class="section-action-btn"
+								role="button"
+								tabindex="0"
+								onclick={(e) => {
+									e.stopPropagation();
+									startTourAtSection('flocking');
+								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('flocking'))}
+								title="Help"
+							>
+								<svg viewBox="0 0 20 20" fill="currentColor"
+									><path
+										fill-rule="evenodd"
+										d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"
+										clip-rule="evenodd"
+									/></svg
+								>
+							</span>
+							<span
+								class="section-action-btn"
+								role="button"
+								tabindex="0"
+								onclick={resetFlockingSection}
+								onkeydown={(e) => handleKeydown(e, resetFlockingSection)}
+								title="Reset"
+							>
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path
+										d="M3 3v5h5"
+									/></svg
+								>
+							</span>
+						{/if}
+						<svg
+							class="section-chevron"
+							class:open={openSection === 'flocking'}
+							viewBox="0 0 20 20"
+							fill="currentColor"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+					</div>
+				</button>
+				{#if openSection === 'flocking'}
+					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+						<div class="row">
+							<span class="label">Align</span>
+							<input
+								type="range"
+								min="0"
+								max="3"
+								step="0.1"
+								value={activeSpecies?.alignment ?? currentParams.alignment}
+								oninput={(e) => {
+									const val = parseFloat(e.currentTarget.value);
+									if (activeSpecies) {
+										updateSpeciesFlocking(activeSpecies.id, 'alignment', val);
+									}
+									setAlignment(val);
+								}}
+								class="slider"
+								aria-label="Alignment"
+							/>
+							<span class="value"
+								>{(activeSpecies?.alignment ?? currentParams.alignment).toFixed(1)}</span
+							>
 						</div>
 						<div class="row">
-							<span class="label">Draw</span>
+							<span class="label">Cohesion</span>
+							<input
+								type="range"
+								min="0"
+								max="3"
+								step="0.1"
+								value={activeSpecies?.cohesion ?? currentParams.cohesion}
+								oninput={(e) => {
+									const val = parseFloat(e.currentTarget.value);
+									if (activeSpecies) {
+										updateSpeciesFlocking(activeSpecies.id, 'cohesion', val);
+									}
+									setCohesion(val);
+								}}
+								class="slider"
+								aria-label="Cohesion"
+							/>
+							<span class="value"
+								>{(activeSpecies?.cohesion ?? currentParams.cohesion).toFixed(1)}</span
+							>
+						</div>
+						<div class="row">
+							<span class="label">Separate</span>
+							<input
+								type="range"
+								min="0"
+								max="4"
+								step="0.1"
+								value={activeSpecies?.separation ?? currentParams.separation}
+								oninput={(e) => {
+									const val = parseFloat(e.currentTarget.value);
+									if (activeSpecies) {
+										updateSpeciesFlocking(activeSpecies.id, 'separation', val);
+									}
+									setSeparation(val);
+								}}
+								class="slider"
+								aria-label="Separation"
+							/>
+							<span class="value"
+								>{(activeSpecies?.separation ?? currentParams.separation).toFixed(1)}</span
+							>
+						</div>
+						<div class="row">
+							<span class="label">Range</span>
+							<input
+								type="range"
+								min="20"
+								max="150"
+								step="5"
+								value={activeSpecies?.perception ?? currentParams.perception}
+								oninput={(e) => {
+									const val = parseInt(e.currentTarget.value);
+									if (activeSpecies) {
+										updateSpeciesFlocking(activeSpecies.id, 'perception', val);
+									}
+									setPerception(val);
+								}}
+								class="slider"
+								aria-label="Perception"
+							/>
+							<span class="value">{activeSpecies?.perception ?? currentParams.perception}</span>
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<div class="section-divider"></div>
+			<!-- World - 3D Topology Selector -->
+			<div id="section-world">
+				<button class="section-header" onclick={() => toggleSection('world')}>
+					<div class="section-title">
+						<svg
+							class="section-icon icon-sky"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<circle cx="12" cy="12" r="10" />
+							<path
+								d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+							/>
+						</svg>
+						<span class="section-label"
+							>World <span class="section-value"
+								>({TOPOLOGY_NAMES[currentParams.boundaryMode] ?? 'Plane'})</span
+							></span
+						>
+					</div>
+					<div class="section-actions">
+						{#if openSection === 'world'}
+							<span
+								class="section-action-btn"
+								role="button"
+								tabindex="0"
+								onclick={(e) => {
+									e.stopPropagation();
+									startTourAtSection('world');
+								}}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('world'))}
+								title="Help"
+							>
+								<svg viewBox="0 0 20 20" fill="currentColor"
+									><path
+										fill-rule="evenodd"
+										d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"
+										clip-rule="evenodd"
+									/></svg
+								>
+							</span>
+							<span
+								class="section-action-btn"
+								role="button"
+								tabindex="0"
+								onclick={resetWorldSection}
+								onkeydown={(e) => handleKeydown(e, resetWorldSection)}
+								title="Reset"
+							>
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path
+										d="M3 3v5h5"
+									/></svg
+								>
+							</span>
+						{/if}
+						<svg
+							class="section-chevron"
+							class:open={openSection === 'world'}
+							viewBox="0 0 20 20"
+							fill="currentColor"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+					</div>
+				</button>
+				{#if openSection === 'world'}
+					<div
+						class="section-content topology-section"
+						transition:slide={{ duration: 150, easing: cubicOut }}
+					>
+						<TopologySelector currentMode={currentParams.boundaryMode} />
+
+						<div class="row">
+							<span class="label">Walls</span>
 							<div class="cursor-toggle cursor-toggle-4">
 								<!-- Power button for wall drawing on/off -->
 								<button
@@ -2393,144 +2917,6 @@
 			</div>
 
 			<div class="section-divider"></div>
-			<!-- Flocking -->
-			<div id="section-flocking">
-				<button class="section-header" onclick={() => toggleSection('flocking')}>
-					<div class="section-title">
-						<svg
-							class="section-icon icon-pink"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-							<circle cx="9" cy="7" r="4" />
-							<path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-						</svg>
-						<span class="section-label">Flocking</span>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'flocking'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('flocking');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('flocking'))}
-								title="Help"
-							>
-								<svg viewBox="0 0 20 20" fill="currentColor"
-									><path
-										fill-rule="evenodd"
-										d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"
-										clip-rule="evenodd"
-									/></svg
-								>
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetFlockingSection}
-								onkeydown={(e) => handleKeydown(e, resetFlockingSection)}
-								title="Reset"
-							>
-								<svg
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path
-										d="M3 3v5h5"
-									/></svg
-								>
-							</span>
-						{/if}
-						<svg
-							class="section-chevron"
-							class:open={openSection === 'flocking'}
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-								clip-rule="evenodd"
-							/>
-						</svg>
-					</div>
-				</button>
-				{#if openSection === 'flocking'}
-					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<div class="row">
-							<span class="label">Align</span>
-							<input
-								type="range"
-								min="0"
-								max="3"
-								step="0.1"
-								value={currentParams.alignment}
-								oninput={(e) => setAlignment(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Alignment"
-							/>
-							<span class="value">{currentParams.alignment.toFixed(1)}</span>
-						</div>
-						<div class="row">
-							<span class="label">Cohesion</span>
-							<input
-								type="range"
-								min="0"
-								max="3"
-								step="0.1"
-								value={currentParams.cohesion}
-								oninput={(e) => setCohesion(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Cohesion"
-							/>
-							<span class="value">{currentParams.cohesion.toFixed(1)}</span>
-						</div>
-						<div class="row">
-							<span class="label">Separate</span>
-							<input
-								type="range"
-								min="0"
-								max="4"
-								step="0.1"
-								value={currentParams.separation}
-								oninput={(e) => setSeparation(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Separation"
-							/>
-							<span class="value">{currentParams.separation.toFixed(1)}</span>
-						</div>
-						<div class="row">
-							<span class="label">Range</span>
-							<input
-								type="range"
-								min="20"
-								max="150"
-								step="5"
-								value={currentParams.perception}
-								oninput={(e) => setPerception(parseInt(e.currentTarget.value))}
-								class="slider"
-								aria-label="Perception"
-							/>
-							<span class="value">{currentParams.perception}</span>
-						</div>
-					</div>
-				{/if}
-			</div>
-
-			<div class="section-divider"></div>
 			<!-- Dynamics -->
 			<div id="section-dynamics">
 				<button class="section-header" onclick={() => toggleSection('dynamics')}>
@@ -2647,20 +3033,6 @@
 								aria-label="Noise"
 							/>
 							<span class="value">{currentParams.noise.toFixed(2)}</span>
-						</div>
-						<div class="row">
-							<span class="label">Rebels</span>
-							<input
-								type="range"
-								min="0"
-								max="0.2"
-								step="0.01"
-								value={currentParams.rebels}
-								oninput={(e) => setRebels(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Rebels"
-							/>
-							<span class="value">{(currentParams.rebels * 100).toFixed(0)}%</span>
 						</div>
 						<div class="row">
 							<span class="label">Time</span>
@@ -3082,11 +3454,11 @@
 	.section-icon.icon-purple {
 		color: #a78bfa;
 	}
-	.section-icon.icon-cyan {
-		color: #22d3ee;
+	.section-icon.icon-sky {
+		color: #38bdf8;
 	}
-	.section-icon.icon-rose {
-		color: #fb7185;
+	.section-icon.icon-red {
+		color: #f87171;
 	}
 	.section-icon.icon-pink {
 		color: #f472b6;
@@ -3096,6 +3468,9 @@
 	}
 	.section-icon.icon-emerald {
 		color: #34d399;
+	}
+	.section-icon.icon-indigo {
+		color: #818cf8;
 	}
 
 	.topology-section {
@@ -3144,6 +3519,51 @@
 		width: 12px;
 		height: 12px;
 	}
+
+	/* Quick species selector in collapsed section header */
+	.quick-species-selector {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		margin-left: auto;
+		margin-right: 8px;
+	}
+	.quick-species-btn {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		padding: 0;
+		background: transparent;
+		border: none;
+		border-radius: 3px;
+		cursor: pointer;
+		transition: transform 0.1s ease;
+	}
+	.quick-species-btn:hover {
+		transform: scale(1.15);
+	}
+	.quick-species-icon {
+		width: 100%;
+		height: 100%;
+	}
+	.quick-species-ring {
+		position: absolute;
+		inset: -1px;
+		border: 1px solid var(--species-color);
+		border-radius: 3px;
+		opacity: 1;
+		pointer-events: none;
+	}
+	.quick-species-btn.selected {
+		transform: scale(1);
+	}
+	.quick-species-btn.selected:hover {
+		transform: scale(1.15);
+	}
+
 	.section-chevron {
 		width: 14px;
 		height: 14px;
@@ -3294,6 +3714,107 @@
 		color: rgb(161 161 170);
 	}
 
+	.color-preview-swatch {
+		width: 16px;
+		height: 16px;
+		border-radius: 3px;
+		flex-shrink: 0;
+		border: 1px solid rgba(255, 255, 255, 0.2);
+	}
+
+	.color-picker-panel {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		margin-top: 4px;
+		padding: 10px;
+		background: rgba(15, 15, 20, 0.98);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+		z-index: 60;
+	}
+
+	.sl-picker {
+		position: relative;
+		width: 100%;
+		height: 120px;
+		border-radius: 6px;
+		cursor: crosshair;
+		overflow: hidden;
+	}
+
+	.sl-saturation-overlay {
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(to right, rgba(128, 128, 128, 1), rgba(128, 128, 128, 0));
+		mix-blend-mode: saturation;
+		pointer-events: none;
+	}
+
+	.sl-indicator {
+		position: absolute;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		border: 2px solid white;
+		box-shadow:
+			0 0 0 1px rgba(0, 0, 0, 0.3),
+			0 2px 4px rgba(0, 0, 0, 0.3);
+		transform: translate(-50%, -50%);
+		pointer-events: none;
+	}
+
+	.hue-strip-container {
+		margin-top: 10px;
+	}
+
+	.hue-strip {
+		width: 100%;
+		height: 14px;
+		-webkit-appearance: none;
+		appearance: none;
+		background: linear-gradient(
+			to right,
+			hsl(0, 100%, 50%),
+			hsl(60, 100%, 50%),
+			hsl(120, 100%, 50%),
+			hsl(180, 100%, 50%),
+			hsl(240, 100%, 50%),
+			hsl(300, 100%, 50%),
+			hsl(360, 100%, 50%)
+		);
+		border-radius: 7px;
+		cursor: pointer;
+	}
+
+	.hue-strip::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: white;
+		border: 2px solid rgba(0, 0, 0, 0.2);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+		cursor: pointer;
+		transition: transform 0.1s ease;
+	}
+
+	.hue-strip::-webkit-slider-thumb:hover {
+		transform: scale(1.12);
+	}
+
+	.hue-strip::-moz-range-thumb {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: white;
+		border: 2px solid rgba(0, 0, 0, 0.2);
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+		cursor: pointer;
+	}
+
 	/* Premium Cursor Toggle */
 	.cursor-toggle {
 		flex: 1;
@@ -3410,25 +3931,6 @@
 	.shape-btn.active {
 		background: rgba(255, 255, 255, 0.12);
 		color: rgb(228 228 231);
-	}
-
-	/* Subsection styling for grouped controls */
-	.subsection-divider {
-		height: 1px;
-		background: rgba(255, 255, 255, 0.06);
-		margin: 8px 0;
-	}
-	.subsection-header {
-		display: flex;
-		align-items: center;
-		margin-bottom: 6px;
-	}
-	.subsection-label {
-		font-size: 10px;
-		font-weight: 600;
-		color: rgb(113 113 122);
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
 	}
 
 	/* Clear button in wall tools row */

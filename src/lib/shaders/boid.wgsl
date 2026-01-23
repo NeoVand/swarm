@@ -49,6 +49,7 @@ const COLOR_ACCELERATION: u32 = 3u;
 const COLOR_TURNING: u32 = 4u;
 const COLOR_NONE: u32 = 5u;
 const COLOR_DENSITY: u32 = 6u;
+const COLOR_SPECIES: u32 = 7u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -92,15 +93,196 @@ struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
     @location(1) alpha: f32,
-    @location(2) barycentric: vec3<f32>,  // For smooth edge shading
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
 @group(0) @binding(3) var<storage, read> birthColors: array<f32>;
+@group(0) @binding(4) var<storage, read> speciesIds: array<u32>;
+@group(0) @binding(5) var<uniform> speciesParams: array<vec4<f32>, 28>;  // 7 species * 4 vec4s per species
 
-// Triangle vertices for boid shape (pointing right)
+// Species constants
+const MAX_SPECIES: u32 = 7u;
+
+// Head shapes enum (proper polygons rendered as triangle fans)
+const SHAPE_TRIANGLE: u32 = 0u;
+const SHAPE_SQUARE: u32 = 1u;
+const SHAPE_PENTAGON: u32 = 2u;
+const SHAPE_HEXAGON: u32 = 3u;
+const SHAPE_ARROW: u32 = 4u;
+
+// Max triangles per shape (hexagon needs 6)
+const MAX_SHAPE_TRIANGLES: u32 = 6u;
+
+// Get species parameter by index (0-11)
+// vec4[0]: [alignment, cohesion, separation, perception]
+// vec4[1]: [maxSpeed, maxForce, hue, headShape]
+// vec4[2]: [saturation, lightness, size, trailLength]
+// vec4[3]: [rebels, cursorForce, cursorResponse, unused]
+fn getSpeciesParam(speciesId: u32, paramIdx: u32) -> f32 {
+    let vec4Idx = speciesId * 4u + paramIdx / 4u;
+    let componentIdx = paramIdx % 4u;
+    let v = speciesParams[vec4Idx];
+    switch (componentIdx) {
+        case 0u: { return v.x; }
+        case 1u: { return v.y; }
+        case 2u: { return v.z; }
+        default: { return v.w; }
+    }
+}
+
+// Convenience functions for common species params
+fn getSpeciesHue(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 1u].z;  // vec4[1].z = hue
+}
+
+fn getSpeciesHeadShape(speciesId: u32) -> u32 {
+    return u32(speciesParams[speciesId * 4u + 1u].w);  // vec4[1].w = headShape
+}
+
+fn getSpeciesSaturation(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].x;  // vec4[2].x = saturation
+}
+
+fn getSpeciesLightness(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].y;  // vec4[2].y = lightness
+}
+
+fn getSpeciesSize(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].z;  // vec4[2].z = size
+}
+
+fn getSpeciesTrailLength(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].w;  // vec4[2].w = trailLength
+}
+
+fn getSpeciesRebels(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 3u].x;  // vec4[3].x = rebels
+}
+
+fn getSpeciesCursorForce(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 3u].y;  // vec4[3].y = cursorForce
+}
+
+fn getSpeciesCursorResponse(speciesId: u32) -> u32 {
+    return u32(speciesParams[speciesId * 4u + 3u].z);  // vec4[3].z = cursorResponse
+}
+
+// Generate vertex position for different shapes
+// Uses 18 vertices (6 triangles from center for complex shapes)
+fn getShapeVertex(shape: u32, vertexIndex: u32) -> vec2<f32> {
+    let triIdx = vertexIndex / 3u;  // Which triangle (0-5)
+    let vertIdx = vertexIndex % 3u; // Which vertex in triangle (0-2)
+    
+    switch (shape) {
+        case SHAPE_TRIANGLE: {
+            // Original triangle pointing right - KEEP THIS EXACT SHAPE
+            // Only uses first 3 vertices, rest are degenerate
+            if (triIdx > 0u) {
+                return vec2<f32>(0.0, 0.0);
+            }
+            switch (vertIdx) {
+                case 0u: { return vec2<f32>(1.0, 0.0); }      // Nose (front)
+                case 1u: { return vec2<f32>(-0.7, -0.5); }    // Right wing (back)
+                default: { return vec2<f32>(-0.7, 0.5); }     // Left wing (back)
+            }
+        }
+        case SHAPE_SQUARE: {
+            // Square using triangle fan from center - 4 triangles
+            if (triIdx >= 4u) {
+                return vec2<f32>(0.0, 0.0);
+            }
+            if (vertIdx == 0u) {
+                return vec2<f32>(0.0, 0.0); // Center
+            }
+            // Square vertices rotated 45° so a corner points right
+            let s = 0.7;
+            let corners = array<vec2<f32>, 4>(
+                vec2<f32>(s, 0.0),    // Right corner (front)
+                vec2<f32>(0.0, -s),   // Bottom corner
+                vec2<f32>(-s, 0.0),   // Left corner (back)
+                vec2<f32>(0.0, s)     // Top corner
+            );
+            if (vertIdx == 1u) {
+                return corners[triIdx];
+            } else {
+                return corners[(triIdx + 1u) % 4u];
+            }
+        }
+        case SHAPE_PENTAGON: {
+            // Pentagon using triangle fan from center - 5 triangles
+            if (triIdx >= 5u) {
+                return vec2<f32>(0.0, 0.0);
+            }
+            if (vertIdx == 0u) {
+                return vec2<f32>(0.0, 0.0); // Center
+            }
+            let s = 0.7;
+            let pi = 3.14159265;
+            // Vertex 0 points right
+            let baseAngle = f32(triIdx) * 2.0 * pi / 5.0;
+            let nextAngle = f32((triIdx + 1u) % 5u) * 2.0 * pi / 5.0;
+            if (vertIdx == 1u) {
+                return vec2<f32>(cos(baseAngle), sin(baseAngle)) * s;
+            } else {
+                return vec2<f32>(cos(nextAngle), sin(nextAngle)) * s;
+            }
+        }
+        case SHAPE_HEXAGON: {
+            // Hexagon using triangle fan from center - 6 triangles
+            if (triIdx >= 6u) {
+                return vec2<f32>(0.0, 0.0);
+            }
+            if (vertIdx == 0u) {
+                return vec2<f32>(0.0, 0.0); // Center
+            }
+            let s = 0.7;
+            let pi = 3.14159265;
+            // Vertex 0 points right
+            let baseAngle = f32(triIdx) * 2.0 * pi / 6.0;
+            let nextAngle = f32((triIdx + 1u) % 6u) * 2.0 * pi / 6.0;
+            if (vertIdx == 1u) {
+                return vec2<f32>(cos(baseAngle), sin(baseAngle)) * s;
+            } else {
+                return vec2<f32>(cos(nextAngle), sin(nextAngle)) * s;
+            }
+        }
+        case SHAPE_ARROW: {
+            // Arrow/chevron shape - 4 triangles from center
+            if (triIdx >= 4u) {
+                return vec2<f32>(0.0, 0.0);
+            }
+            if (vertIdx == 0u) {
+                return vec2<f32>(0.0, 0.0); // Center
+            }
+            let corners = array<vec2<f32>, 4>(
+                vec2<f32>(1.0, 0.0),       // Front tip
+                vec2<f32>(-0.5, -0.6),     // Bottom-right
+                vec2<f32>(-0.2, 0.0),      // Back notch
+                vec2<f32>(-0.5, 0.6)       // Top-right
+            );
+            if (vertIdx == 1u) {
+                return corners[triIdx];
+            } else {
+                return corners[(triIdx + 1u) % 4u];
+            }
+        }
+        default: {
+            // Default to triangle
+            if (triIdx > 0u) {
+                return vec2<f32>(0.0, 0.0);
+            }
+            switch (vertIdx) {
+                case 0u: { return vec2<f32>(1.0, 0.0); }
+                case 1u: { return vec2<f32>(-0.7, -0.5); }
+                default: { return vec2<f32>(-0.7, 0.5); }
+            }
+        }
+    }
+}
+
+// Triangle vertices for boid shape (pointing right) - kept for reference
 const BOID_VERTICES = array<vec2<f32>, 3>(
     vec2<f32>(1.0, 0.0),      // Nose
     vec2<f32>(-0.7, 0.5),     // Left wing
@@ -115,6 +297,27 @@ fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
     let c = v * s;
     let x = c * (1.0 - abs((h * 6.0) % 2.0 - 1.0));
     let m = v - c;
+    
+    var rgb: vec3<f32>;
+    let hi = i32(h * 6.0) % 6;
+    
+    switch (hi) {
+        case 0: { rgb = vec3<f32>(c, x, 0.0); }
+        case 1: { rgb = vec3<f32>(x, c, 0.0); }
+        case 2: { rgb = vec3<f32>(0.0, c, x); }
+        case 3: { rgb = vec3<f32>(0.0, x, c); }
+        case 4: { rgb = vec3<f32>(x, 0.0, c); }
+        default: { rgb = vec3<f32>(c, 0.0, x); }
+    }
+    
+    return rgb + m;
+}
+
+// HSL to RGB conversion
+fn hslToRgb(h: f32, s: f32, l: f32) -> vec3<f32> {
+    let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+    let x = c * (1.0 - abs((h * 6.0) % 2.0 - 1.0));
+    let m = l - c * 0.5;
     
     var rgb: vec3<f32>;
     let hi = i32(h * 6.0) % 6;
@@ -216,18 +419,22 @@ fn vs_main(
         output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
-        output.barycentric = vec3<f32>(0.0);
         return output;
     }
     
     let pos = positions[boidIndex];
     let vel = velocities[boidIndex];
     
-    // Get local vertex
-    let localVert = BOID_VERTICES[vertexIndex % 3u];
+    // Get species info
+    let speciesId = speciesIds[boidIndex];
+    let headShape = getSpeciesHeadShape(speciesId);
     
-    // Scale by boid size
-    let size = uniforms.boidSize * 6.0;
+    // Get local vertex based on head shape
+    let localVert = getShapeVertex(headShape, vertexIndex);
+    
+    // Scale by per-species boid size
+    let speciesSize = getSpeciesSize(speciesId);
+    let size = speciesSize * 6.0;
     var scaledVert = localVert * size;
     
     // Rotate to face velocity direction
@@ -317,7 +524,6 @@ fn vs_main(
         output.position = vec4<f32>(3.0, 3.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
-        output.barycentric = vec3<f32>(0.0);
         return output;
     }
     
@@ -369,6 +575,10 @@ fn vs_main(
             // POSITION MODE - Ultra fast, just read pre-computed birth color
             colorValue = birthColors[boidIndex];
         }
+        case COLOR_SPECIES: {
+            // Use species hue directly
+            colorValue = getSpeciesHue(speciesId);
+        }
         default: {
             colorValue = 0.5;
         }
@@ -377,41 +587,23 @@ fn vs_main(
     // For "None" mode, skip sensitivity adjustment to keep it uniform
     if (uniforms.colorMode == COLOR_NONE) {
         output.color = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
+    } else if (uniforms.colorMode == COLOR_SPECIES) {
+        // For Species mode, use full HSL with species hue, saturation, and lightness
+        let hue = colorValue;  // Already normalized 0-1
+        let sat = getSpeciesSaturation(speciesId);
+        let light = getSpeciesLightness(speciesId);
+        output.color = hslToRgb(hue, sat, light);
     } else {
         colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
         output.color = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
     }
     output.alpha = 1.0;
     
-    // Barycentric coordinates for smooth edge shading
-    let vertIdx = vertexIndex % 3u;
-    if (vertIdx == 0u) {
-        output.barycentric = vec3<f32>(1.0, 0.0, 0.0);  // Nose
-    } else if (vertIdx == 1u) {
-        output.barycentric = vec3<f32>(0.0, 1.0, 0.0);  // Left wing
-    } else {
-        output.barycentric = vec3<f32>(0.0, 0.0, 1.0);  // Right wing
-    }
-    
     return output;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    // Smooth edge shading using barycentric coordinates
-    // The minimum barycentric value tells us distance from nearest edge
-    // 0.0 at edge, ~0.33 at center of triangle
-    let edgeDist = min(min(input.barycentric.x, input.barycentric.y), input.barycentric.z);
-    
-    // Thin but darker edge shading
-    // Use smoothstep for a sharper transition concentrated at the edge
-    // edgeWidth controls how thin the dark band is (smaller = thinner)
-    let edgeWidth = 0.15;
-    let edgeFactor = smoothstep(0.0, edgeWidth, edgeDist);
-    
-    // Darker at edge (0.5), full brightness in center (1.0)
-    let shade = 0.5 + edgeFactor * 0.5;
-    
-    let shadedColor = input.color * shade;
-    return vec4<f32>(shadedColor, input.alpha);
+    // Solid fill - clean shapes without internal edge lines
+    return vec4<f32>(input.color, input.alpha);
 }

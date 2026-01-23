@@ -44,7 +44,9 @@ export function createRenderPipelines(
 			},
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // birthColors
+			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // birthColors
+			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // speciesIds
+			{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } } // speciesParams (uniform)
 		]
 	});
 
@@ -89,7 +91,9 @@ export function createRenderPipelines(
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionA } },
 			{ binding: 2, resource: { buffer: buffers.velocityA } },
-			{ binding: 3, resource: { buffer: buffers.birthColors } }
+			{ binding: 3, resource: { buffer: buffers.birthColors } },
+			{ binding: 4, resource: { buffer: buffers.speciesIds } },
+			{ binding: 5, resource: { buffer: buffers.speciesParams } }
 		]
 	});
 
@@ -99,7 +103,9 @@ export function createRenderPipelines(
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionB } },
 			{ binding: 2, resource: { buffer: buffers.velocityB } },
-			{ binding: 3, resource: { buffer: buffers.birthColors } }
+			{ binding: 3, resource: { buffer: buffers.birthColors } },
+			{ binding: 4, resource: { buffer: buffers.speciesIds } },
+			{ binding: 5, resource: { buffer: buffers.speciesParams } }
 		]
 	});
 
@@ -114,7 +120,9 @@ export function createRenderPipelines(
 			{ binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // birthColors
+			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // birthColors
+			{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // speciesIds
+			{ binding: 6, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } } // speciesParams (uniform)
 		]
 	});
 
@@ -160,7 +168,9 @@ export function createRenderPipelines(
 			{ binding: 1, resource: { buffer: buffers.positionA } },
 			{ binding: 2, resource: { buffer: buffers.velocityA } },
 			{ binding: 3, resource: { buffer: buffers.trails } },
-			{ binding: 4, resource: { buffer: buffers.birthColors } }
+			{ binding: 4, resource: { buffer: buffers.birthColors } },
+			{ binding: 5, resource: { buffer: buffers.speciesIds } },
+			{ binding: 6, resource: { buffer: buffers.speciesParams } }
 		]
 	});
 
@@ -171,7 +181,9 @@ export function createRenderPipelines(
 			{ binding: 1, resource: { buffer: buffers.positionB } },
 			{ binding: 2, resource: { buffer: buffers.velocityB } },
 			{ binding: 3, resource: { buffer: buffers.trails } },
-			{ binding: 4, resource: { buffer: buffers.birthColors } }
+			{ binding: 4, resource: { buffer: buffers.birthColors } },
+			{ binding: 5, resource: { buffer: buffers.speciesIds } },
+			{ binding: 6, resource: { buffer: buffers.speciesParams } }
 		]
 	});
 
@@ -290,9 +302,10 @@ export function encodeRenderPass(
 	// Render boids on top
 	// We draw 4x instances to handle edge wrapping ghosts (original + X/Y/XY ghosts)
 	// The shader will discard ghosts that aren't needed
+	// Using 18 vertices per boid for triangle fan rendering (6 triangles max for hexagon)
 	renderPass.setPipeline(resources.pipelines.boid);
 	renderPass.setBindGroup(0, readFromA ? resources.bindGroups.boidB : resources.bindGroups.boidA);
-	renderPass.draw(3, boidCount * 4); // 3 vertices per triangle, 4 copies for edge wrapping
+	renderPass.draw(18, boidCount * 4); // 18 vertices per shape (6 triangles from center), 4 copies for edge wrapping
 
 	renderPass.end();
 }

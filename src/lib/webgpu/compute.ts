@@ -17,8 +17,9 @@ export interface ComputeBindGroups {
 	prefixSum: GPUBindGroup;
 	prefixSumAggregate: GPUBindGroup;
 	scatter: GPUBindGroup;
-	simulateA: GPUBindGroup; // Read from A, write to B
-	simulateB: GPUBindGroup; // Read from B, write to A
+	simulate0A: GPUBindGroup; // Bind group 0: Read from A, write to B
+	simulate0B: GPUBindGroup; // Bind group 0: Read from B, write to A
+	simulate1: GPUBindGroup; // Bind group 1: Species data (shared)
 }
 
 export interface ComputeResources {
@@ -194,7 +195,8 @@ export function createComputePipelines(
 	});
 
 	// === Simulate Pipeline ===
-	const simulateBindGroupLayout = device.createBindGroupLayout({
+	// Use two bind groups to stay under the 8 storage buffer limit per group
+	const simulateBindGroupLayout0 = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
 			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
@@ -210,14 +212,25 @@ export function createComputePipelines(
 		]
 	});
 
+	// Second bind group for species data
+	const simulateBindGroupLayout1 = device.createBindGroupLayout({
+		entries: [
+			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // speciesIds
+			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // speciesParams (uniform for small data)
+			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } } // interactionMatrix (uniform for small data)
+		]
+	});
+
 	const simulatePipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [simulateBindGroupLayout] }),
+		layout: device.createPipelineLayout({
+			bindGroupLayouts: [simulateBindGroupLayout0, simulateBindGroupLayout1]
+		}),
 		compute: { module: simulateModule, entryPoint: 'main' }
 	});
 
-	// Bind group A: read from A, write to B
-	const simulateBindGroupA = device.createBindGroup({
-		layout: simulateBindGroupLayout,
+	// Bind group 0 A: read from A, write to B
+	const simulateBindGroup0A = device.createBindGroup({
+		layout: simulateBindGroupLayout0,
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionA } },
@@ -233,9 +246,9 @@ export function createComputePipelines(
 		]
 	});
 
-	// Bind group B: read from B, write to A
-	const simulateBindGroupB = device.createBindGroup({
-		layout: simulateBindGroupLayout,
+	// Bind group 0 B: read from B, write to A
+	const simulateBindGroup0B = device.createBindGroup({
+		layout: simulateBindGroupLayout0,
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
 			{ binding: 1, resource: { buffer: buffers.positionB } },
@@ -248,6 +261,16 @@ export function createComputePipelines(
 			{ binding: 8, resource: { buffer: buffers.trails } },
 			{ binding: 9, resource: buffers.wallTexture.createView() },
 			{ binding: 10, resource: buffers.wallSampler }
+		]
+	});
+
+	// Bind group 1: Species data (shared between A and B)
+	const simulateBindGroup1 = device.createBindGroup({
+		layout: simulateBindGroupLayout1,
+		entries: [
+			{ binding: 0, resource: { buffer: buffers.speciesIds } },
+			{ binding: 1, resource: { buffer: buffers.speciesParams } },
+			{ binding: 2, resource: { buffer: buffers.interactionMatrix } }
 		]
 	});
 
@@ -268,8 +291,9 @@ export function createComputePipelines(
 			prefixSum: prefixSumBindGroup,
 			prefixSumAggregate: prefixSumAggregateBindGroup,
 			scatter: scatterBindGroup,
-			simulateA: simulateBindGroupA,
-			simulateB: simulateBindGroupB
+			simulate0A: simulateBindGroup0A,
+			simulate0B: simulateBindGroup0B,
+			simulate1: simulateBindGroup1
 		},
 		blockSumsBuffer
 	};
@@ -346,8 +370,9 @@ export function encodeComputePasses(
 		pass.setPipeline(resources.pipelines.simulate);
 		pass.setBindGroup(
 			0,
-			readFromA ? resources.bindGroups.simulateA : resources.bindGroups.simulateB
+			readFromA ? resources.bindGroups.simulate0A : resources.bindGroups.simulate0B
 		);
+		pass.setBindGroup(1, resources.bindGroups.simulate1);
 		pass.dispatchWorkgroups(boidWorkgroups);
 		pass.end();
 	}

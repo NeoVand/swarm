@@ -49,6 +49,24 @@ const COLOR_ACCELERATION: u32 = 3u;
 const COLOR_TURNING: u32 = 4u;
 const COLOR_NONE: u32 = 5u;
 const COLOR_DENSITY: u32 = 6u;
+const COLOR_SPECIES: u32 = 7u;
+
+// Get species color params from speciesParams buffer (4 vec4s per species)
+fn getSpeciesHue(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 1u].z;  // vec4[1].z = hue (normalized 0-1)
+}
+
+fn getSpeciesSaturation(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].x;  // vec4[2].x = saturation
+}
+
+fn getSpeciesLightness(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].y;  // vec4[2].y = lightness
+}
+
+fn getSpeciesTrailLength(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 4u + 2u].w;  // vec4[2].w = trailLength
+}
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -71,6 +89,8 @@ struct VertexOutput {
 @group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
 @group(0) @binding(3) var<storage, read> trails: array<vec2<f32>>;
 @group(0) @binding(4) var<storage, read> birthColors: array<f32>;
+@group(0) @binding(5) var<storage, read> speciesIds: array<u32>;
+@group(0) @binding(6) var<uniform> speciesParams: array<vec4<f32>, 28>;  // 7 species * 4 vec4s
 
 fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
     let h = hsv.x;
@@ -80,6 +100,27 @@ fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
     let c = v * s;
     let x = c * (1.0 - abs((h * 6.0) % 2.0 - 1.0));
     let m = v - c;
+    
+    var rgb: vec3<f32>;
+    let hi = i32(h * 6.0) % 6;
+    
+    switch (hi) {
+        case 0: { rgb = vec3<f32>(c, x, 0.0); }
+        case 1: { rgb = vec3<f32>(x, c, 0.0); }
+        case 2: { rgb = vec3<f32>(0.0, c, x); }
+        case 3: { rgb = vec3<f32>(0.0, x, c); }
+        case 4: { rgb = vec3<f32>(x, 0.0, c); }
+        default: { rgb = vec3<f32>(c, 0.0, x); }
+    }
+    
+    return rgb + m;
+}
+
+// HSL to RGB conversion
+fn hslToRgb(h: f32, s: f32, l: f32) -> vec3<f32> {
+    let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+    let x = c * (1.0 - abs((h * 6.0) % 2.0 - 1.0));
+    let m = l - c * 0.5;
     
     var rgb: vec3<f32>;
     let hi = i32(h * 6.0) % 6;
@@ -257,10 +298,23 @@ fn vs_main(
     
     // Each instance is one trail segment (line between two consecutive trail points)
     // instanceIndex = boidIndex * (trailLength - 1) + segmentIndex
+    // We use global uniforms.trailLength for instance calculation (max trail length)
     let boidIndex = instanceIndex / (uniforms.trailLength - 1u);
     let segmentIndex = instanceIndex % (uniforms.trailLength - 1u);
     
     if (boidIndex >= uniforms.boidCount) {
+        output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        output.color = vec3<f32>(0.0);
+        output.alpha = 0.0;
+        return output;
+    }
+    
+    // Get per-species trail length
+    let speciesId = speciesIds[boidIndex];
+    let speciesTrailLen = u32(getSpeciesTrailLength(speciesId));
+    
+    // If this segment is beyond this species' trail length, skip it
+    if (segmentIndex >= speciesTrailLen - 1u) {
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;
@@ -272,13 +326,13 @@ fn vs_main(
     let trailBase = boidIndex * MAX_TRAIL_LENGTH;
     let head = uniforms.trailHead;
     
-    // segmentIndex 0 is the oldest segment, trailLength-2 is the newest
+    // segmentIndex 0 is the oldest segment, speciesTrailLen-2 is the newest
     // We render from old to new
-    let age = uniforms.trailLength - 2u - segmentIndex;
+    let age = speciesTrailLen - 2u - segmentIndex;
     
     // Get the two endpoints of this segment
-    let idx1 = (head + uniforms.trailLength - age - 1u) % uniforms.trailLength;
-    let idx2 = (head + uniforms.trailLength - age) % uniforms.trailLength;
+    let idx1 = (head + speciesTrailLen - age - 1u) % speciesTrailLen;
+    let idx2 = (head + speciesTrailLen - age) % speciesTrailLen;
     
     var p1 = trails[trailBase + idx1];
     var p2 = trails[trailBase + idx2];
@@ -293,7 +347,8 @@ fn vs_main(
         if (speed > 0.001) {
             let dir = vel / speed;
             // Offset exactly to the triangle's base: 0.7 * boidSize * 6.0
-            let baseOffset = 0.7 * uniforms.boidSize * 6.0;
+            let boidSize = speciesParams[speciesId * 4u + 2u].z;  // vec4[2].z = size
+            let baseOffset = 0.7 * boidSize * 6.0;
             p2 = currentPos - dir * baseOffset;
         } else {
             p2 = currentPos;
@@ -352,8 +407,9 @@ fn vs_main(
     
     // Width tapers from head (thick) to tail (thin)
     // Slightly narrower than triangle base to fit inside the dark edge shading
-    let ageRatio = f32(age) / f32(uniforms.trailLength - 1u);
-    let baseWidth = uniforms.boidSize * 2.4;  // Narrower to fit within triangle's bright center
+    let ageRatio = f32(age) / f32(speciesTrailLen - 1u);
+    let speciesSize = speciesParams[speciesId * 4u + 2u].z;  // vec4[2].z = size
+    let baseWidth = speciesSize * 2.4;  // Narrower to fit within triangle's bright center
     let width1 = baseWidth * (1.0 - ageRatio * 0.95);
     
     // For newest segment, width2 connects to triangle
@@ -361,7 +417,7 @@ fn vs_main(
     if (age == 0u) {
         width2 = baseWidth;
     } else {
-        width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(uniforms.trailLength - 1u)) * 0.9);
+        width2 = baseWidth * (1.0 - (ageRatio + 1.0 / f32(speciesTrailLen - 1u)) * 0.9);
     }
     
     // Build quad vertices - use perp1 for p1 end, perp2 for p2 end
@@ -374,7 +430,7 @@ fn vs_main(
     if (age == 0u) {
         alpha2 = 1.0; // Exact match with boid
     } else {
-        alpha2 = 1.0 - ageRatio - 1.0 / f32(uniforms.trailLength - 1u);
+        alpha2 = 1.0 - ageRatio - 1.0 / f32(speciesTrailLen - 1u);
     }
     
     switch (quadVertex) {
@@ -437,6 +493,11 @@ fn vs_main(
             // POSITION MODE - Ultra fast, just read pre-computed birth color
             colorValue = birthColors[boidIndex];
         }
+        case COLOR_SPECIES: {
+            // Use species hue
+            let speciesId = speciesIds[boidIndex];
+            colorValue = getSpeciesHue(speciesId);
+        }
         default: { 
             colorValue = 0.5; 
         }
@@ -446,6 +507,12 @@ fn vs_main(
     var baseColor: vec3<f32>;
     if (uniforms.colorMode == COLOR_NONE) {
         baseColor = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
+    } else if (uniforms.colorMode == COLOR_SPECIES) {
+        // For Species mode, use full HSL with species saturation and lightness
+        let speciesId = speciesIds[boidIndex];
+        let sat = getSpeciesSaturation(speciesId);
+        let light = getSpeciesLightness(speciesId);
+        baseColor = hslToRgb(colorValue, sat, light);
     } else {
         colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
         baseColor = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);

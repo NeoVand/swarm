@@ -11,6 +11,8 @@ import {
 	createBlockSumsBuffer,
 	updateWallTexture,
 	createWallTexture,
+	updateSpeciesParams,
+	updateInteractionMatrix,
 	type BufferConfig
 } from './buffers';
 import { createComputePipelines, encodeComputePasses, type ComputeResources } from './compute';
@@ -40,6 +42,7 @@ export interface Simulation {
 	resetBoids: () => void;
 	isRunning: () => boolean;
 	updateWalls: () => void;
+	updateSpecies: () => void;
 }
 
 export function createSimulation(
@@ -72,8 +75,12 @@ export function createSimulation(
 	let blockSumsBuffer = createBlockSumsBuffer(device, canvasWidth, canvasHeight);
 
 	// Initialize boid positions and velocities
-	initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
+	initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight, params.species);
 	clearTrails(device, buffers, params.population, params.trailLength);
+
+	// Initialize species buffers
+	updateSpeciesParams(device, buffers.speciesParams, params.species);
+	updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
 
 	// Initialize wall data
 	initWallData(canvasWidth, canvasHeight);
@@ -258,9 +265,20 @@ export function createSimulation(
 		buffers = createBuffers(device, bufferConfig);
 		blockSumsBuffer = createBlockSumsBuffer(device, canvasWidth, canvasHeight);
 
-		// Reinitialize boids
-		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
+		// Reinitialize boids with species data
+		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight, params.species);
 		clearTrails(device, buffers, params.population, params.trailLength);
+
+		// Initialize species buffers
+		updateSpeciesParams(device, buffers.speciesParams, params.species);
+		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
+
+		// Restore wall data to new texture (walls are preserved in memory)
+		const existingWallData = getWallData();
+		if (existingWallData) {
+			const dims = getWallTextureDimensions();
+			updateWallTexture(device, buffers.wallTexture, existingWallData, dims.width, dims.height);
+		}
 
 		// Recreate pipelines with new buffers
 		computeResources = createComputePipelines(device, buffers, blockSumsBuffer);
@@ -283,8 +301,12 @@ export function createSimulation(
 
 	function resetBoids(): void {
 		// Reinitialize boid positions and velocities without reallocating buffers
-		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight);
+		initializeBoids(device, buffers, params.population, canvasWidth, canvasHeight, params.species);
 		clearTrails(device, buffers, params.population, params.trailLength);
+
+		// Update species buffers
+		updateSpeciesParams(device, buffers.speciesParams, params.species);
+		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
 
 		// Reset state
 		readFromA = true;
@@ -301,6 +323,12 @@ export function createSimulation(
 		wallsDirty.set(false);
 	}
 
+	function doUpdateSpecies(): void {
+		// Update species parameters and interaction matrix
+		updateSpeciesParams(device, buffers.speciesParams, params.species);
+		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
+	}
+
 	return {
 		start,
 		stop,
@@ -312,6 +340,7 @@ export function createSimulation(
 		clearTrails: doTrailClear,
 		resetBoids,
 		isRunning: () => running,
-		updateWalls: doUpdateWalls
+		updateWalls: doUpdateWalls,
+		updateSpecies: doUpdateSpecies
 	};
 }
