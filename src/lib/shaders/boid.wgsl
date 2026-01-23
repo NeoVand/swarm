@@ -126,7 +126,7 @@ const ALPHA_ACCELERATION: u32 = 4u;
 // vec4[0]: [alignment, cohesion, separation, perception]
 // vec4[1]: [maxSpeed, maxForce, hue, headShape]
 // vec4[2]: [saturation, lightness, size, trailLength]
-// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
+// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortexDir] (-1=CCW, 0=off, 1=CW)
 // vec4[4]: [alphaMode, unused, unused, unused]
 fn getSpeciesParam(speciesId: u32, paramIdx: u32) -> f32 {
     let vec4Idx = speciesId * 5u + paramIdx / 4u;

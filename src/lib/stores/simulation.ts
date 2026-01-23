@@ -13,6 +13,7 @@ import {
 	CursorMode,
 	CursorShape,
 	CursorResponse,
+	VortexDirection,
 	AlgorithmMode,
 	AlphaMode,
 	WallTool,
@@ -327,7 +328,7 @@ export function setCursorShape(value: CursorShape): void {
 	params.update((p) => ({ ...p, cursorShape: value }));
 }
 
-export function setCursorVortex(value: boolean): void {
+export function setCursorVortex(value: VortexDirection): void {
 	params.update((p) => ({ ...p, cursorVortex: value }));
 }
 
@@ -611,9 +612,40 @@ export function setSpeciesCursorResponse(id: number, cursorResponse: CursorRespo
 	updateSpecies(id, { cursorResponse });
 }
 
-// Set species cursor vortex
-export function setSpeciesCursorVortex(id: number, cursorVortex: boolean): void {
+// Set species cursor vortex direction
+export function setSpeciesCursorVortex(id: number, cursorVortex: VortexDirection): void {
 	updateSpecies(id, { cursorVortex });
+}
+
+// Cycle species cursor vortex: Off -> Clockwise -> CounterClockwise -> Off
+export function cycleSpeciesCursorVortex(id: number): void {
+	params.update((p) => {
+		const species = p.species.find((s) => s.id === id);
+		if (!species) return p;
+
+		let nextDirection: VortexDirection;
+		switch (species.cursorVortex) {
+			case VortexDirection.Off:
+				nextDirection = VortexDirection.Clockwise;
+				break;
+			case VortexDirection.Clockwise:
+				nextDirection = VortexDirection.CounterClockwise;
+				break;
+			case VortexDirection.CounterClockwise:
+			default:
+				nextDirection = VortexDirection.Off;
+				break;
+		}
+
+		return {
+			...p,
+			species: p.species.map((s) =>
+				s.id === id ? { ...s, cursorVortex: nextDirection } : s
+			)
+		};
+	});
+	// Trigger GPU buffer update
+	speciesDirty.set(true);
 }
 
 // Set species alpha mode
@@ -643,6 +675,7 @@ export {
 	CursorMode,
 	CursorShape,
 	CursorResponse,
+	VortexDirection,
 	AlgorithmMode,
 	AlphaMode,
 	WallTool,

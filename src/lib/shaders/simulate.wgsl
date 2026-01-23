@@ -265,8 +265,9 @@ fn getSpeciesCursorResponse(speciesId: u32) -> u32 {
     return u32(speciesParams[speciesId * 5u + 3u].z);
 }
 
-fn getSpeciesCursorVortex(speciesId: u32) -> bool {
-    return speciesParams[speciesId * 5u + 3u].w > 0.5;
+// Returns vortex direction: -1.0 = counter-clockwise, 0.0 = off, 1.0 = clockwise
+fn getSpeciesCursorVortexDir(speciesId: u32) -> f32 {
+    return speciesParams[speciesId * 5u + 3u].w;
 }
 
 // Get interaction matrix entry: [behavior, strength, range, padding]
@@ -1448,11 +1449,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Per-species cursor response: 0 = Attract, 1 = Repel, 2 = Ignore
     let speciesCursorResponse = getSpeciesCursorResponse(mySpecies);
     let speciesCursorForce = getSpeciesCursorForce(mySpecies);
-    let speciesCursorVortex = getSpeciesCursorVortex(mySpecies);
+    let speciesVortexDir = getSpeciesCursorVortexDir(mySpecies);
+    let hasVortex = speciesVortexDir != 0.0;
     
     // Skip cursor interaction if species ignores cursor AND vortex is off for this species
     // Allow interaction if species responds OR if vortex is enabled for this species
-    if ((speciesCursorResponse != 2u || speciesCursorVortex) && uniforms.cursorActive != 0u) {
+    if ((speciesCursorResponse != 2u || hasVortex) && uniforms.cursorActive != 0u) {
         let cursorPos = vec2<f32>(uniforms.cursorX, uniforms.cursorY);
         let toCursor = getNeighborDelta(myPos, cursorPos);
         let cursorDist = length(toCursor);
@@ -1597,7 +1599,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             } // End of cursorMode != 0 check for radial forces
             
             // Step 2: Add vortex (rotation) force if enabled for this species
-            if (speciesCursorVortex) {
+            // speciesVortexDir: 1.0 = clockwise, -1.0 = counter-clockwise, 0.0 = off
+            if (hasVortex) {
+                // Direction-aware tangent (user controls clockwise vs counter-clockwise)
+                let directedTangent = tangent * speciesVortexDir;
+                
                 // Different behavior based on cursor mode:
                 // - Attract (1): vortex applies INSIDE - boids spiral inward
                 // - Repel (2): vortex applies OUTSIDE - boids spiral around the perimeter
@@ -1606,7 +1612,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     // Attract + vortex: rotate inside the influence area
                     if (cursorDist < influenceRange) {
                         let vortexWeight = smoothKernel(cursorDist, influenceRange);
-                        cursorForce += tangent * vortexWeight * strength * speciesCursorForce * 3.0;
+                        cursorForce += directedTangent * vortexWeight * strength * speciesCursorForce * 3.0;
                     }
                 } else if (effectiveCursorMode == 2u) {
                     // Repel + vortex: rotate OUTSIDE the cursor area
@@ -1625,7 +1631,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                             vortexWeight = 1.0 - (outerDist / outerRange);
                             vortexWeight = vortexWeight * vortexWeight; // Quadratic falloff
                         }
-                        cursorForce += -tangent * vortexWeight * strength * speciesCursorForce * 4.0;
+                        cursorForce += directedTangent * vortexWeight * strength * speciesCursorForce * 4.0;
                     }
                 } else {
                     // Vortex only (mode Off): pure rotation around cursor
@@ -1646,7 +1652,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                         }
                         // Stronger force when pressed: 4.0 normal, 8.0 when pressed
                         let pressedBoost = select(1.0, 2.0, isPressed);
-                        cursorForce += tangent * vortexWeight * strength * speciesCursorForce * 4.0 * pressedBoost;
+                        cursorForce += directedTangent * vortexWeight * strength * speciesCursorForce * 4.0 * pressedBoost;
                     }
                 }
             }

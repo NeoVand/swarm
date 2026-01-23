@@ -102,6 +102,12 @@ export enum CursorResponse {
 	Ignore = 2 // Species ignores cursor
 }
 
+export enum VortexDirection {
+	Off = 0, // No vortex rotation
+	Clockwise = 1, // Clockwise rotation
+	CounterClockwise = 2 // Counter-clockwise rotation
+}
+
 // Interaction rule for how one species interacts with another
 export interface InteractionRule {
 	targetSpecies: number | -1; // -1 means "all others"
@@ -137,7 +143,7 @@ export interface Species {
 	// Per-species cursor interaction
 	cursorForce: number; // How strongly this species responds to cursor
 	cursorResponse: CursorResponse; // How this species responds to cursor
-	cursorVortex: boolean; // Whether this species responds to vortex/rotation
+	cursorVortex: VortexDirection; // Vortex rotation direction (Off, Clockwise, CounterClockwise)
 
 	// Inter-species interaction rules
 	interactions: InteractionRule[];
@@ -184,7 +190,7 @@ export function createDefaultSpecies(id: number, population: number): Species {
 		// Cursor interaction
 		cursorForce: 0.5, // Medium response to cursor
 		cursorResponse: CursorResponse.Repel, // Default: repelled by cursor
-		cursorVortex: false, // Default: no vortex response
+		cursorVortex: VortexDirection.Off, // Default: no vortex rotation
 		// Inter-species interactions
 		interactions: [
 			{
@@ -209,7 +215,7 @@ export interface SimulationParams {
 	boundaryMode: BoundaryMode;
 	cursorMode: CursorMode;
 	cursorShape: CursorShape;
-	cursorVortex: boolean; // Independent vortex toggle (adds rotation)
+	cursorVortex: VortexDirection; // Vortex rotation direction (Off, Clockwise, CounterClockwise)
 	cursorForce: number;
 	cursorRadius: number;
 	boidSize: number;
@@ -301,7 +307,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	boundaryMode: BoundaryMode.Plane,
 	cursorMode: CursorMode.Repel,
 	cursorShape: CursorShape.Disk,
-	cursorVortex: false,
+	cursorVortex: VortexDirection.Off,
 	cursorForce: 0.5,
 	cursorRadius: 50,
 	boidSize: 1.5,

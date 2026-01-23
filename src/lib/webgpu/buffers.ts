@@ -1,7 +1,7 @@
 // Buffer creation and management
 
 import type { SimulationBuffers, SimulationParams, CursorState, Species } from './types';
-import { WORKGROUP_SIZE, WALL_TEXTURE_SCALE, MAX_SPECIES } from './types';
+import { WORKGROUP_SIZE, WALL_TEXTURE_SCALE, MAX_SPECIES, VortexDirection } from './types';
 
 export interface BufferConfig {
 	boidCount: number;
@@ -123,7 +123,7 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 	// vec4[0]: [alignment, cohesion, separation, perception]
 	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
 	// vec4[2]: [saturation, lightness, size, trailLength]
-	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
+	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortexDir] (-1=CCW, 0=off, 1=CW)
 	// vec4[4]: [alphaMode, unused, unused, unused]
 	const speciesParams = device.createBuffer({
 		size: MAX_SPECIES * 5 * 16, // 7 species * 5 vec4s * 16 bytes per vec4
@@ -322,7 +322,8 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	u32View[offset++] = data.params.boundaryMode;
 	u32View[offset++] = data.params.cursorMode;
 	u32View[offset++] = data.params.cursorShape;
-	u32View[offset++] = data.params.cursorVortex ? 1 : 0;
+	// VortexDirection: 0=Off, 1=Clockwise, 2=CounterClockwise
+	u32View[offset++] = data.params.cursorVortex;
 	f32View[offset++] = data.params.cursorForce;
 	f32View[offset++] = data.params.cursorRadius;
 	// When cursor is not active, place it far off-screen so it can't affect any boids
@@ -407,7 +408,7 @@ export function updateSpeciesParams(
 	// vec4[0]: [alignment, cohesion, separation, perception]
 	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
 	// vec4[2]: [saturation, lightness, size, trailLength]
-	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortex]
+	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortexDir] (-1=CCW, 0=off, 1=CW)
 	// vec4[4]: [alphaMode, unused, unused, unused]
 	const data = new Float32Array(MAX_SPECIES * 5 * 4);
 
@@ -433,7 +434,13 @@ export function updateSpeciesParams(
 		data[offset + 12] = s.rebels ?? 0.02;
 		data[offset + 13] = s.cursorForce ?? 0.5;
 		data[offset + 14] = s.cursorResponse ?? 1; // 1 = Repel by default
-		data[offset + 15] = s.cursorVortex ? 1.0 : 0.0; // 1 = vortex enabled
+		// VortexDirection: Off=0.0, Clockwise=1.0, CounterClockwise=-1.0
+		data[offset + 15] =
+			s.cursorVortex === VortexDirection.CounterClockwise
+				? -1.0
+				: s.cursorVortex === VortexDirection.Clockwise
+					? 1.0
+					: 0.0;
 		// vec4[4]
 		data[offset + 16] = s.alphaMode ?? 3; // 3 = Turning by default
 		data[offset + 17] = 0; // unused

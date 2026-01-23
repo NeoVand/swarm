@@ -9,6 +9,7 @@
 	import TopologySelector from './TopologySelector.svelte';
 	import SpeciesSelector from './SpeciesSelector.svelte';
 	import InteractionsPanel from './InteractionsPanel.svelte';
+	import ForceAnimation from './ForceAnimation.svelte';
 	import { TOPOLOGY_NAMES } from '$lib/utils/topologyMeshes';
 	import { HeadShape } from '$lib/webgpu/types';
 	import {
@@ -53,9 +54,11 @@
 		setSpeciesCursorForce,
 		setSpeciesCursorResponse,
 		setSpeciesCursorVortex,
+		cycleSpeciesCursorVortex,
 		setSpeciesAlphaMode,
 		setActiveSpecies,
 		CursorResponse,
+		VortexDirection,
 		BoundaryMode,
 		ColorMode,
 		ColorSpectrum,
@@ -127,7 +130,7 @@
 	);
 
 	// Remember last vortex state for restoring
-	let lastVortexState = $state<boolean>(false);
+	let lastVortexState = $state<VortexDirection>(VortexDirection.Off);
 
 	// Handle cursor mode toggle with memory - controls per-species cursorResponse
 	function handleCursorModeToggle(
@@ -140,8 +143,9 @@
 
 		if (mode === CursorMode.Off) {
 			// Power button: toggle interaction on/off for this species
-			const speciesVortex = activeSpecies.cursorVortex ?? false;
-			const isActive = currentResponse !== CursorResponse.Ignore || speciesVortex;
+			const speciesVortex = activeSpecies.cursorVortex ?? VortexDirection.Off;
+			const hasVortex = speciesVortex !== VortexDirection.Off;
+			const isActive = currentResponse !== CursorResponse.Ignore || hasVortex;
 			if (isActive) {
 				// Turn off, but remember state
 				if (currentResponse !== CursorResponse.Ignore) {
@@ -151,7 +155,7 @@
 				}
 				lastVortexState = speciesVortex;
 				setSpeciesCursorResponse(activeSpecies.id, CursorResponse.Ignore);
-				setSpeciesCursorVortex(activeSpecies.id, false);
+				setSpeciesCursorVortex(activeSpecies.id, VortexDirection.Off);
 			} else {
 				// Restore previous state
 				setSpeciesCursorResponse(activeSpecies.id, lastCursorResponse);
@@ -389,7 +393,7 @@
 		if (activeSpecies) {
 			setSpeciesCursorForce(activeSpecies.id, 0.5);
 			setSpeciesCursorResponse(activeSpecies.id, CursorResponse.Repel);
-			setSpeciesCursorVortex(activeSpecies.id, false);
+			setSpeciesCursorVortex(activeSpecies.id, VortexDirection.Off);
 		}
 	}
 
@@ -599,7 +603,7 @@
 			case '4':
 				event.preventDefault();
 				if (activeSpecies) {
-					setSpeciesCursorVortex(activeSpecies.id, !activeSpecies.cursorVortex);
+					cycleSpeciesCursorVortex(activeSpecies.id);
 				}
 				break;
 
@@ -2280,7 +2284,7 @@
 								{#if activeSpecies?.cursorResponse !== CursorResponse.Ignore}
 									<div
 										class="cursor-toggle-indicator"
-										style="transform: translateX({cursorModeIndex * 100}%)"
+										style="left: calc(4px + {cursorModeIndex} * 44px)"
 									></div>
 								{/if}
 
@@ -2311,20 +2315,11 @@
 									aria-label="Attract"
 									title="Attract this species (click again to turn off)"
 								>
-									<svg viewBox="0 0 24 24" class="h-5 w-5">
-										<g
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											fill="none"
-										>
-											<path d="M12 1 L12 8 M9 5 L12 8 L15 5" />
-											<path d="M1.5 19.5 L7.5 13.5 M2 14.5 L7.5 13.5 L6.5 19" />
-											<path d="M22.5 19.5 L16.5 13.5 M22 14.5 L16.5 13.5 L17.5 19" />
-										</g>
-										<circle cx="12" cy="12" r="2.5" fill="currentColor" />
-									</svg>
+									<ForceAnimation
+										type="attract"
+										active={activeSpecies?.cursorResponse === CursorResponse.Attract}
+										size={32}
+									/>
 								</button>
 								<button
 									class="cursor-toggle-btn repel"
@@ -2333,44 +2328,27 @@
 									aria-label="Repel"
 									title="Repel this species (click again to turn off)"
 								>
-									<svg viewBox="0 0 24 24" class="h-5 w-5">
-										<g
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											fill="none"
-										>
-											<path d="M12 8 L12 1 M9 4 L12 1 L15 4" />
-											<path d="M7.5 13.5 L1.5 19.5 M5 19.5 L1.5 19.5 L1.5 16" />
-											<path d="M16.5 13.5 L22.5 19.5 M19 19.5 L22.5 19.5 L22.5 16" />
-										</g>
-										<circle cx="12" cy="12" r="2.5" fill="currentColor" />
-									</svg>
+									<ForceAnimation
+										type="repel"
+										active={activeSpecies?.cursorResponse === CursorResponse.Repel}
+										size={32}
+									/>
 								</button>
 								<button
 									class="cursor-toggle-btn vortex"
-									class:active={activeSpecies?.cursorVortex}
-									onclick={() =>
-										activeSpecies &&
-										setSpeciesCursorVortex(activeSpecies.id, !activeSpecies.cursorVortex)}
+									class:active={activeSpecies?.cursorVortex !== VortexDirection.Off}
+									class:counter-clockwise={activeSpecies?.cursorVortex ===
+										VortexDirection.CounterClockwise}
+									onclick={() => activeSpecies && cycleSpeciesCursorVortex(activeSpecies.id)}
 									aria-label="Vortex"
-									title="Add rotation for this species (can combine with attract/repel)"
+									title="Cycle rotation: Off → Clockwise → Counter-clockwise → Off"
 								>
-									<svg
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										class="h-5 w-5"
-									>
-										<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-										<path d="M21 3v5h-5" />
-										<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-										<path d="M3 21v-5h5" />
-									</svg>
+									<ForceAnimation
+										type="vortex"
+										active={activeSpecies?.cursorVortex !== VortexDirection.Off}
+										vortexDirection={activeSpecies?.cursorVortex ?? VortexDirection.Off}
+										size={32}
+									/>
 								</button>
 							</div>
 						</div>
@@ -3864,33 +3842,31 @@
 
 	/* Premium Cursor Toggle */
 	.cursor-toggle {
-		flex: 1;
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(3, 36px);
 		position: relative;
-		height: 36px;
+		height: 44px;
 		background: rgba(0, 0, 0, 0.4);
 		border-radius: 8px;
-		padding: 3px;
-		gap: 2px;
+		padding: 4px;
+		gap: 8px;
 		border: 1px solid rgba(255, 255, 255, 0.06);
 	}
 	.cursor-toggle.cursor-toggle-4 {
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(4, 36px);
 	}
 	.cursor-toggle-indicator {
 		position: absolute;
-		top: 3px;
-		left: 3px;
-		width: calc(33.333% - 2px);
-		height: calc(100% - 6px);
+		top: 4px;
+		width: 36px;
+		height: 36px;
 		background: rgba(255, 255, 255, 0.1);
-		border-radius: 6px;
-		transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+		border-radius: 50%;
+		transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 		pointer-events: none;
 	}
 	.cursor-toggle-4 .cursor-toggle-indicator {
-		width: calc(25% - 2px);
+		width: 36px;
 	}
 	.cursor-toggle-btn {
 		position: relative;
@@ -3900,10 +3876,11 @@
 		justify-content: center;
 		background: transparent;
 		border: none;
-		border-radius: 5px;
+		border-radius: 50%;
 		color: rgb(113 113 122);
 		cursor: pointer;
 		transition: color 0.15s;
+		aspect-ratio: 1;
 	}
 	.cursor-toggle-btn:hover {
 		color: rgb(161 161 170);
@@ -3942,7 +3919,13 @@
 		color: rgb(249 115 22);
 		background: rgba(249, 115, 22, 0.15);
 		box-shadow: 0 0 12px rgba(249, 115, 22, 0.2);
-		border-radius: 6px;
+		border-radius: 50%;
+	}
+	/* Counter-clockwise vortex - purple tint to distinguish from clockwise */
+	.cursor-toggle-btn.vortex.active.counter-clockwise {
+		color: rgb(168 85 247);
+		background: rgba(168, 85, 247, 0.15);
+		box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
 	}
 
 	/* Shape Toggle - square buttons */

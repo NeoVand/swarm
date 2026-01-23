@@ -7,6 +7,7 @@
 		CursorMode,
 		CursorResponse,
 		CursorShape,
+		VortexDirection,
 		WallTool,
 		WallBrushShape,
 		calculateOptimalPopulation
@@ -70,8 +71,10 @@
 		(s) => s.id === currentParams?.activeSpeciesId
 	);
 	$: speciesCursorResponse = activeSpeciesForCursor?.cursorResponse ?? CursorResponse.Ignore;
-	$: speciesCursorVortex = activeSpeciesForCursor?.cursorVortex ?? false;
-	$: hasCursorInteraction = speciesCursorResponse !== CursorResponse.Ignore || speciesCursorVortex;
+	$: speciesVortexDirection =
+		activeSpeciesForCursor?.cursorVortex ?? VortexDirection.Off;
+	$: hasVortexActive = speciesVortexDirection !== VortexDirection.Off;
+	$: hasCursorInteraction = speciesCursorResponse !== CursorResponse.Ignore || hasVortexActive;
 
 	const unsubSpeciesDirty = speciesDirty.subscribe((dirty) => {
 		if (dirty && simulation) {
@@ -398,7 +401,7 @@
 	<canvas
 		bind:this={canvas}
 		class="block touch-none select-none {currentParams?.cursorMode !== CursorMode.Off ||
-		currentParams?.cursorVortex ||
+		hasVortexActive ||
 		currentWallTool !== WallTool.None
 			? 'cursor-none'
 			: ''}"
@@ -459,13 +462,16 @@
 		{@const radius = currentParams?.cursorRadius ?? 50}
 		{@const isAttract = speciesCursorResponse === CursorResponse.Attract}
 		{@const isRepel = speciesCursorResponse === CursorResponse.Repel}
-		{@const isVortexOnly = speciesCursorResponse === CursorResponse.Ignore && speciesCursorVortex}
+		{@const isVortexOnly = speciesCursorResponse === CursorResponse.Ignore && hasVortexActive}
 		{@const shape = currentParams?.cursorShape ?? CursorShape.Disk}
-		{@const hasVortex = speciesCursorVortex}
-		{@const color = isVortexOnly ? '249, 115, 22' : isAttract ? '6, 182, 212' : '244, 63, 94'}
+		{@const hasVortex = hasVortexActive}
+		{@const isClockwise = speciesVortexDirection === VortexDirection.Clockwise}
+		{@const isCounterClockwise = speciesVortexDirection === VortexDirection.CounterClockwise}
+		{@const vortexOnlyColor = isClockwise ? '249, 115, 22' : '168, 85, 247'}
+		{@const color = isVortexOnly ? vortexOnlyColor : isAttract ? '6, 182, 212' : '244, 63, 94'}
 		{@const baseOpacity = currentCursor.isPressed ? 0.9 : 0.6}
 		{@const spinClass = hasVortex
-			? isRepel
+			? isCounterClockwise
 				? 'animate-spin-vortex-reverse'
 				: 'animate-spin-vortex'
 			: ''}
