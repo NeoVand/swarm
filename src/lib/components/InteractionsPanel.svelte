@@ -217,11 +217,15 @@
 									{/if}
 								</button>
 								{#if openTargetDropdown === ruleIndex}
-									<div class="dropdown-menu" transition:slide={{ duration: 120, easing: cubicOut }}>
+									<div
+										class="dropdown-menu target-grid"
+										transition:slide={{ duration: 120, easing: cubicOut }}
+									>
 										<button
-											class="dropdown-option"
+											class="target-cell"
 											class:active={rule.targetSpecies === -1}
 											onclick={() => handleTargetChange(ruleIndex, -1)}
+											title="All Others"
 										>
 											<svg
 												class="all-icon"
@@ -238,13 +242,13 @@
 												<rect x="3" y="14" width="7" height="7" rx="1" />
 												<circle cx="17.5" cy="17.5" r="3.5" />
 											</svg>
-											<span>Others</span>
 										</button>
 										{#each otherSpecies as other (other.id)}
 											<button
-												class="dropdown-option"
+												class="target-cell"
 												class:active={rule.targetSpecies === other.id}
 												onclick={() => handleTargetChange(ruleIndex, other.id)}
+												title={other.name}
 											>
 												<svg class="species-icon-sm" viewBox="0 0 20 20">
 													<path
@@ -252,7 +256,6 @@
 														fill={hslColor(other.hue, other.saturation, other.lightness)}
 													/>
 												</svg>
-												<span>{other.name}</span>
 											</button>
 										{/each}
 									</div>
@@ -560,6 +563,47 @@
 		padding: 4px;
 	}
 
+	.dropdown-menu.target-grid {
+		min-width: auto;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 3px;
+		padding: 5px;
+		max-width: 140px;
+	}
+
+	.target-cell {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		padding: 0;
+		background: rgba(255, 255, 255, 0.04);
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.target-cell:hover {
+		background: rgba(255, 255, 255, 0.12);
+	}
+
+	.target-cell.active {
+		background: rgba(99, 102, 241, 0.3);
+	}
+
+	.target-cell .all-icon {
+		width: 16px;
+		height: 16px;
+	}
+
+	.target-cell .species-icon-sm {
+		width: 16px;
+		height: 16px;
+	}
+
 	.behavior-cell {
 		display: flex;
 		flex-direction: column;
@@ -594,32 +638,11 @@
 		letter-spacing: 0.3px;
 	}
 
-	.dropdown-option {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
-		padding: 8px 10px;
-		background: none;
-		border: none;
-		cursor: pointer;
-		transition: background 0.1s;
-		font-size: 11px;
-		color: rgba(255, 255, 255, 0.8);
-	}
-
-	.dropdown-option:hover {
-		background: rgba(255, 255, 255, 0.08);
-	}
-
-	.dropdown-option.active {
-		background: rgba(99, 102, 241, 0.2);
-	}
-
 	.remove-btn {
 		width: 20px;
 		height: 20px;
 		padding: 0;
+		margin-left: 8px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -628,6 +651,7 @@
 		cursor: pointer;
 		opacity: 0.4;
 		transition: opacity 0.15s;
+		flex-shrink: 0;
 	}
 
 	.remove-btn:hover {

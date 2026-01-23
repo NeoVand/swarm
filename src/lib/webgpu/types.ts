@@ -133,13 +133,13 @@ export interface Species {
 	interactions: InteractionRule[];
 }
 
-// Default species colors (hues)
+// Default species colors (hues) - evenly spaced for maximum distinction
 export const SPECIES_HUES = [
 	210, // Blue
-	0, // Red
+	20, // Red-Orange
 	120, // Green
-	45, // Orange
 	280, // Purple
+	55, // Yellow-Orange
 	180, // Cyan
 	330 // Pink
 ];

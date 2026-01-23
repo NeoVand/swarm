@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import {
 		params,
 		setActiveSpecies,
@@ -12,24 +11,6 @@
 	let currentParams = $derived($params);
 	let species = $derived(currentParams.species);
 	let activeSpeciesId = $derived(currentParams.activeSpeciesId);
-
-	// Animation frame for mini boid previews
-	let animationTime = $state(0);
-	let animationFrame: number | null = null;
-
-	onMount(() => {
-		function animate() {
-			animationTime = performance.now() / 1000;
-			animationFrame = requestAnimationFrame(animate);
-		}
-		animationFrame = requestAnimationFrame(animate);
-	});
-
-	onDestroy(() => {
-		if (animationFrame !== null) {
-			cancelAnimationFrame(animationFrame);
-		}
-	});
 
 	// Get SVG path for each head shape (matching shader shapes)
 	function getShapePath(shape: HeadShape, size: number): string {
@@ -49,17 +30,14 @@
 
 		switch (shape) {
 			case HeadShape.Triangle:
-				// Original triangle: nose at right, base at left (matching shader)
 				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
 			case HeadShape.Square:
-				// Square rotated 45° so corner points right (matching shader)
 				return `M ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} L ${cx} ${cy - s} Z`;
 			case HeadShape.Pentagon:
 				return polygon(5);
 			case HeadShape.Hexagon:
 				return polygon(6);
 			case HeadShape.Arrow:
-				// Arrow/chevron shape (matching shader)
 				return `M ${cx + s} ${cy} L ${cx - s * 0.5} ${cy + s * 0.6} L ${cx - s * 0.2} ${cy} L ${cx - s * 0.5} ${cy - s * 0.6} Z`;
 			default:
 				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
@@ -90,13 +68,11 @@
 </script>
 
 <div class="species-selector">
-	<div class="species-list">
+	<div class="species-grid">
 		{#each species as sp (sp.id)}
 			{@const isActive = sp.id === activeSpeciesId}
-			{@const bob = Math.sin(animationTime * 0.8 + sp.id * 1.5) * 1.5}
-			{@const rotation = Math.sin(animationTime * 0.5 + sp.id) * 5 + 45}
 			<div
-				class="species-card"
+				class="species-btn"
 				class:active={isActive}
 				onclick={() => handleSelectSpecies(sp.id)}
 				onkeydown={(e) => e.key === 'Enter' && handleSelectSpecies(sp.id)}
@@ -104,30 +80,18 @@
 				tabindex="0"
 				title={sp.name}
 			>
-				<!-- Mini boid preview (no trail, subtle movement) -->
-				<svg class="boid-preview" viewBox="0 0 32 32">
-					<g transform="translate(16, {16 + bob}) rotate({rotation})">
-						<path
-							d={getShapePath(sp.headShape, 22)}
-							fill={hslColor(sp.hue, sp.saturation, sp.lightness)}
-							stroke={hslColor(sp.hue, sp.saturation, Math.min(sp.lightness + 20, 100))}
-							stroke-width="0.5"
-							transform="translate(-11, -11)"
-						/>
-					</g>
+				<svg class="boid-icon" viewBox="0 0 24 24">
+					<path
+						d={getShapePath(sp.headShape, 24)}
+						fill={hslColor(sp.hue, sp.saturation, sp.lightness)}
+					/>
 				</svg>
-				<!-- Species name -->
-				<span class="species-name">{sp.name}</span>
-				<!-- Remove button (only if more than 1 species) -->
+				<!-- Remove button on hover for active -->
 				{#if species.length > 1 && isActive}
-					<button
-						class="remove-btn"
-						onclick={(e) => handleRemoveSpecies(e, sp.id)}
-						title="Remove species"
-					>
-						<svg viewBox="0 0 16 16" fill="currentColor">
+					<button class="remove-btn" onclick={(e) => handleRemoveSpecies(e, sp.id)} title="Remove">
+						<svg viewBox="0 0 12 12" fill="currentColor">
 							<path
-								d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"
+								d="M3.5 3.5a.4.4 0 0 1 .566 0L6 5.434 7.934 3.5a.4.4 0 0 1 .566.566L6.566 6 8.5 7.934a.4.4 0 0 1-.566.566L6 6.566 4.066 8.5a.4.4 0 0 1-.566-.566L5.434 6 3.5 4.066a.4.4 0 0 1 0-.566z"
 							/>
 						</svg>
 					</button>
@@ -137,10 +101,10 @@
 
 		<!-- Add species button -->
 		{#if species.length < MAX_SPECIES}
-			<button class="add-species-btn" onclick={handleAddSpecies} title="Add new species">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<line x1="12" y1="5" x2="12" y2="19" />
-					<line x1="5" y1="12" x2="19" y2="12" />
+			<button class="add-btn" onclick={handleAddSpecies} title="Add species">
+				<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+					<line x1="8" y1="4" x2="8" y2="12" />
+					<line x1="4" y1="8" x2="12" y2="8" />
 				</svg>
 			</button>
 		{/if}
@@ -149,84 +113,53 @@
 
 <style>
 	.species-selector {
-		padding: 0 0 8px;
+		padding: 0 0 4px;
 	}
 
-	.species-list {
+	.species-grid {
 		display: flex;
-		gap: 6px;
+		flex-wrap: wrap;
+		gap: 4px;
 		align-items: center;
-		overflow-x: auto;
-		padding-bottom: 4px;
 	}
 
-	.species-list::-webkit-scrollbar {
-		height: 3px;
-	}
-
-	.species-list::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.05);
-		border-radius: 2px;
-	}
-
-	.species-list::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.15);
-		border-radius: 2px;
-	}
-
-	.species-card {
+	.species-btn {
 		position: relative;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		gap: 2px;
-		padding: 4px;
-		border-radius: 8px;
-		background: rgba(255, 255, 255, 0.03);
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border-radius: 6px;
+		background: rgba(255, 255, 255, 0.04);
 		border: 1px solid rgba(255, 255, 255, 0.08);
 		cursor: pointer;
-		transition: all 0.15s ease;
-		min-width: 44px;
+		transition: all 0.12s ease;
 	}
 
-	.species-card:hover {
-		background: rgba(255, 255, 255, 0.06);
+	.species-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
 		border-color: rgba(255, 255, 255, 0.15);
+		transform: scale(1.05);
 	}
 
-	.species-card.active {
-		background: rgba(99, 102, 241, 0.15);
-		border-color: rgba(99, 102, 241, 0.4);
-		box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+	.species-btn.active {
+		background: rgba(99, 102, 241, 0.2);
+		border-color: rgba(99, 102, 241, 0.5);
 	}
 
-	.boid-preview {
-		width: 32px;
-		height: 32px;
-		transition: transform 0.1s ease;
-	}
-
-	.species-name {
-		font-size: 8px;
-		color: rgba(255, 255, 255, 0.6);
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		max-width: 40px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.species-card.active .species-name {
-		color: rgba(255, 255, 255, 0.9);
+	.boid-icon {
+		width: 18px;
+		height: 18px;
 	}
 
 	.remove-btn {
 		position: absolute;
-		top: 2px;
-		right: 2px;
-		width: 12px;
-		height: 12px;
+		top: -4px;
+		right: -4px;
+		width: 14px;
+		height: 14px;
 		border-radius: 50%;
 		background: rgba(239, 68, 68, 0.9);
 		border: none;
@@ -236,50 +169,51 @@
 		justify-content: center;
 		cursor: pointer;
 		opacity: 0;
-		transition: opacity 0.15s ease;
+		transition: opacity 0.1s ease;
 		z-index: 1;
 	}
 
-	.species-card.active:hover .remove-btn {
+	.species-btn.active:hover .remove-btn {
 		opacity: 1;
 	}
 
 	.remove-btn:hover {
-		background: rgba(239, 68, 68, 1);
+		background: rgb(239, 68, 68);
 		transform: scale(1.1);
 	}
 
 	.remove-btn svg {
-		width: 8px;
-		height: 8px;
+		width: 10px;
+		height: 10px;
 		color: white;
 	}
 
-	.add-species-btn {
+	.add-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 44px;
-		height: 52px;
-		border-radius: 8px;
-		background: rgba(255, 255, 255, 0.02);
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border-radius: 6px;
+		background: transparent;
 		border: 1px dashed rgba(255, 255, 255, 0.15);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: all 0.12s ease;
 	}
 
-	.add-species-btn:hover {
+	.add-btn:hover {
 		background: rgba(99, 102, 241, 0.1);
 		border-color: rgba(99, 102, 241, 0.4);
 	}
 
-	.add-species-btn svg {
-		width: 18px;
-		height: 18px;
-		color: rgba(255, 255, 255, 0.4);
+	.add-btn svg {
+		width: 12px;
+		height: 12px;
+		color: rgba(255, 255, 255, 0.35);
 	}
 
-	.add-species-btn:hover svg {
+	.add-btn:hover svg {
 		color: rgba(99, 102, 241, 0.8);
 	}
 </style>
