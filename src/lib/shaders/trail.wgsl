@@ -322,7 +322,7 @@ fn vs_main(
     }
     
     // Calculate trail indices (ring buffer)
-    // Use MAX_TRAIL_LENGTH for buffer stride so changing trailLength doesn't shift data
+    // Use MAX_TRAIL_LENGTH for buffer stride since that's the actual buffer size
     let trailBase = boidIndex * MAX_TRAIL_LENGTH;
     let head = uniforms.trailHead;
     
@@ -331,8 +331,9 @@ fn vs_main(
     let age = speciesTrailLen - 2u - segmentIndex;
     
     // Get the two endpoints of this segment
-    let idx1 = (head + speciesTrailLen - age - 1u) % speciesTrailLen;
-    let idx2 = (head + speciesTrailLen - age) % speciesTrailLen;
+    // Use MAX_TRAIL_LENGTH for modulo since head wraps at MAX_TRAIL_LENGTH
+    let idx1 = (head + MAX_TRAIL_LENGTH - age - 1u) % MAX_TRAIL_LENGTH;
+    let idx2 = (head + MAX_TRAIL_LENGTH - age) % MAX_TRAIL_LENGTH;
     
     var p1 = trails[trailBase + idx1];
     var p2 = trails[trailBase + idx2];

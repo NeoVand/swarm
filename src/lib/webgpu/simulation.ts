@@ -13,6 +13,7 @@ import {
 	createWallTexture,
 	updateSpeciesParams,
 	updateInteractionMatrix,
+	MAX_TRAIL_LENGTH,
 	type BufferConfig
 } from './buffers';
 import { createComputePipelines, encodeComputePasses, type ComputeResources } from './compute';
@@ -124,10 +125,13 @@ export function createSimulation(
 			// Grid changed, may need to recreate some buffers
 		}
 
-		// Update trail head
-		trailHead = (trailHead + 1) % params.trailLength;
+		// Update trail head - use MAX_TRAIL_LENGTH since buffer is pre-allocated
+		// and per-species trail lengths vary
+		trailHead = (trailHead + 1) % MAX_TRAIL_LENGTH;
 
 		// Update uniform buffer
+		// Use MAX_TRAIL_LENGTH for trailLength so shader instance calculations work
+		// for all per-species trail lengths (actual per-species lengths are in speciesParams)
 		updateUniforms(device, buffers.uniforms, {
 			canvasWidth,
 			canvasHeight,
@@ -135,7 +139,7 @@ export function createSimulation(
 			gridWidth: gridInfo.gridWidth,
 			gridHeight: gridInfo.gridHeight,
 			boidCount: params.population,
-			trailLength: params.trailLength,
+			trailLength: MAX_TRAIL_LENGTH,
 			trailHead,
 			params,
 			cursor,
@@ -157,13 +161,14 @@ export function createSimulation(
 		);
 
 		// Encode render pass
+		// Use MAX_TRAIL_LENGTH for trail segments - per-species lengths handled in shader
 		const textureView = context.getCurrentTexture().createView();
 		encodeRenderPass(
 			encoder,
 			textureView,
 			renderResources,
 			params.population,
-			params.trailLength,
+			MAX_TRAIL_LENGTH,
 			readFromA
 		);
 

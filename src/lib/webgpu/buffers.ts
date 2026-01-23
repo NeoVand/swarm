@@ -351,7 +351,7 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 const MIN_PERCEPTION_FOR_ALLOCATION = 20;
 
 // Maximum trail length for buffer pre-allocation (matches UI max)
-const MAX_TRAIL_LENGTH = 100;
+export const MAX_TRAIL_LENGTH = 100;
 
 // Calculate grid dimensions based on canvas size and perception radius
 export function calculateGridDimensions(
