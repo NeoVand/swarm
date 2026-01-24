@@ -25,8 +25,14 @@
 	const COLORS: Record<ForceType, { active: string; inactive: string; activeCCW?: string }> = {
 		attract: { active: '#22d3ee', inactive: '#71717a' }, // cyan
 		repel: { active: '#fb7185', inactive: '#71717a' }, // rose
-		vortex: { active: '#f97316', inactive: '#71717a', activeCCW: '#a855f7' } // orange (CW), purple (CCW)
+		vortex: { active: '#eab308', inactive: '#71717a', activeCCW: '#a855f7' } // warm yellow (CW), purple (CCW)
 	};
+
+	// Persisted animation state (survives effect re-runs)
+	let currentSpeedMultiplier = $state(0.5);
+	let currentDirectionMultiplier = $state(1.0);
+	let animationProgress = $state(Math.random());
+	let vortexAngle = $state(Math.random() * Math.PI * 2);
 
 	// Animation loop
 	$effect(() => {
@@ -41,18 +47,28 @@
 		const centerY = size / 2;
 		const maxRadius = size / 2 - 2;
 
-		// Symmetric animation progress (0 to 1, loops)
-		// Random initial offset so different button instances don't sync
-		let progress = Math.random();
-
-		// Vortex layer angles - also randomized
-		let outerAngle = Math.random() * Math.PI * 2;
-
 		let lastTime = performance.now();
 
 		const animate = (currentTime: number) => {
 			const deltaTime = (currentTime - lastTime) / 1000;
 			lastTime = currentTime;
+
+			// Smoothly transition speed multiplier (ease toward target)
+			const targetSpeed = active ? 1.0 : 0.5;
+			const easeRate = 2.5; // How fast to ease (higher = faster transition)
+			currentSpeedMultiplier += (targetSpeed - currentSpeedMultiplier) * Math.min(1, deltaTime * easeRate);
+
+			// Smoothly transition direction for vortex (eases through zero for smooth reversal)
+			const targetDirection =
+				vortexDirection === VortexDirection.CounterClockwise
+					? -1
+					: vortexDirection === VortexDirection.Clockwise
+						? 1
+						: currentDirectionMultiplier > 0
+							? 1
+							: -1; // Keep last direction when off
+			currentDirectionMultiplier +=
+				(targetDirection - currentDirectionMultiplier) * Math.min(1, deltaTime * easeRate);
 
 			// Clear canvas
 			ctx.clearRect(0, 0, size, size);
@@ -121,15 +137,15 @@
 		if (type === 'attract' || type === 'repel') {
 			const isAttract = type === 'attract';
 			
-			// Update progress
-			progress += deltaTime * 0.5;
-			if (progress >= 1) {
-				progress -= 1;
+			// Update progress (speed affected by multiplier)
+			animationProgress += deltaTime * 0.5 * currentSpeedMultiplier;
+			if (animationProgress >= 1) {
+				animationProgress -= 1;
 			}
 
 			// Draw 2 waves with good spacing so direction is visible
 			for (let wave = 0; wave < 2; wave++) {
-				const waveT = (progress + wave / 2) % 1;
+				const waveT = (animationProgress + wave / 2) % 1;
 				
 				// Smooth fade in/out using sine curve
 				// Peaks at t=0.5, fades to 0 at t=0 and t=1
@@ -148,11 +164,9 @@
 			}
 		} else if (type === 'vortex') {
 			// Wind turbine / pinwheel style - 3 curved arms rotating with trail
-			// Direction: clockwise = positive rotation, counter-clockwise = negative
-			const directionMultiplier =
-				vortexDirection === VortexDirection.CounterClockwise ? -1 : 1;
-			const rotationSpeed = 2.5 * directionMultiplier;
-			outerAngle += deltaTime * rotationSpeed;
+			// Direction and speed both ease smoothly
+			const rotationSpeed = 2.5 * currentDirectionMultiplier * currentSpeedMultiplier;
+			vortexAngle += deltaTime * rotationSpeed;
 
 			// Helper to draw a spiral arm at a given base angle
 			const drawArm = (baseAngle: number, alpha: number, lineWidth: number) => {
@@ -163,12 +177,12 @@
 				ctx.globalAlpha = alpha;
 
 				// Draw curved arm from center outward
-				// Curve direction matches rotation direction
+				// Curve direction matches rotation direction (uses eased direction)
 				const steps = 10;
 				for (let i = 0; i <= steps; i++) {
 					const t = i / steps;
 					const r = t * maxRadius * 0.9;
-					const spiralTwist = t * 1.0 * directionMultiplier; // Curve matches rotation
+					const spiralTwist = t * 1.0 * currentDirectionMultiplier; // Curve eases with direction
 					const angle = baseAngle + spiralTwist;
 
 					const x = centerX + Math.cos(angle) * r;
@@ -184,26 +198,26 @@
 			};
 
 			// Trail settings - draw arms at previous positions (behind current rotation)
-			// Using fewer segments with wider spacing for a longer, sparser trail
-			const trailCount = 8;
-			const trailSpacing = 0.12; // Radians between each trail segment (every other frame)
+			// Radar sweep effect: trail extends all the way to the next blade (120° = ~2.09 rad)
+			const trailCount = 12;
+			const trailSpacing = 0.17; // Radians between segments (~2 rad total span)
 
 			// Draw trails first (behind the main arms - opposite direction of rotation)
 			for (let trailIdx = trailCount - 1; trailIdx >= 0; trailIdx--) {
-				const trailOffset = (trailIdx + 1) * trailSpacing * directionMultiplier;
-				// Slower fade - stays visible longer
-				const trailAlpha = 0.55 * (1 - (trailIdx + 1) / (trailCount + 2));
-				const trailWidth = 1.8 * (1 - trailIdx * 0.07);
+				const trailOffset = (trailIdx + 1) * trailSpacing * currentDirectionMultiplier;
+				// Gradual fade across the full sweep
+				const trailAlpha = 0.5 * (1 - (trailIdx + 1) / (trailCount + 1));
+				const trailWidth = 1.8 * (1 - trailIdx * 0.05);
 
 				for (let armIndex = 0; armIndex < 3; armIndex++) {
-					const armBaseAngle = outerAngle - trailOffset + (armIndex * Math.PI * 2) / 3;
+					const armBaseAngle = vortexAngle - trailOffset + (armIndex * Math.PI * 2) / 3;
 					drawArm(armBaseAngle, trailAlpha, trailWidth);
 				}
 			}
 
 			// Draw main arms (brightest, on top)
 			for (let armIndex = 0; armIndex < 3; armIndex++) {
-				const armBaseAngle = outerAngle + (armIndex * Math.PI * 2) / 3;
+				const armBaseAngle = vortexAngle + (armIndex * Math.PI * 2) / 3;
 				drawArm(armBaseAngle, 0.9, 2);
 			}
 

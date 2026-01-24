@@ -467,7 +467,7 @@
 		{@const hasVortex = hasVortexActive}
 		{@const isClockwise = speciesVortexDirection === VortexDirection.Clockwise}
 		{@const isCounterClockwise = speciesVortexDirection === VortexDirection.CounterClockwise}
-		{@const vortexOnlyColor = isClockwise ? '249, 115, 22' : '168, 85, 247'}
+		{@const vortexOnlyColor = isClockwise ? '234, 179, 8' : '168, 85, 247'}
 		{@const color = isVortexOnly ? vortexOnlyColor : isAttract ? '6, 182, 212' : '244, 63, 94'}
 		{@const baseOpacity = currentCursor.isPressed ? 0.9 : 0.6}
 		{@const spinClass = hasVortex

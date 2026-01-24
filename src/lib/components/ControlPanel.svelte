@@ -1303,7 +1303,7 @@
 							const configs = [
 								{ id: 'tour-icon-attract', type: 'attract', color: '#22d3ee' },
 								{ id: 'tour-icon-repel', type: 'repel', color: '#fb7185' },
-								{ id: 'tour-icon-vortex', type: 'vortex', color: '#f97316' }
+								{ id: 'tour-icon-vortex', type: 'vortex', color: '#eab308' }
 							];
 
 							configs.forEach(({ id, type, color }) => {
@@ -4054,9 +4054,9 @@
 		color: rgb(161 161 170);
 	}
 	.cursor-toggle-btn.vortex.active {
-		color: rgb(249 115 22);
-		background: rgba(249, 115, 22, 0.15);
-		box-shadow: 0 0 12px rgba(249, 115, 22, 0.2);
+		color: rgb(234 179 8);
+		background: rgba(234, 179, 8, 0.15);
+		box-shadow: 0 0 12px rgba(234, 179, 8, 0.2);
 		border-radius: 50%;
 	}
 	/* Counter-clockwise vortex - purple tint to distinguish from clockwise */
