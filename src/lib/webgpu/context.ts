@@ -119,16 +119,23 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 		let device: GPUDevice;
 		try {
 			// We need 10 storage buffers in the compute shader for metrics support
-			// Bind group 0: 8 storage (positionsIn/Out, velocitiesIn/Out, prefixSums, cellCounts, sortedIndices, trails)
-			// Bind group 1: 2 storage (speciesIds, metrics)
+			// simulateBindGroupLayout0: 8 storage (positions, velocities, prefixSums, cellCounts, sortedIndices, trails)
+			// simulateBindGroupLayout1: 2 storage (speciesIds, metrics)
 			const requiredStorageBuffers = 10;
 			const adapterStorageLimit = adapter.limits.maxStorageBuffersPerShaderStage;
+
+			console.log(
+				`WebGPU: Adapter supports ${adapterStorageLimit} storage buffers, requesting ${requiredStorageBuffers}`
+			);
 
 			if (adapterStorageLimit < requiredStorageBuffers) {
 				console.warn(
 					`Adapter only supports ${adapterStorageLimit} storage buffers, but we need ${requiredStorageBuffers}. Metrics features may not work.`
 				);
 			}
+
+			// Request the maximum supported storage buffers (up to what we need)
+			const requestedLimit = Math.min(requiredStorageBuffers, adapterStorageLimit);
 
 			device = await adapter.requestDevice({
 				requiredFeatures: [],
@@ -137,9 +144,18 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 					maxBufferSize: adapter.limits.maxBufferSize,
 					maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
 					// Request higher storage buffer limit for multi-species support
-					maxStorageBuffersPerShaderStage: Math.min(requiredStorageBuffers, adapterStorageLimit)
+					maxStorageBuffersPerShaderStage: requestedLimit
 				}
 			});
+
+			// Verify the limit was applied
+			const actualLimit = device.limits.maxStorageBuffersPerShaderStage;
+			console.log(`WebGPU: Device created with ${actualLimit} storage buffers limit`);
+			if (actualLimit < requiredStorageBuffers) {
+				console.warn(
+					`Device limit (${actualLimit}) is less than required (${requiredStorageBuffers}). Some features may not work.`
+				);
+			}
 		} catch (e) {
 			console.error('Failed to request WebGPU device:', e);
 			initializationFailed = true;

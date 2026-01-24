@@ -39,6 +39,9 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    saturationSource: u32,  // What controls saturation
+    brightnessSource: u32,  // What controls brightness
+    spectralMode: u32,      // Which spectral mode to compute
 }
 
 // Color modes
@@ -54,6 +57,8 @@ const COLOR_LOCAL_DENSITY: u32 = 8u;
 const COLOR_ANISOTROPY: u32 = 9u;
 const COLOR_DIFFUSION: u32 = 10u;
 const COLOR_INFLUENCE: u32 = 11u;
+const COLOR_SPECTRAL_RADIAL: u32 = 12u;
+const COLOR_SPECTRAL_ASYMMETRY: u32 = 13u;
 
 // Get species color params from speciesParams buffer (5 vec4s per species)
 fn getSpeciesHue(speciesId: u32) -> f32 {
@@ -155,6 +160,29 @@ fn hslToRgb(h: f32, s: f32, l: f32) -> vec3<f32> {
     }
     
     return rgb + m;
+}
+
+// RGB to Hue extraction (returns hue in 0-1 range)
+fn rgbToHue(rgb: vec3<f32>) -> f32 {
+    let maxC = max(max(rgb.r, rgb.g), rgb.b);
+    let minC = min(min(rgb.r, rgb.g), rgb.b);
+    let delta = maxC - minC;
+    
+    if (delta < 0.001) {
+        return 0.0;  // Gray, no hue
+    }
+    
+    var h: f32;
+    if (maxC == rgb.r) {
+        h = (rgb.g - rgb.b) / delta;
+        if (rgb.g < rgb.b) { h += 6.0; }
+    } else if (maxC == rgb.g) {
+        h = 2.0 + (rgb.b - rgb.r) / delta;
+    } else {
+        h = 4.0 + (rgb.r - rgb.g) / delta;
+    }
+    
+    return h / 6.0;  // Normalize to 0-1
 }
 
 fn getColorFromSpectrum(t: f32, spectrum: u32) -> vec3<f32> {
@@ -520,109 +548,160 @@ fn vs_main(
             colorValue = getSpeciesHue(speciesId);
         }
         case COLOR_LOCAL_DENSITY: {
-            // Computed same-species neighbor density
+            // Computed same-species neighbor density with better scaling
             let m = metrics[boidIndex];
-            colorValue = clamp(log(1.0 + m.x * 0.5) / 3.0, 0.0, 1.0);
+            let density = m.x;
+            let scaled = sqrt(density) / 5.0;
+            colorValue = clamp(scaled, 0.0, 1.0);
         }
         case COLOR_ANISOTROPY: {
-            // Computed local structure - edges/filaments vs blobs
+            // Structure - direct value
             let m = metrics[boidIndex];
             colorValue = m.y;
         }
         case COLOR_DIFFUSION: {
-            // Smoothed feature from iterative diffusion
+            // Pure diffusion value
             let m = metrics[boidIndex];
             colorValue = m.z;
         }
         case COLOR_INFLUENCE: {
-            // PageRank-like influence measure
             let m = metrics[boidIndex];
-            colorValue = clamp(m.w * 0.5, 0.0, 1.0);
+            colorValue = fract(m.w);
+        }
+        case COLOR_SPECTRAL_RADIAL: {
+            let m = metrics[boidIndex];
+            colorValue = fract(m.w);
+        }
+        case COLOR_SPECTRAL_ASYMMETRY: {
+            let m = metrics[boidIndex];
+            colorValue = fract(m.w);
         }
         default: { 
             colorValue = 0.5; 
         }
     }
     
-    // Get the base color from spectrum
-    var baseColor: vec3<f32>;
-    var speciesAlphaFactor = 1.0;  // Per-species alpha mode contribution
-    
-    if (uniforms.colorMode == COLOR_NONE) {
-        baseColor = getColorFromSpectrum(0.5, uniforms.colorSpectrum);
-    } else if (uniforms.colorMode == COLOR_SPECIES) {
-        // For Species mode, use full HSL with species saturation and lightness
-        let speciesId = speciesIds[boidIndex];
-        let sat = getSpeciesSaturation(speciesId);
-        let light = getSpeciesLightness(speciesId);
-        baseColor = hslToRgb(colorValue, sat, light);
-        
-        // Calculate per-species alpha based on alpha mode
-        let alphaMode = getSpeciesAlphaMode(speciesId);
-        switch (alphaMode) {
-            case ALPHA_SOLID: {
-                speciesAlphaFactor = 1.0;
-            }
-            case ALPHA_DIRECTION: {
-                // Alpha based on direction
-                let dirAlpha = (angle + 3.14159265) / (2.0 * 3.14159265);
-                speciesAlphaFactor = 0.3 + dirAlpha * 0.7;
-            }
-            case ALPHA_SPEED: {
-                // Alpha based on speed - faster boids are more visible
-                let speedAlpha = clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
-                speciesAlphaFactor = 0.3 + speedAlpha * 0.7;
-            }
-            case ALPHA_TURNING: {
-                // Alpha based on angle sectors - creates banding effect
-                let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
-                let turnAlpha = abs(sin(angleNorm * 6.28318530));
-                speciesAlphaFactor = 0.3 + turnAlpha * 0.7;
-            }
-            case ALPHA_ACCELERATION: {
-                // Alpha based on speed ratio (proxy for acceleration state)
-                let accAlpha = clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
-                speciesAlphaFactor = 0.3 + (1.0 - accAlpha) * 0.7;
-            }
-            case ALPHA_DENSITY: {
-                // Alpha based on local same-species density - higher density = more visible
-                let m = metrics[boidIndex];
-                let normalizedDensity = clamp(log(1.0 + m.x * 0.5) / 3.0, 0.0, 1.0);
-                speciesAlphaFactor = 0.3 + normalizedDensity * 0.7;
-            }
-            case ALPHA_ANISOTROPY: {
-                // Alpha based on local structure - edges/filaments more visible than blobs
-                let m = metrics[boidIndex];
-                speciesAlphaFactor = 0.3 + m.y * 0.7;  // aniso is already [0,1]
-            }
-            case ALPHA_DIFFUSION: {
-                // Alpha based on smoothed diffusion feature
-                let m = metrics[boidIndex];
-                speciesAlphaFactor = 0.3 + m.z * 0.7;
-            }
-            case ALPHA_INFLUENCE: {
-                // Alpha based on PageRank-like influence
-                let m = metrics[boidIndex];
-                let normalized = clamp(m.w * 0.5, 0.0, 1.0);
-                speciesAlphaFactor = 0.3 + normalized * 0.7;
-            }
-            default: {
-                speciesAlphaFactor = 1.0;
-            }
-        }
+    // === SATURATION CALCULATION ===
+    var saturation = 1.0;
+    if (uniforms.saturationSource == COLOR_NONE) {
+        saturation = 1.0;
+    } else if (uniforms.saturationSource == COLOR_SPECIES) {
+        saturation = getSpeciesSaturation(speciesId);
     } else {
-        colorValue = pow(colorValue, 1.0 / uniforms.sensitivity);
-        baseColor = getColorFromSpectrum(colorValue, uniforms.colorSpectrum);
+        var satValue = 0.5;
+        switch (uniforms.saturationSource) {
+            case COLOR_SPEED: { satValue = clamp(speed / uniforms.maxSpeed, 0.0, 1.0); }
+            case COLOR_ORIENTATION: { satValue = (angle + 3.14159265) / (2.0 * 3.14159265); }
+            case COLOR_TURNING: {
+                let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
+                satValue = abs(sin(angleNorm * 6.28318530));
+            }
+            case COLOR_DENSITY: {
+                let posX = positions[boidIndex].x / uniforms.canvasWidth - 0.5;
+                let posY = positions[boidIndex].y / uniforms.canvasHeight - 0.5;
+                satValue = clamp(sqrt(posX * posX + posY * posY) * 1.414, 0.0, 1.0);
+            }
+            case COLOR_LOCAL_DENSITY: {
+                let m = metrics[boidIndex];
+                satValue = clamp(sqrt(m.x) / 5.0, 0.0, 1.0);
+            }
+            case COLOR_ANISOTROPY: {
+                let m = metrics[boidIndex];
+                satValue = m.y;
+            }
+            case COLOR_DIFFUSION: {
+                let m = metrics[boidIndex];
+                satValue = m.z;
+            }
+            case COLOR_INFLUENCE: {
+                let m = metrics[boidIndex];
+                satValue = fract(m.w);
+            }
+            case COLOR_SPECTRAL_RADIAL: {
+                let m = metrics[boidIndex];
+                satValue = fract(m.w);
+            }
+            case COLOR_SPECTRAL_ASYMMETRY: {
+                let m = metrics[boidIndex];
+                satValue = fract(m.w);
+            }
+            default: { satValue = 1.0; }
+        }
+        saturation = 0.2 + satValue * 0.8;
     }
     
-    // Fade to dark AND transparent as trail ages
-    // Head: bright & opaque, Tail: darker & semi-transparent
-    // Use linear fade for color (less aggressive than squared)
+    // === BRIGHTNESS CALCULATION ===
+    var brightness = 0.5;
+    if (uniforms.brightnessSource == COLOR_NONE) {
+        brightness = 0.5;
+    } else if (uniforms.brightnessSource == COLOR_SPECIES) {
+        brightness = getSpeciesLightness(speciesId);
+    } else {
+        var brightValue = 0.5;
+        switch (uniforms.brightnessSource) {
+            case COLOR_SPEED: { brightValue = clamp(speed / uniforms.maxSpeed, 0.0, 1.0); }
+            case COLOR_ORIENTATION: { brightValue = (angle + 3.14159265) / (2.0 * 3.14159265); }
+            case COLOR_TURNING: {
+                let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
+                brightValue = abs(sin(angleNorm * 6.28318530));
+            }
+            case COLOR_DENSITY: {
+                let posX = positions[boidIndex].x / uniforms.canvasWidth - 0.5;
+                let posY = positions[boidIndex].y / uniforms.canvasHeight - 0.5;
+                brightValue = clamp(sqrt(posX * posX + posY * posY) * 1.414, 0.0, 1.0);
+            }
+            case COLOR_LOCAL_DENSITY: {
+                let m = metrics[boidIndex];
+                brightValue = clamp(sqrt(m.x) / 5.0, 0.0, 1.0);
+            }
+            case COLOR_ANISOTROPY: {
+                let m = metrics[boidIndex];
+                brightValue = m.y;
+            }
+            case COLOR_DIFFUSION: {
+                let m = metrics[boidIndex];
+                brightValue = m.z;
+            }
+            case COLOR_INFLUENCE: {
+                let m = metrics[boidIndex];
+                brightValue = fract(m.w);
+            }
+            case COLOR_SPECTRAL_RADIAL: {
+                let m = metrics[boidIndex];
+                brightValue = fract(m.w);
+            }
+            case COLOR_SPECTRAL_ASYMMETRY: {
+                let m = metrics[boidIndex];
+                brightValue = fract(m.w);
+            }
+            default: { brightValue = 0.5; }
+        }
+        brightness = 0.25 + brightValue * 0.5;
+    }
+    
+    // === COLOR CALCULATION (HSL with dynamic S and L) ===
+    var baseColor: vec3<f32>;
+    var hue = colorValue;
+    if (uniforms.colorMode != COLOR_NONE && uniforms.colorMode != COLOR_SPECIES) {
+        hue = pow(colorValue, 1.0 / uniforms.sensitivity);
+    }
+    
+    if (uniforms.colorMode == COLOR_NONE) {
+        baseColor = hslToRgb(0.0, 0.0, brightness);
+    } else if (uniforms.colorMode == COLOR_SPECIES) {
+        baseColor = hslToRgb(hue, saturation, brightness);
+    } else {
+        let spectrumColor = getColorFromSpectrum(hue, uniforms.colorSpectrum);
+        let h = rgbToHue(spectrumColor);
+        baseColor = hslToRgb(h, saturation, brightness);
+    }
+    
+    // Fade to dark as trail ages (no alpha blending for better performance)
+    // Head: bright, Tail: darker
     let fadeFactor = 0.3 + alpha * 0.7;  // Range: 0.3 to 1.0 (not too dark at tail)
     output.color = baseColor * fadeFactor;
-    // Alpha fades with age for smooth trail effect, multiplied by species alpha mode
-    let baseAlpha = 0.6 + alpha * 0.4;  // Range: 0.6 to 1.0
-    output.alpha = baseAlpha * speciesAlphaFactor;
+    // Fully opaque - no alpha blending
+    output.alpha = 1.0;
     
     return output;
 }

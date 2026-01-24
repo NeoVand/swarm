@@ -241,7 +241,6 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let boidIndex = id.x;
     if (boidIndex >= uniforms.boidCount) { return; }
     
-    let mySpecies = speciesIds[boidIndex];
     let myPos = positions[boidIndex];
     let myFeat = featuresIn[boidIndex];
     let perception = uniforms.perception;
@@ -268,10 +267,6 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
                 
-                // Species filter - only same species
-                let otherSpecies = speciesIds[otherIdx];
-                if (otherSpecies != mySpecies) { continue; }
-                
                 let otherPos = positions[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
@@ -289,7 +284,7 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
     
-    // Diffuse: blend own value with neighbor average
+    // Pure diffusion: blend own value with neighbor average
     let alpha = 0.3;  // Diffusion rate
     var newFeat = myFeat;
     if (weightSum > 1e-6) {

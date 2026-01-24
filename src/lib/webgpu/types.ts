@@ -24,7 +24,9 @@ export enum ColorMode {
 	LocalDensity = 8, // Computed same-species neighbor density
 	Anisotropy = 9, // Computed local structure (edge vs blob)
 	Diffusion = 10, // Smoothed feature across neighbor graph
-	Influence = 11 // PageRank-like local centrality
+	Influence = 11, // Spectral Angular - direction from local center
+	SpectralRadial = 12, // Spectral Radial - distance from local center
+	SpectralAsymmetry = 13 // Spectral Asymmetry - boundary detection
 }
 
 export enum ColorSpectrum {
@@ -76,6 +78,12 @@ export enum WallTool {
 export enum WallBrushShape {
 	Solid = 0, // Filled circle
 	Ring = 1 // Hollow ring
+}
+
+export enum SpectralMode {
+	Angular = 0, // Angular position relative to local center (color wheel effect)
+	Radial = 1, // Distance from local center (edge vs core)
+	Asymmetry = 2 // Neighborhood asymmetry (boundary detection)
 }
 
 // ============================================================================
@@ -260,6 +268,10 @@ export interface SimulationParams {
 	diffusionIterations: number; // 1-3 iterations per frame
 	enableInfluence: boolean; // Toggle PageRank influence
 	influenceIterations: number; // 4-8 iterations per frame
+	spectralMode: SpectralMode; // Which spectral visualization to compute
+	// HSL control sources
+	saturationSource: ColorMode; // What controls saturation (Species uses per-species value)
+	brightnessSource: ColorMode; // What controls brightness/lightness (Species uses per-species value)
 }
 
 export interface CursorState {
@@ -413,7 +425,11 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	enableDiffusion: true,
 	diffusionIterations: 2,
 	enableInfluence: true,
-	influenceIterations: 6
+	influenceIterations: 6,
+	spectralMode: SpectralMode.Angular,
+	// HSL control defaults
+	saturationSource: ColorMode.None, // None = full saturation (100%)
+	brightnessSource: ColorMode.Turning  // Turning gives good visual dynamics
 };
 
 /**

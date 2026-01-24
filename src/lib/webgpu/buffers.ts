@@ -382,6 +382,11 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	f32View[offset++] = data.params.idealDensity;
 	// Simulation timing
 	f32View[offset++] = data.params.timeScale;
+	// HSL control sources
+	u32View[offset++] = data.params.saturationSource;
+	u32View[offset++] = data.params.brightnessSource;
+	// Spectral visualization mode
+	u32View[offset++] = data.params.spectralMode;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
 }

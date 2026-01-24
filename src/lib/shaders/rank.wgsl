@@ -1,5 +1,5 @@
-// PageRank-like influence shader - measures local centrality within the swarm
-// Boids with more connections and connections to important boids rank higher
+// Spectral structure shader - computes approximate Fiedler vector (2nd eigenvector of graph Laplacian)
+// Creates beautiful structural colorization that reveals graph partitions and clusters
 
 struct Uniforms {
     canvasWidth: f32,
@@ -40,7 +40,15 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    saturationSource: u32,
+    brightnessSource: u32,
+    spectralMode: u32,
 }
+
+// Spectral modes
+const SPECTRAL_ANGULAR: u32 = 0u;
+const SPECTRAL_RADIAL: u32 = 1u;
+const SPECTRAL_ASYMMETRY: u32 = 2u;
 
 // Boundary modes
 const PLANE: u32 = 0u;
@@ -206,28 +214,35 @@ fn shouldSearchCell(cx: i32, cy: i32) -> bool {
     return true;
 }
 
-// Initialize ranks with uniform value
+// Initialize with position-based angle
 @compute @workgroup_size(256)
 fn init_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let boidIndex = id.x;
     if (boidIndex >= uniforms.boidCount) { return; }
     
-    // Start with uniform rank
-    ranksOut[boidIndex] = 1.0;
+    let pos = positions[boidIndex];
+    let cx = pos.x / uniforms.canvasWidth - 0.5;
+    let cy = pos.y / uniforms.canvasHeight - 0.5;
+    ranksOut[boidIndex] = atan2(cy, cx) / 6.283185 + 0.5;
 }
 
-// PageRank iteration - rank flows from neighbors, normalized by their degree
+// Local cluster structure - computes various structural metrics relative to neighborhood
+// Mode 0 (Angular): Which direction from local center (color wheel effect)
+// Mode 1 (Radial): Distance from local center (edge vs core)
+// Mode 2 (Asymmetry): How lopsided is the neighborhood (boundary detection)
 @compute @workgroup_size(256)
 fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let boidIndex = id.x;
     if (boidIndex >= uniforms.boidCount) { return; }
     
-    let mySpecies = speciesIds[boidIndex];
     let myPos = positions[boidIndex];
     let perception = uniforms.perception;
     
-    var incomingRank: f32 = 0.0;
-    var connectionWeight: f32 = 0.0;
+    // Compute weighted center of mass and other statistics
+    var centerOfMass = vec2<f32>(0.0);
+    var totalWeight: f32 = 0.0;
+    var neighborCount: u32 = 0u;
+    var maxDist: f32 = 0.0;
     
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
@@ -235,22 +250,18 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Iterate over 3x3 cell neighborhood
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
-            let cx = myCellX + dx;
-            let cy = myCellY + dy;
+            let ncx = myCellX + dx;
+            let ncy = myCellY + dy;
             
-            if (!shouldSearchCell(cx, cy)) { continue; }
+            if (!shouldSearchCell(ncx, ncy)) { continue; }
             
-            let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
+            let cellIdx = getCellIndexWithFlip(ncx, ncy, myCellY);
             let cellStart = prefixSums[cellIdx];
             let cellCount = cellCounts[cellIdx];
             
             for (var i = 0u; i < cellCount && i < 64u; i++) {
                 let otherIdx = sortedIndices[cellStart + i];
                 if (otherIdx == boidIndex) { continue; }
-                
-                // Species filter - only same species
-                let otherSpecies = speciesIds[otherIdx];
-                if (otherSpecies != mySpecies) { continue; }
                 
                 let otherPos = positions[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
@@ -262,29 +273,90 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 let weight = smoothKernel(dist, perception);
                 
                 if (weight > 0.0) {
-                    // Use density as degree estimate for normalization
-                    let neighborDensity = metrics[otherIdx].x;
-                    let neighborRank = ranksIn[otherIdx];
-                    
-                    if (neighborDensity > 1e-6) {
-                        // Rank flows from neighbor, normalized by their degree
-                        incomingRank += neighborRank * weight / neighborDensity;
-                    }
-                    connectionWeight += weight;
+                    centerOfMass += otherPos * weight;
+                    totalWeight += weight;
+                    neighborCount++;
+                    maxDist = max(maxDist, dist);
                 }
             }
         }
     }
     
-    // PageRank formula with damping
-    let damping = 0.85;
-    let teleport = 1.0 - damping;  // Random teleport probability
+    var result: f32;
+    let prevVal = ranksIn[boidIndex];
     
-    // Final rank: teleport component + damped incoming rank
-    var newRank = teleport;
-    if (connectionWeight > 1e-6) {
-        newRank += damping * incomingRank;
+    // Smoothing factor - higher = more smoothing (less jitter but slower response)
+    let smoothing = 0.85;  // 85% previous, 15% new
+    
+    if (totalWeight > 1e-6 && neighborCount >= 3u) {
+        // Compute center of mass
+        centerOfMass /= totalWeight;
+        
+        // Vector from center of mass to this boid
+        let relativePos = myPos - centerOfMass;
+        let distFromCenter = length(relativePos);
+        
+        switch (uniforms.spectralMode) {
+            case SPECTRAL_ANGULAR: {
+                // Angular position relative to local center (0-1 range)
+                // Creates color wheel effect around cluster centers
+                let angle = atan2(relativePos.y, relativePos.x);
+                let newVal = angle / 6.283185 + 0.5;  // Map -π..π to 0..1
+                
+                // Circular smoothing: handle wrap-around properly
+                // Convert to vectors, average, convert back
+                let prevAngle = (prevVal - 0.5) * 6.283185;
+                let newAngle = angle;
+                let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
+                let newVec = vec2<f32>(cos(newAngle), sin(newAngle));
+                let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
+                let smoothedAngle = atan2(avgVec.y, avgVec.x);
+                result = smoothedAngle / 6.283185 + 0.5;
+            }
+            case SPECTRAL_RADIAL: {
+                // Distance from local center normalized by perception
+                // Edge boids = high, center boids = low
+                let normalizedDist = clamp(distFromCenter / (perception * 0.5), 0.0, 1.0);
+                result = smoothing * prevVal + (1.0 - smoothing) * normalizedDist;
+            }
+            case SPECTRAL_ASYMMETRY: {
+                // How far the center of mass is from us (neighborhood asymmetry)
+                // High = near boundary (neighbors mostly on one side)
+                // Low = in center (neighbors evenly distributed)
+                let asymmetry = clamp(distFromCenter / (perception * 0.3), 0.0, 1.0);
+                result = smoothing * prevVal + (1.0 - smoothing) * asymmetry;
+            }
+            default: {
+                result = prevVal;
+            }
+        }
+    } else {
+        // Isolated or sparse - use global position
+        let cx = myPos.x / uniforms.canvasWidth - 0.5;
+        let cy = myPos.y / uniforms.canvasHeight - 0.5;
+        
+        switch (uniforms.spectralMode) {
+            case SPECTRAL_ANGULAR: {
+                // Also use circular smoothing for isolated boids
+                let newAngle = atan2(cy, cx);
+                let prevAngle = (prevVal - 0.5) * 6.283185;
+                let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
+                let newVec = vec2<f32>(cos(newAngle), sin(newAngle));
+                let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
+                let smoothedAngle = atan2(avgVec.y, avgVec.x);
+                result = smoothedAngle / 6.283185 + 0.5;
+            }
+            case SPECTRAL_RADIAL: {
+                result = clamp(sqrt(cx * cx + cy * cy) * 2.0, 0.0, 1.0);
+            }
+            case SPECTRAL_ASYMMETRY: {
+                result = 0.5;  // Neutral for isolated boids
+            }
+            default: {
+                result = 0.5;
+            }
+        }
     }
     
-    ranksOut[boidIndex] = newRank;
+    ranksOut[boidIndex] = result;
 }

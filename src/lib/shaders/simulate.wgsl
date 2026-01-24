@@ -844,15 +844,12 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
             cohesionSum += neighborDelta * weight;
             totalWeight += weight;
             
-            // Metrics (same-species only)
-            let otherSpecies = speciesIds[otherIdx];
-            if (otherSpecies == speciesId) {
-                densitySum += weight;
-                metricWeight += weight;
-                cxx += weight * neighborDelta.x * neighborDelta.x;
-                cxy += weight * neighborDelta.x * neighborDelta.y;
-                cyy += weight * neighborDelta.y * neighborDelta.y;
-            }
+            // Metrics (all neighbors)
+            densitySum += weight;
+            metricWeight += weight;
+            cxx += weight * neighborDelta.x * neighborDelta.x;
+            cxy += weight * neighborDelta.x * neighborDelta.y;
+            cyy += weight * neighborDelta.y * neighborDelta.y;
         }
     }
     
@@ -963,15 +960,12 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                     
-                    // Metrics (same-species only)
-                    let otherSpecies = speciesIds[otherIdx];
-                    if (otherSpecies == speciesId) {
-                        densitySum += weight;
-                        metricWeight += weight;
-                        cxx += weight * delta.x * delta.x;
-                        cxy += weight * delta.x * delta.y;
-                        cyy += weight * delta.y * delta.y;
-                    }
+                    // Metrics (all neighbors)
+                    densitySum += weight;
+                    metricWeight += weight;
+                    cxx += weight * delta.x * delta.x;
+                    cxy += weight * delta.x * delta.y;
+                    cyy += weight * delta.y * delta.y;
                     
                     if (dist < separationRadius) {
                         separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
@@ -1089,15 +1083,12 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, species
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                     
-                    // Metrics (same-species only)
-                    let otherSpecies = speciesIds[otherIdx];
-                    if (otherSpecies == speciesId) {
-                        densitySum += weight;
-                        metricWeight += weight;
-                        cxx += weight * delta.x * delta.x;
-                        cxy += weight * delta.x * delta.y;
-                        cyy += weight * delta.y * delta.y;
-                    }
+                    // Metrics (all neighbors)
+                    densitySum += weight;
+                    metricWeight += weight;
+                    cxx += weight * delta.x * delta.x;
+                    cxy += weight * delta.x * delta.y;
+                    cyy += weight * delta.y * delta.y;
                 }
                 
                 if (dist < separationRadius) {
@@ -1217,15 +1208,12 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                     
-                    // Metrics (same-species only)
-                    let otherSpecies = speciesIds[otherIdx];
-                    if (otherSpecies == speciesId) {
-                        densitySum += weight;
-                        metricWeight += weight;
-                        cxx += weight * delta.x * delta.x;
-                        cxy += weight * delta.x * delta.y;
-                        cyy += weight * delta.y * delta.y;
-                    }
+                    // Metrics (all neighbors)
+                    densitySum += weight;
+                    metricWeight += weight;
+                    cxx += weight * delta.x * delta.x;
+                    cxy += weight * delta.x * delta.y;
+                    cyy += weight * delta.y * delta.y;
                 }
                 
                 if (dist < separationRadius) {
@@ -1281,15 +1269,12 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
             cohesionSum += delta * weight;
             totalWeight += weight;
             
-            // Metrics (same-species only)
-            let otherSpecies = speciesIds[otherIdx];
-            if (otherSpecies == speciesId) {
-                densitySum += weight;
-                metricWeight += weight;
-                cxx += weight * delta.x * delta.x;
-                cxy += weight * delta.x * delta.y;
-                cyy += weight * delta.y * delta.y;
-            }
+            // Metrics (all neighbors)
+            densitySum += weight;
+            metricWeight += weight;
+            cxx += weight * delta.x * delta.x;
+            cxy += weight * delta.x * delta.y;
+            cyy += weight * delta.y * delta.y;
         }
         
         if (dist < separationRadius && dist > 0.1) {
@@ -1411,15 +1396,12 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                     
-                    // Metrics (same-species only)
-                    let otherSpecies = speciesIds[otherIdx];
-                    if (otherSpecies == speciesId) {
-                        densitySum += weight;
-                        metricWeight += weight;
-                        cxx += weight * delta.x * delta.x;
-                        cxy += weight * delta.x * delta.y;
-                        cyy += weight * delta.y * delta.y;
-                    }
+                    // Metrics (all neighbors)
+                    densitySum += weight;
+                    metricWeight += weight;
+                    cxx += weight * delta.x * delta.x;
+                    cxy += weight * delta.x * delta.y;
+                    cyy += weight * delta.y * delta.y;
                 }
                 
                 if (dist < separationRadius) {

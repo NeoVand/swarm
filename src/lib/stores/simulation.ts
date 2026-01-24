@@ -20,6 +20,7 @@ import {
 	WallBrushShape,
 	HeadShape,
 	InteractionBehavior,
+	SpectralMode,
 	MAX_SPECIES,
 	WALL_TEXTURE_SCALE,
 	createDefaultSpecies
@@ -350,6 +351,14 @@ export function setColorMode(value: ColorMode): void {
 	params.update((p) => ({ ...p, colorMode: value }));
 }
 
+export function setSaturationSource(value: ColorMode): void {
+	params.update((p) => ({ ...p, saturationSource: value }));
+}
+
+export function setBrightnessSource(value: ColorMode): void {
+	params.update((p) => ({ ...p, brightnessSource: value }));
+}
+
 export function setColorSpectrum(value: ColorSpectrum): void {
 	params.update((p) => ({ ...p, colorSpectrum: value }));
 }
@@ -395,6 +404,10 @@ export function setEnableInfluence(value: boolean): void {
 
 export function setInfluenceIterations(value: number): void {
 	params.update((p) => ({ ...p, influenceIterations: value }));
+}
+
+export function setSpectralMode(value: SpectralMode): void {
+	params.update((p) => ({ ...p, spectralMode: value }));
 }
 
 export function setTimeScale(value: number): void {
@@ -699,6 +712,7 @@ export {
 	WallBrushShape,
 	HeadShape,
 	InteractionBehavior,
+	SpectralMode,
 	MAX_SPECIES,
 	DEFAULT_PARAMS,
 	createDefaultSpecies
