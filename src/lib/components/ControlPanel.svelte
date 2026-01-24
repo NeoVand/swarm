@@ -902,6 +902,160 @@
 		startTourAtStep(0);
 	}
 
+	// Show welcome card on first load (without opening panel)
+	let hasShownWelcome = $state(false);
+	
+	function showWelcomeOnLoad(): void {
+		// Small delay to let the app settle
+		setTimeout(() => {
+			const isTouch = isTouchDevice();
+			
+			const welcomeDriver = driver({
+				showProgress: false,
+				animate: true,
+				allowClose: true,
+				overlayColor: 'rgba(0, 0, 0, 0.5)', // Lighter overlay to show the simulation
+				popoverClass: 'tour-popover',
+				onPopoverRender: (popover) => {
+					// Add GitHub and keyboard shortcuts buttons
+					const footer = popover.footer;
+					if (footer) {
+						const prevBtn = popover.previousButton;
+						if (prevBtn) {
+							// Create GitHub link button
+							const githubLink = document.createElement('a');
+							githubLink.href = 'https://github.com/NeoVand/swarm';
+							githubLink.target = '_blank';
+							githubLink.rel = 'noopener noreferrer';
+							githubLink.className = 'driver-popover-prev-btn';
+							githubLink.style.cssText =
+								'display: flex; align-items: center; justify-content: center; padding: 8px !important; text-decoration: none;';
+							githubLink.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>`;
+							githubLink.title = 'Star on GitHub';
+
+							if (!isTouch) {
+								// On desktop, also add keyboard shortcuts button
+								const keyboardBtn = document.createElement('button');
+								keyboardBtn.className = 'driver-popover-prev-btn';
+								keyboardBtn.style.cssText =
+									'display: flex; align-items: center; justify-content: center; padding: 8px !important; cursor: pointer; border: none;';
+								keyboardBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>`;
+								keyboardBtn.title = 'View Keyboard Shortcuts';
+								keyboardBtn.onclick = () => {
+									welcomeDriver.destroy();
+									onFlaskInteraction();
+									isPanelOpen.set(true);
+									// Jump to keyboard shortcuts (last step in full tour)
+									setTimeout(() => {
+										startTour();
+										// Small delay then jump to last step
+										setTimeout(() => {
+											// This will be handled by the full tour
+										}, 100);
+									}, 300);
+								};
+
+								const btnContainer = document.createElement('div');
+								btnContainer.style.cssText = 'display: flex; gap: 6px;';
+								btnContainer.appendChild(githubLink);
+								btnContainer.appendChild(keyboardBtn);
+								prevBtn.replaceWith(btnContainer);
+							} else {
+								prevBtn.replaceWith(githubLink);
+							}
+						}
+					}
+				},
+				steps: [
+					{
+						popover: {
+							title: `<div style="display: flex; align-items: center; gap: 10px;">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" style="width: 28px; height: 28px;">
+									<defs><linearGradient id="fg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#22d3ee"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs>
+									<rect width="32" height="32" rx="6" fill="#0a0a0f"/>
+									<g fill="url(#fg)"><path d="M16 6 L20 14 L12 14 Z"/><path d="M8 14 L12 22 L4 22 Z" opacity="0.7"/><path d="M24 14 L28 22 L20 22 Z" opacity="0.7"/></g>
+								</svg>
+								<span>Welcome to Swarm</span>
+							</div>`,
+							description: `
+								<p style="margin-bottom: 12px; color: #a1a1aa;">Boids simulate flocking behavior using three simple rules, discovered by Craig Reynolds in 1986:</p>
+								<div style="display: flex; gap: 8px; margin-bottom: 12px;">
+									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
+										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
+											<polygon points="12,38 8,32 16,32" fill="#22d3ee" transform="rotate(-45, 12, 35)"/>
+											<polygon points="30,32 26,26 34,26" fill="#22d3ee" transform="rotate(-45, 30, 29)"/>
+											<polygon points="48,26 44,20 52,20" fill="#22d3ee" transform="rotate(-45, 48, 23)"/>
+										</svg>
+										<div style="font-size: 10px; font-weight: 600; color: #22d3ee;">ALIGNMENT</div>
+										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Match neighbors' direction</div>
+									</div>
+									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
+										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
+											<circle cx="30" cy="25" r="4" fill="#a78bfa" opacity="0.3"/>
+											<circle cx="30" cy="25" r="12" stroke="#a78bfa" stroke-width="1" fill="none" stroke-dasharray="3 2" opacity="0.4"/>
+											<polygon points="12,12 8,18 16,18" fill="#a78bfa" transform="rotate(135, 12, 15)"/>
+											<line x1="15" y1="18" x2="24" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+											<polygon points="48,12 44,18 52,18" fill="#a78bfa" transform="rotate(-135, 48, 15)"/>
+											<line x1="45" y1="18" x2="36" y2="23" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+											<polygon points="30,44 26,38 34,38" fill="#a78bfa" transform="rotate(180, 30, 41)"/>
+											<line x1="30" y1="38" x2="30" y2="30" stroke="#a78bfa" stroke-width="1" stroke-dasharray="2 2" opacity="0.5"/>
+										</svg>
+										<div style="font-size: 10px; font-weight: 600; color: #a78bfa;">COHESION</div>
+										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Move toward group center</div>
+									</div>
+									<div style="flex: 1; background: rgba(255,255,255,0.05); border-radius: 8px; padding: 10px; text-align: center;">
+										<svg viewBox="0 0 60 50" style="width: 100%; height: 40px; margin-bottom: 6px;">
+											<polygon points="30,25 26,31 34,31" fill="#fb7185"/>
+											<polygon points="14,14 10,20 18,20" fill="#fb7185" transform="rotate(-45, 14, 17)"/>
+											<line x1="18" y1="20" x2="24" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+											<polygon points="46,14 42,20 50,20" fill="#fb7185" transform="rotate(45, 46, 17)"/>
+											<line x1="42" y1="20" x2="36" y2="24" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+											<polygon points="30,44 26,38 34,38" fill="#fb7185" transform="rotate(0, 30, 41)"/>
+											<line x1="30" y1="38" x2="30" y2="33" stroke="#fb7185" stroke-width="1.5" opacity="0.4"/>
+										</svg>
+										<div style="font-size: 10px; font-weight: 600; color: #fb7185;">SEPARATION</div>
+										<div style="font-size: 9px; color: #71717a; margin-top: 2px;">Avoid crowding neighbors</div>
+									</div>
+								</div>
+								<p style="font-size: 11px; color: #71717a; text-align: center; margin-bottom: 8px;">These simple rules create complex, lifelike swarm behavior!</p>
+								<p style="font-size: 10px; color: #52525b; text-align: center; margin: 0;">
+									<span style="color: #22d3ee;">WebGPU</span>-powered simulation · Scales to 50,000+ boids
+								</p>
+								<p style="font-size: 9px; color: #3f3f46; text-align: center; margin-top: 6px;">
+									Developed by Neo Mohsenvand
+								</p>
+							`,
+							side: 'over',
+							align: 'center',
+							nextBtnText: 'Take a Tour →',
+							showButtons: ['next', 'close', 'previous'],
+							onNextClick: () => {
+								welcomeDriver.destroy();
+								// Stop flask auto-animation
+								onFlaskInteraction();
+								// Open panel and start full tour from step 1
+								isPanelOpen.set(true);
+								setTimeout(() => {
+									startTourAtStep(1);
+								}, 300);
+							}
+						}
+					}
+				]
+			});
+
+			welcomeDriver.drive();
+			hasShownWelcome = true;
+		}, 1000);
+	}
+
+	// Auto-show welcome on mount
+	$effect(() => {
+		if (!hasShownWelcome && typeof window !== 'undefined') {
+			showWelcomeOnLoad();
+		}
+	});
+
 	function startTourAtStep(startStep: number): void {
 		// Ensure panel is open before starting tour
 		if (!$isPanelOpen) {
