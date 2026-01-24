@@ -1389,14 +1389,15 @@
 							</svg>
 							<span>Color</span>
 						</div>`,
-						description: `<p>Control how boids are colorized:</p>
+						description: `<p>Control how boids are colorized using HSL:</p>
 							<ul>
-								<li><strong>Hue</strong> — What controls color (species, speed, turning, etc.)${kbd('C', isTouch)}</li>
-								<li><strong>Alpha</strong> — What controls transparency (turning, speed, etc.)</li>
+								<li><strong>Hue</strong> — What controls color (species, speed, spectral, flow, etc.)${kbd('C', isTouch)}</li>
+								<li><strong>Saturation</strong> — What controls color intensity</li>
+								<li><strong>Brightness</strong> — What controls lightness (flow divergence shows speed contrast)</li>
 								<li><strong>Palette</strong> — Color spectrum for non-species modes${kbd('P', isTouch)}</li>
-								<li><strong>Color</strong> — Per-species hue picker (in Species mode)</li>
+								<li><strong>Color</strong> — Per-species color picker (in Species mode)</li>
 							</ul>
-							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">Mix and match: color by speed while alpha varies by turning!</p>`,
+							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">Try spectral modes for topology or flow modes for dynamics!</p>`,
 						side: 'left',
 						align: 'start'
 					},
