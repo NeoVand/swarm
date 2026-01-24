@@ -59,6 +59,9 @@ const COLOR_DIFFUSION: u32 = 10u;
 const COLOR_INFLUENCE: u32 = 11u;
 const COLOR_SPECTRAL_RADIAL: u32 = 12u;
 const COLOR_SPECTRAL_ASYMMETRY: u32 = 13u;
+const COLOR_FLOW_ANGULAR: u32 = 14u;
+const COLOR_FLOW_RADIAL: u32 = 15u;
+const COLOR_FLOW_DIVERGENCE: u32 = 16u;
 
 // Get species color params from speciesParams buffer (5 vec4s per species)
 fn getSpeciesHue(speciesId: u32) -> f32 {
@@ -576,6 +579,18 @@ fn vs_main(
             let m = metrics[boidIndex];
             colorValue = fract(m.w);
         }
+        case COLOR_FLOW_ANGULAR: {
+            let m = metrics[boidIndex];
+            colorValue = fract(m.w);
+        }
+        case COLOR_FLOW_RADIAL: {
+            let m = metrics[boidIndex];
+            colorValue = fract(m.w);
+        }
+        case COLOR_FLOW_DIVERGENCE: {
+            let m = metrics[boidIndex];
+            colorValue = fract(m.w);
+        }
         default: { 
             colorValue = 0.5; 
         }
@@ -625,6 +640,18 @@ fn vs_main(
                 let m = metrics[boidIndex];
                 satValue = fract(m.w);
             }
+            case COLOR_FLOW_ANGULAR: {
+                let m = metrics[boidIndex];
+                satValue = fract(m.w);
+            }
+            case COLOR_FLOW_RADIAL: {
+                let m = metrics[boidIndex];
+                satValue = fract(m.w);
+            }
+            case COLOR_FLOW_DIVERGENCE: {
+                let m = metrics[boidIndex];
+                satValue = fract(m.w);
+            }
             default: { satValue = 1.0; }
         }
         saturation = 0.2 + satValue * 0.8;
@@ -671,6 +698,18 @@ fn vs_main(
                 brightValue = fract(m.w);
             }
             case COLOR_SPECTRAL_ASYMMETRY: {
+                let m = metrics[boidIndex];
+                brightValue = fract(m.w);
+            }
+            case COLOR_FLOW_ANGULAR: {
+                let m = metrics[boidIndex];
+                brightValue = fract(m.w);
+            }
+            case COLOR_FLOW_RADIAL: {
+                let m = metrics[boidIndex];
+                brightValue = fract(m.w);
+            }
+            case COLOR_FLOW_DIVERGENCE: {
                 let m = metrics[boidIndex];
                 brightValue = fract(m.w);
             }

@@ -584,6 +584,12 @@
 			setSpectralMode(SpectralMode.Radial);
 		} else if (mode === ColorMode.SpectralAsymmetry) {
 			setSpectralMode(SpectralMode.Asymmetry);
+		} else if (mode === ColorMode.FlowAngular) {
+			setSpectralMode(SpectralMode.FlowAngular);
+		} else if (mode === ColorMode.FlowRadial) {
+			setSpectralMode(SpectralMode.FlowRadial);
+		} else if (mode === ColorMode.FlowDivergence) {
+			setSpectralMode(SpectralMode.FlowDivergence);
 		}
 		colorizeDropdownOpen = false;
 	}
@@ -597,6 +603,12 @@
 			setSpectralMode(SpectralMode.Radial);
 		} else if (mode === ColorMode.SpectralAsymmetry) {
 			setSpectralMode(SpectralMode.Asymmetry);
+		} else if (mode === ColorMode.FlowAngular) {
+			setSpectralMode(SpectralMode.FlowAngular);
+		} else if (mode === ColorMode.FlowRadial) {
+			setSpectralMode(SpectralMode.FlowRadial);
+		} else if (mode === ColorMode.FlowDivergence) {
+			setSpectralMode(SpectralMode.FlowDivergence);
 		}
 		saturationDropdownOpen = false;
 	}
@@ -610,6 +622,12 @@
 			setSpectralMode(SpectralMode.Radial);
 		} else if (mode === ColorMode.SpectralAsymmetry) {
 			setSpectralMode(SpectralMode.Asymmetry);
+		} else if (mode === ColorMode.FlowAngular) {
+			setSpectralMode(SpectralMode.FlowAngular);
+		} else if (mode === ColorMode.FlowRadial) {
+			setSpectralMode(SpectralMode.FlowRadial);
+		} else if (mode === ColorMode.FlowDivergence) {
+			setSpectralMode(SpectralMode.FlowDivergence);
 		}
 		brightnessDropdownOpen = false;
 	}
@@ -1906,6 +1924,9 @@
 		{ value: ColorMode.Influence, label: 'Spectral Angular' },
 		{ value: ColorMode.SpectralRadial, label: 'Spectral Radial' },
 		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' },
+		{ value: ColorMode.FlowAngular, label: 'Flow Angular' },
+		{ value: ColorMode.FlowRadial, label: 'Flow Radial' },
+		{ value: ColorMode.FlowDivergence, label: 'Flow Divergence' },
 		{ value: ColorMode.None, label: 'None' }
 	];
 
@@ -1923,7 +1944,10 @@
 		{ value: ColorMode.Diffusion, label: 'Diffusion' },
 		{ value: ColorMode.Influence, label: 'Spectral Angular' },
 		{ value: ColorMode.SpectralRadial, label: 'Spectral Radial' },
-		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' }
+		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' },
+		{ value: ColorMode.FlowAngular, label: 'Flow Angular' },
+		{ value: ColorMode.FlowRadial, label: 'Flow Radial' },
+		{ value: ColorMode.FlowDivergence, label: 'Flow Divergence' }
 	];
 
 	// Brightness options (what controls lightness)
@@ -1940,7 +1964,10 @@
 		{ value: ColorMode.Diffusion, label: 'Diffusion' },
 		{ value: ColorMode.Influence, label: 'Spectral Angular' },
 		{ value: ColorMode.SpectralRadial, label: 'Spectral Radial' },
-		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' }
+		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' },
+		{ value: ColorMode.FlowAngular, label: 'Flow Angular' },
+		{ value: ColorMode.FlowRadial, label: 'Flow Radial' },
+		{ value: ColorMode.FlowDivergence, label: 'Flow Divergence' }
 	];
 
 
@@ -2609,11 +2636,20 @@
 									{:else if currentParams.colorMode === ColorMode.SpectralRadial}
 										<!-- Spectral Radial - concentric circles -->
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
-									{:else if currentParams.colorMode === ColorMode.SpectralAsymmetry}
-										<!-- Spectral Asymmetry - unbalanced -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
-									{/if}
-									<span class="flex-1 truncate"
+								{:else if currentParams.colorMode === ColorMode.SpectralAsymmetry}
+									<!-- Spectral Asymmetry - unbalanced -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+								{:else if currentParams.colorMode === ColorMode.FlowAngular}
+									<!-- Flow Angular - velocity direction wheel -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+								{:else if currentParams.colorMode === ColorMode.FlowRadial}
+									<!-- Flow Radial - expanding/contracting -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+								{:else if currentParams.colorMode === ColorMode.FlowDivergence}
+									<!-- Flow Divergence - alignment -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+								{/if}
+								<span class="flex-1 truncate"
 										>{colorOptions.find((o) => o.value === currentParams.colorMode)?.label}</span
 									>
 									<svg
@@ -2808,6 +2844,15 @@
 												{:else if opt.value === ColorMode.SpectralAsymmetry}
 													<!-- Spectral Asymmetry -->
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+												{:else if opt.value === ColorMode.FlowAngular}
+													<!-- Flow Angular -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+												{:else if opt.value === ColorMode.FlowRadial}
+													<!-- Flow Radial -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+												{:else if opt.value === ColorMode.FlowDivergence}
+													<!-- Flow Divergence -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
@@ -2850,10 +2895,16 @@
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
 									{:else if currentParams.saturationSource === ColorMode.SpectralRadial}
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
-									{:else if currentParams.saturationSource === ColorMode.SpectralAsymmetry}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
-									{/if}
-									<span class="flex-1 truncate">{saturationOptions.find((o) => o.value === currentParams.saturationSource)?.label ?? 'Full'}</span>
+								{:else if currentParams.saturationSource === ColorMode.SpectralAsymmetry}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+								{:else if currentParams.saturationSource === ColorMode.FlowAngular}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+								{:else if currentParams.saturationSource === ColorMode.FlowRadial}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+								{:else if currentParams.saturationSource === ColorMode.FlowDivergence}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+								{/if}
+								<span class="flex-1 truncate">{saturationOptions.find((o) => o.value === currentParams.saturationSource)?.label ?? 'Full'}</span>
 									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={saturationDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
 										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
 									</svg>
@@ -2888,6 +2939,12 @@
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
 												{:else if opt.value === ColorMode.SpectralAsymmetry}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+												{:else if opt.value === ColorMode.FlowAngular}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+												{:else if opt.value === ColorMode.FlowRadial}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+												{:else if opt.value === ColorMode.FlowDivergence}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
@@ -2930,10 +2987,16 @@
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
 									{:else if currentParams.brightnessSource === ColorMode.SpectralRadial}
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
-									{:else if currentParams.brightnessSource === ColorMode.SpectralAsymmetry}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
-									{/if}
-									<span class="flex-1 truncate">{brightnessOptions.find((o) => o.value === currentParams.brightnessSource)?.label ?? 'Default'}</span>
+								{:else if currentParams.brightnessSource === ColorMode.SpectralAsymmetry}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+								{:else if currentParams.brightnessSource === ColorMode.FlowAngular}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+								{:else if currentParams.brightnessSource === ColorMode.FlowRadial}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+								{:else if currentParams.brightnessSource === ColorMode.FlowDivergence}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+								{/if}
+								<span class="flex-1 truncate">{brightnessOptions.find((o) => o.value === currentParams.brightnessSource)?.label ?? 'Default'}</span>
 									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={brightnessDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
 										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
 									</svg>
@@ -2968,6 +3031,12 @@
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
 												{:else if opt.value === ColorMode.SpectralAsymmetry}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+												{:else if opt.value === ColorMode.FlowAngular}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+												{:else if opt.value === ColorMode.FlowRadial}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+												{:else if opt.value === ColorMode.FlowDivergence}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
 												{/if}
 												<span>{opt.label}</span>
 											</button>

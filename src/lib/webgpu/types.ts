@@ -26,7 +26,10 @@ export enum ColorMode {
 	Diffusion = 10, // Smoothed feature across neighbor graph
 	Influence = 11, // Spectral Angular - direction from local center
 	SpectralRadial = 12, // Spectral Radial - distance from local center
-	SpectralAsymmetry = 13 // Spectral Asymmetry - boundary detection
+	SpectralAsymmetry = 13, // Spectral Asymmetry - boundary detection
+	FlowAngular = 14, // Flow Angular - velocity vs local flow direction
+	FlowRadial = 15, // Flow Radial - moving toward/away from center
+	FlowDivergence = 16 // Flow Divergence - velocity alignment with neighbors
 }
 
 export enum ColorSpectrum {
@@ -83,7 +86,10 @@ export enum WallBrushShape {
 export enum SpectralMode {
 	Angular = 0, // Angular position relative to local center (color wheel effect)
 	Radial = 1, // Distance from local center (edge vs core)
-	Asymmetry = 2 // Neighborhood asymmetry (boundary detection)
+	Asymmetry = 2, // Neighborhood asymmetry (boundary detection)
+	FlowAngular = 3, // Velocity angle relative to local average flow
+	FlowRadial = 4, // Moving toward/away from cluster center
+	FlowDivergence = 5 // Velocity alignment with neighbors (coherence)
 }
 
 // ============================================================================
@@ -426,10 +432,10 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	diffusionIterations: 2,
 	enableInfluence: true,
 	influenceIterations: 6,
-	spectralMode: SpectralMode.Angular,
+	spectralMode: SpectralMode.FlowDivergence,
 	// HSL control defaults
 	saturationSource: ColorMode.None, // None = full saturation (100%)
-	brightnessSource: ColorMode.Turning  // Turning gives good visual dynamics
+	brightnessSource: ColorMode.FlowDivergence  // Turning gives good visual dynamics
 };
 
 /**

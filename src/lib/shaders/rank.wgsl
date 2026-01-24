@@ -49,6 +49,9 @@ struct Uniforms {
 const SPECTRAL_ANGULAR: u32 = 0u;
 const SPECTRAL_RADIAL: u32 = 1u;
 const SPECTRAL_ASYMMETRY: u32 = 2u;
+const SPECTRAL_FLOW_ANGULAR: u32 = 3u;
+const SPECTRAL_FLOW_RADIAL: u32 = 4u;
+const SPECTRAL_FLOW_DIVERGENCE: u32 = 5u;
 
 // Boundary modes
 const PLANE: u32 = 0u;
@@ -130,9 +133,10 @@ fn getBoundaryConfig() -> BoundaryConfig {
 // Bind group 0: Spatial hash and position data (read-only)
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
-@group(0) @binding(2) var<storage, read> prefixSums: array<u32>;
-@group(0) @binding(3) var<storage, read> cellCounts: array<u32>;
-@group(0) @binding(4) var<storage, read> sortedIndices: array<u32>;
+@group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> prefixSums: array<u32>;
+@group(0) @binding(4) var<storage, read> cellCounts: array<u32>;
+@group(0) @binding(5) var<storage, read> sortedIndices: array<u32>;
 
 // Bind group 1: Species and metrics (metrics.x = density used as degree estimate)
 @group(1) @binding(0) var<storage, read> speciesIds: array<u32>;
@@ -230,16 +234,22 @@ fn init_main(@builtin(global_invocation_id) id: vec3<u32>) {
 // Mode 0 (Angular): Which direction from local center (color wheel effect)
 // Mode 1 (Radial): Distance from local center (edge vs core)
 // Mode 2 (Asymmetry): How lopsided is the neighborhood (boundary detection)
+// Mode 3 (Flow Angular): Velocity angle relative to local average flow
+// Mode 4 (Flow Radial): Moving toward/away from cluster center
+// Mode 5 (Flow Divergence): Velocity alignment with neighbors
 @compute @workgroup_size(256)
 fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let boidIndex = id.x;
     if (boidIndex >= uniforms.boidCount) { return; }
     
     let myPos = positions[boidIndex];
+    let myVel = velocities[boidIndex];
+    let mySpeed = length(myVel);
     let perception = uniforms.perception;
     
-    // Compute weighted center of mass and other statistics
+    // Compute weighted center of mass, average velocity, and other statistics
     var centerOfMass = vec2<f32>(0.0);
+    var avgVelocity = vec2<f32>(0.0);
     var totalWeight: f32 = 0.0;
     var neighborCount: u32 = 0u;
     var maxDist: f32 = 0.0;
@@ -274,6 +284,7 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 
                 if (weight > 0.0) {
                     centerOfMass += otherPos * weight;
+                    avgVelocity += velocities[otherIdx] * weight;
                     totalWeight += weight;
                     neighborCount++;
                     maxDist = max(maxDist, dist);
@@ -289,55 +300,120 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let smoothing = 0.85;  // 85% previous, 15% new
     
     if (totalWeight > 1e-6 && neighborCount >= 3u) {
-        // Compute center of mass
+        // Compute center of mass and average velocity
         centerOfMass /= totalWeight;
+        avgVelocity /= totalWeight;
         
         // Vector from center of mass to this boid
         let relativePos = myPos - centerOfMass;
         let distFromCenter = length(relativePos);
         
+        // For flow modes
+        let avgFlowDir = normalize(avgVelocity + vec2<f32>(0.0001, 0.0001));
+        let myVelDir = normalize(myVel + vec2<f32>(0.0001, 0.0001));
+        
         switch (uniforms.spectralMode) {
             case SPECTRAL_ANGULAR: {
                 // Angular position relative to local center (0-1 range)
-                // Creates color wheel effect around cluster centers
                 let angle = atan2(relativePos.y, relativePos.x);
-                let newVal = angle / 6.283185 + 0.5;  // Map -π..π to 0..1
-                
-                // Circular smoothing: handle wrap-around properly
-                // Convert to vectors, average, convert back
+                // Circular smoothing
                 let prevAngle = (prevVal - 0.5) * 6.283185;
-                let newAngle = angle;
                 let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
-                let newVec = vec2<f32>(cos(newAngle), sin(newAngle));
+                let newVec = vec2<f32>(cos(angle), sin(angle));
                 let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
                 let smoothedAngle = atan2(avgVec.y, avgVec.x);
                 result = smoothedAngle / 6.283185 + 0.5;
             }
             case SPECTRAL_RADIAL: {
                 // Distance from local center normalized by perception
-                // Edge boids = high, center boids = low
                 let normalizedDist = clamp(distFromCenter / (perception * 0.5), 0.0, 1.0);
                 result = smoothing * prevVal + (1.0 - smoothing) * normalizedDist;
             }
             case SPECTRAL_ASYMMETRY: {
-                // How far the center of mass is from us (neighborhood asymmetry)
-                // High = near boundary (neighbors mostly on one side)
-                // Low = in center (neighbors evenly distributed)
+                // How far the center of mass is from us
                 let asymmetry = clamp(distFromCenter / (perception * 0.3), 0.0, 1.0);
                 result = smoothing * prevVal + (1.0 - smoothing) * asymmetry;
+            }
+            case SPECTRAL_FLOW_ANGULAR: {
+                // Angle of velocity relative to radial direction from center
+                // Shows tangential (circling) vs radial (expanding/contracting) motion
+                // Creates beautiful spiral/vortex patterns
+                if (distFromCenter > 0.001) {
+                    let radialDir = relativePos / distFromCenter;
+                    // Angle between velocity and radial direction
+                    let tangential = myVelDir.x * radialDir.y - myVelDir.y * radialDir.x;
+                    let radial = dot(myVelDir, radialDir);
+                    let flowAngle = atan2(tangential, radial);
+                    // Circular smoothing
+                    let prevAngle = (prevVal - 0.5) * 6.283185;
+                    let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
+                    let newVec = vec2<f32>(cos(flowAngle), sin(flowAngle));
+                    let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
+                    let smoothedAngle = atan2(avgVec.y, avgVec.x);
+                    result = smoothedAngle / 6.283185 + 0.5;
+                } else {
+                    // Near center - use velocity direction directly
+                    let velAngle = atan2(myVel.y, myVel.x);
+                    let prevAngle = (prevVal - 0.5) * 6.283185;
+                    let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
+                    let newVec = vec2<f32>(cos(velAngle), sin(velAngle));
+                    let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
+                    let smoothedAngle = atan2(avgVec.y, avgVec.x);
+                    result = smoothedAngle / 6.283185 + 0.5;
+                }
+            }
+            case SPECTRAL_FLOW_RADIAL: {
+                // Radial velocity: moving toward or away from local center
+                // Inverted for better visual intuition: toward center = high (warm), away = low (cool)
+                if (distFromCenter > 0.001) {
+                    let radialDir = relativePos / distFromCenter;
+                    let radialVel = dot(myVel, radialDir);
+                    // Invert: moving toward center (-radialVel) = high value
+                    // Scale by speed for better sensitivity
+                    let normalizedRadial = clamp(-radialVel / (uniforms.maxSpeed * 0.5), -1.0, 1.0);
+                    let newVal = normalizedRadial * 0.5 + 0.5;
+                    result = smoothing * prevVal + (1.0 - smoothing) * newVal;
+                } else {
+                    result = smoothing * prevVal + (1.0 - smoothing) * 0.5;
+                }
+            }
+            case SPECTRAL_FLOW_DIVERGENCE: {
+                // Speed contrast: my speed relative to local average speed
+                // More sensitive: cubed penalty for slow, steeper boost for fast
+                let avgSpeed = length(avgVelocity);
+                if (avgSpeed > 0.01) {
+                    let speedRatio = mySpeed / avgSpeed;
+                    var newVal: f32;
+                    if (speedRatio <= 1.0) {
+                        // Slower boids: cubed penalty toward 0 (very dark)
+                        // 0→0, 0.5→0.0625, 0.8→0.256, 1→0.5
+                        newVal = speedRatio * speedRatio * speedRatio * 0.5;
+                    } else {
+                        // Faster boids: steep boost, saturates at 1.5x speed
+                        // 1→0.5, 1.25→0.75, 1.5+→1.0
+                        let t = min(speedRatio, 1.5);
+                        newVal = 0.5 + (t - 1.0) * 1.0;
+                    }
+                    result = smoothing * prevVal + (1.0 - smoothing) * newVal;
+                } else if (mySpeed > 0.01) {
+                    // Neighbors slow but I'm moving - bright
+                    result = smoothing * prevVal + (1.0 - smoothing) * 1.0;
+                } else {
+                    // Both slow - dark
+                    result = smoothing * prevVal + (1.0 - smoothing) * 0.0;
+                }
             }
             default: {
                 result = prevVal;
             }
         }
     } else {
-        // Isolated or sparse - use global position
+        // Isolated or sparse - use global metrics
         let cx = myPos.x / uniforms.canvasWidth - 0.5;
         let cy = myPos.y / uniforms.canvasHeight - 0.5;
         
         switch (uniforms.spectralMode) {
             case SPECTRAL_ANGULAR: {
-                // Also use circular smoothing for isolated boids
                 let newAngle = atan2(cy, cx);
                 let prevAngle = (prevVal - 0.5) * 6.283185;
                 let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
@@ -350,7 +426,33 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 result = clamp(sqrt(cx * cx + cy * cy) * 2.0, 0.0, 1.0);
             }
             case SPECTRAL_ASYMMETRY: {
-                result = 0.5;  // Neutral for isolated boids
+                result = 0.5;
+            }
+            case SPECTRAL_FLOW_ANGULAR: {
+                // Velocity angle relative to position from canvas center
+                let posDir = normalize(vec2<f32>(cx, cy) + vec2<f32>(0.0001, 0.0001));
+                let tangential = myVel.x * posDir.y - myVel.y * posDir.x;
+                let radial = dot(myVel, posDir);
+                let flowAngle = atan2(tangential, radial);
+                let prevAngle = (prevVal - 0.5) * 6.283185;
+                let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
+                let newVec = vec2<f32>(cos(flowAngle), sin(flowAngle));
+                let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
+                let smoothedAngle = atan2(avgVec.y, avgVec.x);
+                result = smoothedAngle / 6.283185 + 0.5;
+            }
+            case SPECTRAL_FLOW_RADIAL: {
+                // Radial velocity relative to canvas center (inverted)
+                let posDir = normalize(vec2<f32>(cx, cy) + vec2<f32>(0.0001, 0.0001));
+                let radialVel = dot(myVel, posDir);
+                let normalizedRadial = clamp(-radialVel / (uniforms.maxSpeed * 0.5), -1.0, 1.0);
+                result = smoothing * prevVal + (1.0 - smoothing) * (normalizedRadial * 0.5 + 0.5);
+            }
+            case SPECTRAL_FLOW_DIVERGENCE: {
+                // Isolated boids: use speed relative to max, cubed for sensitivity
+                let speedRatio = mySpeed / uniforms.maxSpeed;
+                let newVal = speedRatio * speedRatio * speedRatio; // Cubed: more sensitive
+                result = smoothing * prevVal + (1.0 - smoothing) * clamp(newVal, 0.0, 1.0);
             }
             default: {
                 result = 0.5;

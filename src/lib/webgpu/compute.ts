@@ -300,7 +300,7 @@ export function createComputePipelines(
 	// === Diffusion Pipeline ===
 	const diffuseModule = device.createShaderModule({ code: diffuseShader });
 
-	// Bind group 0: Spatial hash data (read-only)
+	// Bind group 0: Spatial hash data (read-only) - for diffuse
 	const diffuseBindGroupLayout0 = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // uniforms
@@ -308,6 +308,18 @@ export function createComputePipelines(
 			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // prefixSums
 			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // cellCounts
 			{ binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } } // sortedIndices
+		]
+	});
+
+	// Bind group 0 for rank: includes velocities for dynamic spectral modes
+	const rankBindGroupLayout0 = device.createBindGroupLayout({
+		entries: [
+			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // uniforms
+			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // positions
+			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // velocities
+			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // prefixSums
+			{ binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // cellCounts
+			{ binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } } // sortedIndices
 		]
 	});
 
@@ -388,10 +400,10 @@ export function createComputePipelines(
 		]
 	});
 
-	// === Rank (PageRank) Pipeline ===
+	// === Rank (Spectral) Pipeline ===
 	const rankModule = device.createShaderModule({ code: rankShader });
 
-	// Rank uses same layout as diffuse for groups 0 and 1
+	// Rank uses its own layout for group 0 (includes velocities)
 	const rankBindGroupLayout2 = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // ranksIn
@@ -401,19 +413,44 @@ export function createComputePipelines(
 
 	const rankInitPipeline = device.createComputePipeline({
 		layout: device.createPipelineLayout({
-			bindGroupLayouts: [diffuseBindGroupLayout0, diffuseBindGroupLayout1, rankBindGroupLayout2]
+			bindGroupLayouts: [rankBindGroupLayout0, diffuseBindGroupLayout1, rankBindGroupLayout2]
 		}),
 		compute: { module: rankModule, entryPoint: 'init_main' }
 	});
 
 	const rankIterPipeline = device.createComputePipeline({
 		layout: device.createPipelineLayout({
-			bindGroupLayouts: [diffuseBindGroupLayout0, diffuseBindGroupLayout1, rankBindGroupLayout2]
+			bindGroupLayouts: [rankBindGroupLayout0, diffuseBindGroupLayout1, rankBindGroupLayout2]
 		}),
 		compute: { module: rankModule, entryPoint: 'iter_main' }
 	});
 
-	// Rank bind groups (reuse group 0 and 1 from diffuse)
+	// Rank bind group 0: with velocities
+	const rankBindGroup0A = device.createBindGroup({
+		layout: rankBindGroupLayout0,
+		entries: [
+			{ binding: 0, resource: { buffer: buffers.uniforms } },
+			{ binding: 1, resource: { buffer: buffers.positionA } },
+			{ binding: 2, resource: { buffer: buffers.velocityA } },
+			{ binding: 3, resource: { buffer: buffers.prefixSums } },
+			{ binding: 4, resource: { buffer: buffers.cellCounts } },
+			{ binding: 5, resource: { buffer: buffers.sortedIndices } }
+		]
+	});
+
+	const rankBindGroup0B = device.createBindGroup({
+		layout: rankBindGroupLayout0,
+		entries: [
+			{ binding: 0, resource: { buffer: buffers.uniforms } },
+			{ binding: 1, resource: { buffer: buffers.positionB } },
+			{ binding: 2, resource: { buffer: buffers.velocityB } },
+			{ binding: 3, resource: { buffer: buffers.prefixSums } },
+			{ binding: 4, resource: { buffer: buffers.cellCounts } },
+			{ binding: 5, resource: { buffer: buffers.sortedIndices } }
+		]
+	});
+
+	// Rank bind group 2: ping-pong buffers
 	const rankBindGroup2A = device.createBindGroup({
 		layout: rankBindGroupLayout2,
 		entries: [
@@ -487,8 +524,8 @@ export function createComputePipelines(
 			diffuse1: diffuseBindGroup1,
 			diffuse2A: diffuseBindGroup2A,
 			diffuse2B: diffuseBindGroup2B,
-			rank0A: diffuseBindGroup0A, // Reuse same bind groups
-			rank0B: diffuseBindGroup0B,
+			rank0A: rankBindGroup0A, // Separate bind groups with velocities
+			rank0B: rankBindGroup0B,
 			rank1: diffuseBindGroup1,
 			rank2A: rankBindGroup2A,
 			rank2B: rankBindGroup2B,
@@ -588,9 +625,12 @@ export function encodeComputePasses(
 
 	// Iterative metrics passes (after simulate, so density is available)
 	if (iterativeConfig) {
-		const posBindGroup0 = readFromA
+		// For diffuse: use diffuse bind groups (no velocities)
+		const diffuseBindGroup0 = readFromA
 			? resources.bindGroups.diffuse0B
 			: resources.bindGroups.diffuse0A;
+		// For rank: use rank bind groups (with velocities)
+		const rankBindGroup0 = readFromA ? resources.bindGroups.rank0B : resources.bindGroups.rank0A;
 
 		// Pass 6: Diffusion smoothing
 		if (iterativeConfig.enableDiffusion) {
@@ -599,7 +639,7 @@ export function encodeComputePasses(
 			if (iterativeConfig.needsDiffuseInit) {
 				const pass = encoder.beginComputePass();
 				pass.setPipeline(resources.pipelines.diffuseInit);
-				pass.setBindGroup(0, posBindGroup0);
+				pass.setBindGroup(0, diffuseBindGroup0);
 				pass.setBindGroup(1, resources.bindGroups.diffuse1);
 				pass.setBindGroup(2, resources.bindGroups.diffuse2B); // Write to A
 				pass.dispatchWorkgroups(boidWorkgroups);
@@ -619,7 +659,7 @@ export function encodeComputePasses(
 			for (let i = 0; i < diffuseIters; i++) {
 				const pass = encoder.beginComputePass();
 				pass.setPipeline(resources.pipelines.diffuseIter);
-				pass.setBindGroup(0, posBindGroup0);
+				pass.setBindGroup(0, diffuseBindGroup0);
 				pass.setBindGroup(1, resources.bindGroups.diffuse1);
 				pass.setBindGroup(
 					2,
@@ -630,13 +670,13 @@ export function encodeComputePasses(
 			}
 		}
 
-		// Pass 7: PageRank influence
+		// Pass 7: Spectral/Rank influence (uses velocities for flow modes)
 		if (iterativeConfig.enableInfluence) {
 			// Initialize if needed - use rank2B so it writes to buffer A
 			if (iterativeConfig.needsRankInit) {
 				const pass = encoder.beginComputePass();
 				pass.setPipeline(resources.pipelines.rankInit);
-				pass.setBindGroup(0, posBindGroup0);
+				pass.setBindGroup(0, rankBindGroup0);
 				pass.setBindGroup(1, resources.bindGroups.rank1);
 				pass.setBindGroup(2, resources.bindGroups.rank2B); // Write to A
 				pass.dispatchWorkgroups(boidWorkgroups);
@@ -653,7 +693,7 @@ export function encodeComputePasses(
 			for (let i = 0; i < rankIters; i++) {
 				const pass = encoder.beginComputePass();
 				pass.setPipeline(resources.pipelines.rankIter);
-				pass.setBindGroup(0, posBindGroup0);
+				pass.setBindGroup(0, rankBindGroup0);
 				pass.setBindGroup(1, resources.bindGroups.rank1);
 				pass.setBindGroup(
 					2,
