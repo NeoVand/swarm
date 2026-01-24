@@ -181,6 +181,66 @@
 	// Population preview (for live display while dragging slider)
 	let populationPreview = $state<number | null>(null);
 
+	// Panel dragging state
+	let panelPosition = $state<{ x: number; y: number } | null>(null); // null = default position
+	let isDragging = $state(false);
+	let dragOffset = $state({ x: 0, y: 0 });
+
+	function handleHeaderMouseDown(e: MouseEvent) {
+		// Only start drag on left mouse button
+		if (e.button !== 0) return;
+		
+		const panel = (e.currentTarget as HTMLElement).closest('.panel') as HTMLElement;
+		if (!panel) return;
+
+		const rect = panel.getBoundingClientRect();
+		
+		// Initialize position if not set
+		if (panelPosition === null) {
+			panelPosition = { x: rect.left, y: rect.top };
+		}
+		
+		isDragging = true;
+		dragOffset = {
+			x: e.clientX - panelPosition.x,
+			y: e.clientY - panelPosition.y
+		};
+
+		e.preventDefault();
+	}
+
+	function handleMouseMove(e: MouseEvent) {
+		if (!isDragging) return;
+		
+		const newX = e.clientX - dragOffset.x;
+		const newY = e.clientY - dragOffset.y;
+		
+		// Constrain to viewport
+		const maxX = window.innerWidth - 256; // panel width
+		const maxY = window.innerHeight - 100;
+		
+		panelPosition = {
+			x: Math.max(0, Math.min(newX, maxX)),
+			y: Math.max(0, Math.min(newY, maxY))
+		};
+	}
+
+	function handleMouseUp() {
+		isDragging = false;
+	}
+
+	// Set up global mouse listeners for dragging
+	$effect(() => {
+		if (isDragging) {
+			window.addEventListener('mousemove', handleMouseMove);
+			window.addEventListener('mouseup', handleMouseUp);
+			return () => {
+				window.removeEventListener('mousemove', handleMouseMove);
+				window.removeEventListener('mouseup', handleMouseUp);
+			};
+		}
+	});
+
 	// Remember last cursor response for toggle behavior (default to Repel)
 	let lastCursorResponse = $state<typeof CursorResponse.Attract | typeof CursorResponse.Repel>(
 		CursorResponse.Repel
@@ -1436,7 +1496,6 @@
 						onNextClick: () => {
 							// Close the control panel before showing keyboard shortcuts
 							isPanelOpen.set(false);
-							openSection = null;
 							// Small delay to let the panel close, then move to next step
 							setTimeout(() => {
 								driverObj.moveNext();
@@ -1808,11 +1867,18 @@
 {#if isOpen}
 	<!-- Panel (open state) -->
 	<div
-		class="panel fixed top-4 right-4 z-40 w-64 rounded-xl"
+		class="panel fixed z-40 w-64 rounded-xl"
+		class:dragging={isDragging}
+		style={panelPosition ? `left: ${panelPosition.x}px; top: ${panelPosition.y}px;` : 'top: 1rem; right: 1rem;'}
 		transition:scale={{ duration: 200, easing: cubicOut, start: 0.95, opacity: 0 }}
 	>
-		<!-- Header with logo and buttons -->
-		<div class="flex items-center justify-between px-3 py-2.5">
+		<!-- Header with logo and buttons (draggable) -->
+		<div 
+			class="panel-header flex items-center justify-between px-3 py-2.5"
+			onmousedown={handleHeaderMouseDown}
+			role="button"
+			tabindex="-1"
+		>
 			<div class="flex items-center gap-2">
 				<img src="{base}/favicon.svg" alt="Swarm" class="h-5 w-5" />
 				<span class="brand-title">Swarm</span>
@@ -3663,6 +3729,18 @@
 			0 8px 32px rgba(0, 0, 0, 0.6),
 			0 2px 4px rgba(0, 0, 0, 0.3),
 			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+	}
+
+	.panel.dragging {
+		user-select: none;
+	}
+
+	.panel-header {
+		cursor: grab;
+	}
+
+	.panel-header:active {
+		cursor: grabbing;
 	}
 
 	.content-scroll {

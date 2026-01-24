@@ -188,7 +188,7 @@ export function createDefaultSpecies(id: number, population: number): Species {
 		population,
 		// Per-species visual parameters
 		size: 1.5, // Default boid size
-		trailLength: 30, // Default trail length
+		trailLength: 20, // Default trail length
 		// Flocking parameters
 		alignment: 1.3,
 		cohesion: 0.6,
@@ -371,7 +371,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	cursorForce: 0.5,
 	cursorRadius: 50,
 	boidSize: 1.5,
-	trailLength: 30,
+	trailLength: 20,
 	colorMode: ColorMode.Species,
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
