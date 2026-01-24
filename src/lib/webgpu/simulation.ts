@@ -131,9 +131,11 @@ export function createSimulation(
 		// and per-species trail lengths vary
 		trailHead = (trailHead + 1) % MAX_TRAIL_LENGTH;
 
+		// Calculate actual max trail length from species for efficient rendering
+		const maxSpeciesTrailLength = Math.max(...params.species.map((s) => s.trailLength), 1);
+
 		// Update uniform buffer
-		// Use MAX_TRAIL_LENGTH for trailLength so shader instance calculations work
-		// for all per-species trail lengths (actual per-species lengths are in speciesParams)
+		// Use maxSpeciesTrailLength so shader instance calculations match render instance count
 		updateUniforms(device, buffers.uniforms, {
 			canvasWidth,
 			canvasHeight,
@@ -141,7 +143,7 @@ export function createSimulation(
 			gridWidth: gridInfo.gridWidth,
 			gridHeight: gridInfo.gridHeight,
 			boidCount: params.population,
-			trailLength: MAX_TRAIL_LENGTH,
+			trailLength: maxSpeciesTrailLength,
 			trailHead,
 			params,
 			cursor,
@@ -163,14 +165,13 @@ export function createSimulation(
 		);
 
 		// Encode render pass
-		// Use MAX_TRAIL_LENGTH for trail segments - per-species lengths handled in shader
 		const textureView = context.getCurrentTexture().createView();
 		encodeRenderPass(
 			encoder,
 			textureView,
 			renderResources,
 			params.population,
-			MAX_TRAIL_LENGTH,
+			maxSpeciesTrailLength,
 			readFromA
 		);
 
