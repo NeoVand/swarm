@@ -1723,13 +1723,12 @@
 	}
 
 	const colorOptions = [
-		{ value: ColorMode.Orientation, label: 'Direction' },
-		{ value: ColorMode.Speed, label: 'Speed' },
 		{ value: ColorMode.Species, label: 'Species' },
-		{ value: ColorMode.Neighbors, label: 'Neighbors' },
 		{ value: ColorMode.Density, label: 'Position' },
-		{ value: ColorMode.Acceleration, label: 'Acceleration' },
 		{ value: ColorMode.Turning, label: 'Turning' },
+		{ value: ColorMode.Speed, label: 'Speed' },
+		{ value: ColorMode.Orientation, label: 'Direction' },
+		{ value: ColorMode.Neighbors, label: 'Neighbors' },
 		{ value: ColorMode.None, label: 'None' }
 	];
 
