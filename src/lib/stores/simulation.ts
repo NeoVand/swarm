@@ -389,15 +389,7 @@ export function setIdealDensity(value: number): void {
 	params.update((p) => ({ ...p, idealDensity: value }));
 }
 
-// Iterative metrics parameters
-export function setEnableDiffusion(value: boolean): void {
-	params.update((p) => ({ ...p, enableDiffusion: value }));
-}
-
-export function setDiffusionIterations(value: number): void {
-	params.update((p) => ({ ...p, diffusionIterations: value }));
-}
-
+// Spectral/Flow metrics parameters
 export function setEnableInfluence(value: boolean): void {
 	params.update((p) => ({ ...p, enableInfluence: value }));
 }

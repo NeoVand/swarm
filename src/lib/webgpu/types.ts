@@ -23,7 +23,7 @@ export enum ColorMode {
 	Species = 7,
 	LocalDensity = 8, // Computed same-species neighbor density
 	Anisotropy = 9, // Computed local structure (edge vs blob)
-	Diffusion = 10, // Smoothed feature across neighbor graph
+	Diffusion = 10, // [DEPRECATED - not used]
 	Influence = 11, // Spectral Angular - direction from local center
 	SpectralRadial = 12, // Spectral Radial - distance from local center
 	SpectralAsymmetry = 13, // Spectral Asymmetry - boundary detection
@@ -269,10 +269,8 @@ export interface SimulationParams {
 	// Multi-species
 	species: Species[]; // Array of species definitions
 	activeSpeciesId: number; // Currently selected species in UI
-	// Iterative metrics algorithms
-	enableDiffusion: boolean; // Toggle diffusion smoothing
-	diffusionIterations: number; // 1-3 iterations per frame
-	enableInfluence: boolean; // Toggle PageRank influence
+	// Spectral/Flow metrics algorithm
+	enableInfluence: boolean; // Toggle spectral/flow computation
 	influenceIterations: number; // 4-8 iterations per frame
 	spectralMode: SpectralMode; // Which spectral visualization to compute
 	// HSL control sources
@@ -427,9 +425,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	// Multi-species defaults: Start with three species, all avoiding each other
 	species: [createDefaultSpecies1(4500), createDefaultSpecies2(1000), createDefaultSpecies3(500)],
 	activeSpeciesId: 0,
-	// Iterative metrics defaults
-	enableDiffusion: true,
-	diffusionIterations: 2,
+	// Spectral/Flow metrics defaults
 	enableInfluence: true,
 	influenceIterations: 6,
 	spectralMode: SpectralMode.FlowDivergence,

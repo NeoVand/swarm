@@ -107,10 +107,8 @@ export function createSimulation(
 	let fpsFrames = 0;
 	let fpsTime = 0;
 
-	// Iterative metrics state
-	let needsDiffuseInit = true;
+	// Spectral/Flow metrics state
 	let needsRankInit = true;
-	let lastDiffuseEnabled = params.enableDiffusion;
 	let lastInfluenceEnabled = params.enableInfluence;
 
 	function frame(time: number): void {
@@ -166,30 +164,20 @@ export function createSimulation(
 		// Create command encoder
 		const encoder = device.createCommandEncoder();
 
-		// Check if iterative metrics need reinitialization
-		if (params.enableDiffusion && !lastDiffuseEnabled) {
-			needsDiffuseInit = true;
-		}
+		// Check if spectral/flow metrics need reinitialization
 		if (params.enableInfluence && !lastInfluenceEnabled) {
 			needsRankInit = true;
 		}
-		lastDiffuseEnabled = params.enableDiffusion;
 		lastInfluenceEnabled = params.enableInfluence;
 
 		// Prepare iterative metrics config
 		const iterativeConfig: IterativeMetricsConfig = {
-			enableDiffusion: params.enableDiffusion,
-			diffusionIterations: params.diffusionIterations,
 			enableInfluence: params.enableInfluence,
 			influenceIterations: params.influenceIterations,
-			needsDiffuseInit,
 			needsRankInit
 		};
 
-		// Clear init flags after first use
-		if (needsDiffuseInit && params.enableDiffusion) {
-			needsDiffuseInit = false;
-		}
+		// Clear init flag after first use
 		if (needsRankInit && params.enableInfluence) {
 			needsRankInit = false;
 		}
@@ -341,8 +329,7 @@ export function createSimulation(
 		frameCount = 0;
 		trailHead = 0;
 
-		// Reset iterative metrics init flags - new buffers need initialization
-		needsDiffuseInit = true;
+		// Reset spectral/flow metrics init flag - new buffers need initialization
 		needsRankInit = true;
 
 		if (wasRunning) {
@@ -369,8 +356,7 @@ export function createSimulation(
 		frameCount = 0;
 		trailHead = 0;
 
-		// Reset iterative metrics init flags - new positions need reinitialization
-		needsDiffuseInit = true;
+		// Reset spectral/flow metrics init flag - new positions need reinitialization
 		needsRankInit = true;
 	}
 

@@ -37,8 +37,6 @@
 		setKNeighbors,
 		setSampleCount,
 		setIdealDensity,
-		setEnableDiffusion,
-		setDiffusionIterations,
 		setEnableInfluence,
 		setInfluenceIterations,
 		setSpectralMode,
@@ -728,7 +726,6 @@
 			ColorMode.Species,
 			ColorMode.LocalDensity,
 			ColorMode.Anisotropy,
-			ColorMode.Diffusion,
 			ColorMode.Influence,
 			ColorMode.SpectralRadial,
 			ColorMode.SpectralAsymmetry
@@ -1921,7 +1918,6 @@
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
 		{ value: ColorMode.LocalDensity, label: 'Local Density' },
 		{ value: ColorMode.Anisotropy, label: 'Structure' },
-		{ value: ColorMode.Diffusion, label: 'Diffusion' },
 		{ value: ColorMode.Influence, label: 'Spectral Angular' },
 		{ value: ColorMode.SpectralRadial, label: 'Spectral Radial' },
 		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' },
@@ -1942,7 +1938,6 @@
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
 		{ value: ColorMode.LocalDensity, label: 'Local Density' },
 		{ value: ColorMode.Anisotropy, label: 'Structure' },
-		{ value: ColorMode.Diffusion, label: 'Diffusion' },
 		{ value: ColorMode.Influence, label: 'Spectral Angular' },
 		{ value: ColorMode.SpectralRadial, label: 'Spectral Radial' },
 		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' },
@@ -1962,7 +1957,6 @@
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
 		{ value: ColorMode.LocalDensity, label: 'Local Density' },
 		{ value: ColorMode.Anisotropy, label: 'Structure' },
-		{ value: ColorMode.Diffusion, label: 'Diffusion' },
 		{ value: ColorMode.Influence, label: 'Spectral Angular' },
 		{ value: ColorMode.SpectralRadial, label: 'Spectral Radial' },
 		{ value: ColorMode.SpectralAsymmetry, label: 'Spectral Asymmetry' },
@@ -2617,20 +2611,6 @@
 												d="M21 17v2a2 2 0 0 1-2 2h-2"
 											/><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg
 										>
-									{:else if currentParams.colorMode === ColorMode.Diffusion}
-										<!-- Lucide: waves (diffusion) -->
-										<svg
-											class="colorize-icon"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" /><path
-												d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"
-											/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" /></svg
-										>
 									{:else if currentParams.colorMode === ColorMode.Influence}
 										<!-- Spectral Angular - circle with angle -->
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
@@ -2822,20 +2802,6 @@
 															d="M21 17v2a2 2 0 0 1-2 2h-2"
 														/><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg
 													>
-												{:else if opt.value === ColorMode.Diffusion}
-													<!-- Lucide: waves (diffusion) -->
-													<svg
-														class="colorize-icon"
-														viewBox="0 0 24 24"
-														fill="none"
-														stroke="currentColor"
-														stroke-width="2"
-														stroke-linecap="round"
-														stroke-linejoin="round"
-														><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" /><path
-															d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"
-														/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1" /></svg
-													>
 												{:else if opt.value === ColorMode.Influence}
 													<!-- Spectral Angular -->
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
@@ -2890,8 +2856,6 @@
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
 									{:else if currentParams.saturationSource === ColorMode.Anisotropy}
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
-									{:else if currentParams.saturationSource === ColorMode.Diffusion}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
 									{:else if currentParams.saturationSource === ColorMode.Influence}
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
 									{:else if currentParams.saturationSource === ColorMode.SpectralRadial}
@@ -2932,8 +2896,6 @@
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
 												{:else if opt.value === ColorMode.Anisotropy}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
-												{:else if opt.value === ColorMode.Diffusion}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
 												{:else if opt.value === ColorMode.Influence}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
 												{:else if opt.value === ColorMode.SpectralRadial}
@@ -2982,8 +2944,6 @@
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
 									{:else if currentParams.brightnessSource === ColorMode.Anisotropy}
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
-									{:else if currentParams.brightnessSource === ColorMode.Diffusion}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
 									{:else if currentParams.brightnessSource === ColorMode.Influence}
 										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
 									{:else if currentParams.brightnessSource === ColorMode.SpectralRadial}
@@ -3024,8 +2984,6 @@
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
 												{:else if opt.value === ColorMode.Anisotropy}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
-												{:else if opt.value === ColorMode.Diffusion}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
 												{:else if opt.value === ColorMode.Influence}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
 												{:else if opt.value === ColorMode.SpectralRadial}
@@ -4233,58 +4191,6 @@
 								<span class="value">{currentParams.idealDensity.toFixed(1)}</span>
 							</div>
 						{/if}
-						<!-- Iterative Metrics Settings -->
-						<div class="row" style="margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));">
-							<span class="label" style="font-weight: 600;">Metrics</span>
-						</div>
-						<div class="row">
-							<label class="checkbox-row">
-								<input
-									type="checkbox"
-									checked={currentParams.enableDiffusion}
-									onchange={(e) => setEnableDiffusion(e.currentTarget.checked)}
-								/>
-								<span>Diffusion</span>
-							</label>
-							{#if currentParams.enableDiffusion}
-								<input
-									type="range"
-									min="1"
-									max="3"
-									step="1"
-									value={currentParams.diffusionIterations}
-									oninput={(e) => setDiffusionIterations(parseInt(e.currentTarget.value))}
-									class="slider"
-									style="width: 60px;"
-									aria-label="Diffusion Iterations"
-								/>
-								<span class="value">{currentParams.diffusionIterations}</span>
-							{/if}
-						</div>
-						<div class="row">
-							<label class="checkbox-row">
-								<input
-									type="checkbox"
-									checked={currentParams.enableInfluence}
-									onchange={(e) => setEnableInfluence(e.currentTarget.checked)}
-								/>
-								<span>Influence</span>
-							</label>
-							{#if currentParams.enableInfluence}
-								<input
-									type="range"
-									min="4"
-									max="8"
-									step="1"
-									value={currentParams.influenceIterations}
-									oninput={(e) => setInfluenceIterations(parseInt(e.currentTarget.value))}
-									class="slider"
-									style="width: 60px;"
-									aria-label="Spectral Iterations"
-								/>
-								<span class="value">{currentParams.influenceIterations}</span>
-							{/if}
-						</div>
 					</div>
 				{/if}
 			</div>

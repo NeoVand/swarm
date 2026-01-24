@@ -536,11 +536,8 @@ export function createComputePipelines(
 }
 
 export interface IterativeMetricsConfig {
-	enableDiffusion: boolean;
-	diffusionIterations: number;
 	enableInfluence: boolean;
 	influenceIterations: number;
-	needsDiffuseInit: boolean;
 	needsRankInit: boolean;
 }
 
@@ -625,52 +622,10 @@ export function encodeComputePasses(
 
 	// Iterative metrics passes (after simulate, so density is available)
 	if (iterativeConfig) {
-		// For diffuse: use diffuse bind groups (no velocities)
-		const diffuseBindGroup0 = readFromA
-			? resources.bindGroups.diffuse0B
-			: resources.bindGroups.diffuse0A;
 		// For rank: use rank bind groups (with velocities)
 		const rankBindGroup0 = readFromA ? resources.bindGroups.rank0B : resources.bindGroups.rank0A;
 
-		// Pass 6: Diffusion smoothing
-		if (iterativeConfig.enableDiffusion) {
-			// Initialize if needed - use diffuse2B so it writes to buffer A
-			// This ensures iteration 0 (which reads from A) gets initialized data
-			if (iterativeConfig.needsDiffuseInit) {
-				const pass = encoder.beginComputePass();
-				pass.setPipeline(resources.pipelines.diffuseInit);
-				pass.setBindGroup(0, diffuseBindGroup0);
-				pass.setBindGroup(1, resources.bindGroups.diffuse1);
-				pass.setBindGroup(2, resources.bindGroups.diffuse2B); // Write to A
-				pass.dispatchWorkgroups(boidWorkgroups);
-				pass.end();
-			}
-
-			// Ensure even iteration count so final result ends up in buffer A
-			// (writeMetrics reads from buffer A)
-			const diffuseIters =
-				iterativeConfig.diffusionIterations % 2 === 0
-					? iterativeConfig.diffusionIterations
-					: iterativeConfig.diffusionIterations + 1;
-
-			// Run iterations with ping-pong
-			// Iter 0: reads A, writes B (diffuse2A)
-			// Iter 1: reads B, writes A (diffuse2B)
-			for (let i = 0; i < diffuseIters; i++) {
-				const pass = encoder.beginComputePass();
-				pass.setPipeline(resources.pipelines.diffuseIter);
-				pass.setBindGroup(0, diffuseBindGroup0);
-				pass.setBindGroup(1, resources.bindGroups.diffuse1);
-				pass.setBindGroup(
-					2,
-					i % 2 === 0 ? resources.bindGroups.diffuse2A : resources.bindGroups.diffuse2B
-				);
-				pass.dispatchWorkgroups(boidWorkgroups);
-				pass.end();
-			}
-		}
-
-		// Pass 7: Spectral/Rank influence (uses velocities for flow modes)
+		// Pass 6: Spectral/Flow influence (uses velocities for flow modes)
 		if (iterativeConfig.enableInfluence) {
 			// Initialize if needed - use rank2B so it writes to buffer A
 			if (iterativeConfig.needsRankInit) {
@@ -704,8 +659,8 @@ export function encodeComputePasses(
 			}
 		}
 
-		// Pass 8: Write final values to metrics.zw
-		if (iterativeConfig.enableDiffusion || iterativeConfig.enableInfluence) {
+		// Pass 7: Write final values to metrics.w
+		if (iterativeConfig.enableInfluence) {
 			const pass = encoder.beginComputePass();
 			pass.setPipeline(resources.pipelines.writeMetrics);
 			pass.setBindGroup(0, resources.bindGroups.writeMetrics);
