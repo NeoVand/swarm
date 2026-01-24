@@ -380,6 +380,23 @@ export function setIdealDensity(value: number): void {
 	params.update((p) => ({ ...p, idealDensity: value }));
 }
 
+// Iterative metrics parameters
+export function setEnableDiffusion(value: boolean): void {
+	params.update((p) => ({ ...p, enableDiffusion: value }));
+}
+
+export function setDiffusionIterations(value: number): void {
+	params.update((p) => ({ ...p, diffusionIterations: value }));
+}
+
+export function setEnableInfluence(value: boolean): void {
+	params.update((p) => ({ ...p, enableInfluence: value }));
+}
+
+export function setInfluenceIterations(value: number): void {
+	params.update((p) => ({ ...p, influenceIterations: value }));
+}
+
 export function setTimeScale(value: number): void {
 	params.update((p) => ({ ...p, timeScale: value }));
 }

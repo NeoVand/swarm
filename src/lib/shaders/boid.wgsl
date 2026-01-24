@@ -52,6 +52,8 @@ const COLOR_DENSITY: u32 = 6u;
 const COLOR_SPECIES: u32 = 7u;
 const COLOR_LOCAL_DENSITY: u32 = 8u;
 const COLOR_ANISOTROPY: u32 = 9u;
+const COLOR_DIFFUSION: u32 = 10u;
+const COLOR_INFLUENCE: u32 = 11u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -126,6 +128,8 @@ const ALPHA_TURNING: u32 = 3u;
 const ALPHA_ACCELERATION: u32 = 4u;
 const ALPHA_DENSITY: u32 = 5u;
 const ALPHA_ANISOTROPY: u32 = 6u;
+const ALPHA_DIFFUSION: u32 = 7u;
+const ALPHA_INFLUENCE: u32 = 8u;
 
 // Get species parameter by index (0-19)
 // vec4[0]: [alignment, cohesion, separation, perception]
@@ -607,6 +611,16 @@ fn vs_main(
             let m = metrics[boidIndex];
             colorValue = m.y;  // Already in [0,1]
         }
+        case COLOR_DIFFUSION: {
+            // Smoothed feature from iterative diffusion
+            let m = metrics[boidIndex];
+            colorValue = m.z;  // Already in [0,1]
+        }
+        case COLOR_INFLUENCE: {
+            // PageRank-like influence measure
+            let m = metrics[boidIndex];
+            colorValue = clamp(m.w * 0.5, 0.0, 1.0);  // Normalize for visualization
+        }
         default: {
             colorValue = 0.5;
         }
@@ -662,6 +676,17 @@ fn vs_main(
                 // Alpha based on local structure - edges/filaments more visible than blobs
                 let m = metrics[boidIndex];
                 alpha = 0.3 + m.y * 0.7;  // aniso is already [0,1]
+            }
+            case ALPHA_DIFFUSION: {
+                // Alpha based on smoothed diffusion feature
+                let m = metrics[boidIndex];
+                alpha = 0.3 + m.z * 0.7;  // diffusion is already [0,1]
+            }
+            case ALPHA_INFLUENCE: {
+                // Alpha based on PageRank-like influence
+                let m = metrics[boidIndex];
+                let normalized = clamp(m.w * 0.5, 0.0, 1.0);
+                alpha = 0.3 + normalized * 0.7;
             }
             default: {
                 alpha = 1.0;

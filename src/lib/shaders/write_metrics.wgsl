@@ -1,0 +1,63 @@
+// Write final iterative metric values to the metrics buffer
+// Copies diffusion value to metrics.z and influence value to metrics.w
+
+struct Uniforms {
+    canvasWidth: f32,
+    canvasHeight: f32,
+    cellSize: f32,
+    gridWidth: u32,
+    gridHeight: u32,
+    boidCount: u32,
+    trailLength: u32,
+    trailHead: u32,
+    alignment: f32,
+    cohesion: f32,
+    separation: f32,
+    perception: f32,
+    maxSpeed: f32,
+    maxForce: f32,
+    noise: f32,
+    rebels: f32,
+    boundaryMode: u32,
+    cursorMode: u32,
+    cursorShape: u32,
+    cursorVortex: u32,
+    cursorForce: f32,
+    cursorRadius: f32,
+    cursorX: f32,
+    cursorY: f32,
+    cursorPressed: u32,
+    cursorActive: u32,
+    boidSize: f32,
+    colorMode: u32,
+    colorSpectrum: u32,
+    sensitivity: f32,
+    deltaTime: f32,
+    time: f32,
+    frameCount: u32,
+    algorithmMode: u32,
+    kNeighbors: u32,
+    sampleCount: u32,
+    idealDensity: f32,
+    timeScale: f32,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> diffuseValues: array<f32>;
+@group(0) @binding(2) var<storage, read> rankValues: array<f32>;
+@group(0) @binding(3) var<storage, read_write> metrics: array<vec4<f32>>;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    let boidIndex = id.x;
+    if (boidIndex >= uniforms.boidCount) { return; }
+    
+    // Read current metrics (density, anisotropy in x, y)
+    var m = metrics[boidIndex];
+    
+    // Write diffusion to z, influence to w
+    m.z = diffuseValues[boidIndex];
+    m.w = rankValues[boidIndex];
+    
+    metrics[boidIndex] = m;
+}

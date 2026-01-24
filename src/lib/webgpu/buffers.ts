@@ -137,10 +137,30 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
-	// Metrics buffer: vec4<f32> per boid [density, anisotropy, reserved, reserved]
+	// Metrics buffer: vec4<f32> per boid [density, anisotropy, diffusion, influence]
 	// Used for species-specific structure visualization
 	const metrics = device.createBuffer({
 		size: boidCount * 4 * 4, // vec4<f32> per boid = 16 bytes
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+
+	// Diffusion feature ping-pong buffers (f32 per boid)
+	const diffuseA = device.createBuffer({
+		size: boidCount * 4, // f32 per boid
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+	const diffuseB = device.createBuffer({
+		size: boidCount * 4,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+
+	// PageRank influence ping-pong buffers (f32 per boid)
+	const rankA = device.createBuffer({
+		size: boidCount * 4, // f32 per boid
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+	const rankB = device.createBuffer({
+		size: boidCount * 4,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
@@ -163,7 +183,11 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		speciesIds,
 		speciesParams,
 		interactionMatrix,
-		metrics
+		metrics,
+		diffuseA,
+		diffuseB,
+		rankA,
+		rankB
 	};
 }
 
@@ -186,6 +210,10 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.speciesParams.destroy();
 	buffers.interactionMatrix.destroy();
 	buffers.metrics.destroy();
+	buffers.diffuseA.destroy();
+	buffers.diffuseB.destroy();
+	buffers.rankA.destroy();
+	buffers.rankB.destroy();
 }
 
 export function initializeBoids(

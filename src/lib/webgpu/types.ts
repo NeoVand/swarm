@@ -22,7 +22,9 @@ export enum ColorMode {
 	Density = 6, // Position-based (birth color)
 	Species = 7,
 	LocalDensity = 8, // Computed same-species neighbor density
-	Anisotropy = 9 // Computed local structure (edge vs blob)
+	Anisotropy = 9, // Computed local structure (edge vs blob)
+	Diffusion = 10, // Smoothed feature across neighbor graph
+	Influence = 11 // PageRank-like local centrality
 }
 
 export enum ColorSpectrum {
@@ -41,7 +43,9 @@ export enum AlphaMode {
 	Turning = 3, // Alpha based on turning rate
 	Acceleration = 4, // Alpha based on acceleration
 	Density = 5, // Alpha based on local same-species density
-	Anisotropy = 6 // Alpha based on local structure (edge vs interior)
+	Anisotropy = 6, // Alpha based on local structure (edge vs interior)
+	Diffusion = 7, // Alpha based on smoothed feature value
+	Influence = 8 // Alpha based on PageRank-like influence
 }
 
 export enum CursorMode {
@@ -251,6 +255,11 @@ export interface SimulationParams {
 	// Multi-species
 	species: Species[]; // Array of species definitions
 	activeSpeciesId: number; // Currently selected species in UI
+	// Iterative metrics algorithms
+	enableDiffusion: boolean; // Toggle diffusion smoothing
+	diffusionIterations: number; // 1-3 iterations per frame
+	enableInfluence: boolean; // Toggle PageRank influence
+	influenceIterations: number; // 4-8 iterations per frame
 }
 
 export interface CursorState {
@@ -288,7 +297,12 @@ export interface SimulationBuffers {
 	speciesParams: GPUBuffer; // Per-species flocking parameters (alignment, cohesion, etc.)
 	interactionMatrix: GPUBuffer; // MAX_SPECIES × MAX_SPECIES interaction rules
 	// Metrics buffer for visualization
-	metrics: GPUBuffer; // vec4<f32> per boid [density, anisotropy, reserved, reserved]
+	metrics: GPUBuffer; // vec4<f32> per boid [density, anisotropy, diffusion, influence]
+	// Iterative algorithm ping-pong buffers
+	diffuseA: GPUBuffer; // f32 per boid - diffusion feature value (read)
+	diffuseB: GPUBuffer; // f32 per boid - diffusion feature value (write)
+	rankA: GPUBuffer; // f32 per boid - PageRank influence value (read)
+	rankB: GPUBuffer; // f32 per boid - PageRank influence value (write)
 }
 
 export interface ComputePipelines {
@@ -394,7 +408,12 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	wallBrushShape: WallBrushShape.Solid, // Default brush shape
 	// Multi-species defaults: Start with three species, all avoiding each other
 	species: [createDefaultSpecies1(4500), createDefaultSpecies2(1000), createDefaultSpecies3(500)],
-	activeSpeciesId: 0
+	activeSpeciesId: 0,
+	// Iterative metrics defaults
+	enableDiffusion: true,
+	diffusionIterations: 2,
+	enableInfluence: true,
+	influenceIterations: 6
 };
 
 /**

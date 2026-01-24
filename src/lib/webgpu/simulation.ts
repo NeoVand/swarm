@@ -16,7 +16,12 @@ import {
 	MAX_TRAIL_LENGTH,
 	type BufferConfig
 } from './buffers';
-import { createComputePipelines, encodeComputePasses, type ComputeResources } from './compute';
+import {
+	createComputePipelines,
+	encodeComputePasses,
+	type ComputeResources,
+	type IterativeMetricsConfig
+} from './compute';
 import {
 	createRenderPipelines,
 	encodeRenderPass,
@@ -102,6 +107,12 @@ export function createSimulation(
 	let fpsFrames = 0;
 	let fpsTime = 0;
 
+	// Iterative metrics state
+	let needsDiffuseInit = true;
+	let needsRankInit = true;
+	let lastDiffuseEnabled = params.enableDiffusion;
+	let lastInfluenceEnabled = params.enableInfluence;
+
 	function frame(time: number): void {
 		if (!running) return;
 
@@ -155,13 +166,42 @@ export function createSimulation(
 		// Create command encoder
 		const encoder = device.createCommandEncoder();
 
+		// Check if iterative metrics need reinitialization
+		if (params.enableDiffusion && !lastDiffuseEnabled) {
+			needsDiffuseInit = true;
+		}
+		if (params.enableInfluence && !lastInfluenceEnabled) {
+			needsRankInit = true;
+		}
+		lastDiffuseEnabled = params.enableDiffusion;
+		lastInfluenceEnabled = params.enableInfluence;
+
+		// Prepare iterative metrics config
+		const iterativeConfig: IterativeMetricsConfig = {
+			enableDiffusion: params.enableDiffusion,
+			diffusionIterations: params.diffusionIterations,
+			enableInfluence: params.enableInfluence,
+			influenceIterations: params.influenceIterations,
+			needsDiffuseInit,
+			needsRankInit
+		};
+
+		// Clear init flags after first use
+		if (needsDiffuseInit && params.enableDiffusion) {
+			needsDiffuseInit = false;
+		}
+		if (needsRankInit && params.enableInfluence) {
+			needsRankInit = false;
+		}
+
 		// Encode compute passes
 		encodeComputePasses(
 			encoder,
 			computeResources,
 			params.population,
 			gridInfo.gridWidth * gridInfo.gridHeight,
-			readFromA
+			readFromA,
+			iterativeConfig
 		);
 
 		// Encode render pass
@@ -301,6 +341,10 @@ export function createSimulation(
 		frameCount = 0;
 		trailHead = 0;
 
+		// Reset iterative metrics init flags - new buffers need initialization
+		needsDiffuseInit = true;
+		needsRankInit = true;
+
 		if (wasRunning) {
 			start();
 		}
@@ -324,6 +368,10 @@ export function createSimulation(
 		readFromA = true;
 		frameCount = 0;
 		trailHead = 0;
+
+		// Reset iterative metrics init flags - new positions need reinitialization
+		needsDiffuseInit = true;
+		needsRankInit = true;
 	}
 
 	function doUpdateWalls(): void {
