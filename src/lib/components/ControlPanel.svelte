@@ -79,6 +79,63 @@
 	let canvas = $derived($canvasElement);
 	let currentWallTool = $derived($wallTool);
 
+	// Flask icon auto-animation state
+	let flaskHasBeenTouched = $state(false);
+	let flaskAutoAnimate = $state(false);
+	let flaskAnimationInterval: ReturnType<typeof setInterval> | null = null;
+	let flaskInitialTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	// Helper to trigger the flask animation
+	function triggerFlaskAnimation() {
+		if (!flaskHasBeenTouched && !isOpen) {
+			flaskAutoAnimate = true;
+			// Reset after animation completes (0.6s)
+			setTimeout(() => {
+				flaskAutoAnimate = false;
+			}, 600);
+		}
+	}
+
+	// Start auto-animation interval on mount
+	$effect(() => {
+		if (!flaskHasBeenTouched && !isOpen) {
+			// Clear any existing timers
+			if (flaskAnimationInterval) clearInterval(flaskAnimationInterval);
+			if (flaskInitialTimeout) clearTimeout(flaskInitialTimeout);
+			
+			// Play animation 2 seconds after app loads
+			flaskInitialTimeout = setTimeout(() => {
+				triggerFlaskAnimation();
+			}, 2000);
+			
+			// Then set up 30-second interval
+			flaskAnimationInterval = setInterval(() => {
+				triggerFlaskAnimation();
+			}, 30000);
+		}
+		
+		// Cleanup on destroy or when touched
+		return () => {
+			if (flaskAnimationInterval) {
+				clearInterval(flaskAnimationInterval);
+				flaskAnimationInterval = null;
+			}
+			if (flaskInitialTimeout) {
+				clearTimeout(flaskInitialTimeout);
+				flaskInitialTimeout = null;
+			}
+		};
+	});
+
+	// Stop auto-animation when user interacts
+	function onFlaskInteraction() {
+		flaskHasBeenTouched = true;
+		if (flaskAnimationInterval) {
+			clearInterval(flaskAnimationInterval);
+			flaskAnimationInterval = null;
+		}
+	}
+
 	// Helper function to generate SVG path for boid shape (for quick species selector)
 	function getQuickBoidPath(shape: HeadShape, cx: number, cy: number, size: number): string {
 		const s = size;
@@ -1547,9 +1604,10 @@
 	);
 </script>
 
-<!-- Floating button (gear or recording indicator when closed) -->
+<!-- Floating button (flask or recording indicator when closed) -->
 <button
-	onclick={togglePanel}
+	onclick={() => { onFlaskInteraction(); togglePanel(); }}
+	onmouseenter={onFlaskInteraction}
 	class="gear-btn fixed top-4 right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full transition-all"
 	class:gear-hidden={isOpen}
 	class:recording-btn={recording && !isOpen}
@@ -1559,18 +1617,28 @@
 		<!-- Recording indicator (red pulsing dot) -->
 		<div class="recording-dot"></div>
 	{:else}
-		<!-- Gear icon -->
+		<!-- Conical flask (Erlenmeyer) icon -->
 		<svg
 			xmlns="http://www.w3.org/2000/svg"
-			viewBox="0 0 20 20"
-			fill="currentColor"
-			class="h-4 w-4 text-zinc-400 hover:text-zinc-200"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="1.5"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			class="flask-icon h-5 w-5 text-zinc-400"
+			class:flask-auto-animate={flaskAutoAnimate}
 		>
-			<path
-				fill-rule="evenodd"
-				d="M7.84 1.804A1 1 0 018.82 1h2.36a1 1 0 01.98.804l.331 1.652a6.993 6.993 0 011.929 1.115l1.598-.54a1 1 0 011.186.447l1.18 2.044a1 1 0 01-.205 1.251l-1.267 1.113a7.047 7.047 0 010 2.228l1.267 1.113a1 1 0 01.206 1.25l-1.18 2.045a1 1 0 01-1.187.447l-1.598-.54a6.993 6.993 0 01-1.929 1.115l-.33 1.652a1 1 0 01-.98.804H8.82a1 1 0 01-.98-.804l-.331-1.652a6.993 6.993 0 01-1.929-1.115l-1.598.54a1 1 0 01-1.186-.447l-1.18-2.044a1 1 0 01.205-1.251l1.267-1.114a7.05 7.05 0 010-2.227L1.821 7.773a1 1 0 01-.206-1.25l1.18-2.045a1 1 0 011.187-.447l1.598.54A6.993 6.993 0 017.51 3.456l.33-1.652zM10 13a3 3 0 100-6 3 3 0 000 6z"
-				clip-rule="evenodd"
+			<!-- Liquid fill (bottom portion of flask) -->
+			<path 
+				class="flask-liquid"
+				d="M7 15 L5.5 19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2L17 15Z" 
+				fill="rgba(161, 161, 170, 0.3)"
+				stroke="none"
 			/>
+			<!-- Flask outline -->
+			<path d="M10 2v6.185a1 1 0 0 1-.316.733L4.2 14.1A2 2 0 0 0 3.5 15.6V19a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-3.4a2 2 0 0 0-.7-1.5l-5.484-5.182A1 1 0 0 1 14 8.185V2" />
+			<path d="M8.5 2h7" />
 		</svg>
 	{/if}
 </button>
@@ -3485,6 +3553,35 @@
 	}
 	.gear-btn.recording-btn:hover {
 		background: rgba(185, 28, 28, 0.95);
+	}
+
+	/* Flask icon tilt animation on hover */
+	.flask-icon {
+		transition: transform 0.3s ease, color 0.2s ease;
+		transform-origin: 50% 85%; /* Pivot near the bottom of the flask */
+	}
+
+	.flask-liquid {
+		transition: fill 0.3s ease;
+	}
+
+	.gear-btn:hover .flask-icon,
+	.flask-icon.flask-auto-animate {
+		color: #e4e4e7;
+		animation: flask-tilt 0.6s ease-in-out;
+	}
+
+	.gear-btn:hover .flask-liquid,
+	.flask-auto-animate .flask-liquid {
+		fill: rgba(34, 211, 238, 0.75); /* Bright cyan blue */
+	}
+
+	@keyframes flask-tilt {
+		0% { transform: rotate(0deg); }
+		25% { transform: rotate(-12deg); }
+		50% { transform: rotate(8deg); }
+		75% { transform: rotate(-4deg); }
+		100% { transform: rotate(0deg); }
 	}
 
 	.recording-dot {
