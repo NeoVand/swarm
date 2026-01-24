@@ -198,13 +198,17 @@ const IM_BEHAVIOR: u32 = 0u;
 const IM_STRENGTH: u32 = 1u;
 const IM_RANGE: u32 = 2u;
 
-// Interaction behaviors
+// Interaction behaviors (must match InteractionBehavior enum in types.ts)
 const BEHAVIOR_IGNORE: u32 = 0u;
-const BEHAVIOR_AVOID: u32 = 1u;
-const BEHAVIOR_PURSUE: u32 = 2u;
-const BEHAVIOR_ATTRACT: u32 = 3u;
-const BEHAVIOR_MIRROR: u32 = 4u;
-const BEHAVIOR_ORBIT: u32 = 5u;
+const BEHAVIOR_FLEE: u32 = 1u;      // Strong escape response - prey behavior
+const BEHAVIOR_CHASE: u32 = 2u;     // Predatory pursuit with prediction
+const BEHAVIOR_COHERE: u32 = 3u;    // Gentle attraction + partial alignment (mutualistic)
+const BEHAVIOR_ALIGN: u32 = 4u;     // Pure velocity matching - information transfer
+const BEHAVIOR_ORBIT: u32 = 5u;     // Circular motion - territorial/escort
+const BEHAVIOR_FOLLOW: u32 = 6u;    // Trail behind - leader-follower
+const BEHAVIOR_GUARD: u32 = 7u;     // Maintain optimal distance - protective
+const BEHAVIOR_DISPERSE: u32 = 8u;  // Explosive scatter - confusion effect
+const BEHAVIOR_MOB: u32 = 9u;       // Aggressive swarming - counter-attack
 
 // Get species parameter by index (0-15)
 // 4 vec4s per species: 
@@ -1292,17 +1296,28 @@ fn calculateInterSpeciesForce(
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
     
-    // Per-behavior accumulators
-    var avoidSum = vec2<f32>(0.0);
-    var avoidCount = 0u;
-    var pursueSum = vec2<f32>(0.0);
-    var pursueCount = 0u;
-    var attractSum = vec2<f32>(0.0);
-    var attractWeight = 0.0;
-    var mirrorSum = vec2<f32>(0.0);
-    var mirrorWeight = 0.0;
+    // Per-behavior accumulators for all 10 behaviors
+    var fleeSum = vec2<f32>(0.0);
+    var fleeCount = 0u;
+    var chaseSum = vec2<f32>(0.0);
+    var chasePredictSum = vec2<f32>(0.0);  // For predicted position
+    var chaseCount = 0u;
+    var cohereSum = vec2<f32>(0.0);
+    var cohereVelSum = vec2<f32>(0.0);
+    var cohereWeight = 0.0;
+    var alignSum = vec2<f32>(0.0);
+    var alignWeight = 0.0;
     var orbitSum = vec2<f32>(0.0);
     var orbitCount = 0u;
+    var followSum = vec2<f32>(0.0);
+    var followCount = 0u;
+    var guardSum = vec2<f32>(0.0);
+    var guardCount = 0u;
+    var disperseSum = vec2<f32>(0.0);
+    var disperseCount = 0u;
+    var mobSum = vec2<f32>(0.0);
+    var mobOrbitSum = vec2<f32>(0.0);
+    var mobCount = 0u;
     
     // Search neighbors in 3x3 grid
     for (var dy = -1i; dy <= 1i; dy++) {
@@ -1334,6 +1349,7 @@ fn calculateInterSpeciesForce(
                 if (range < 1.0) { range = getSpeciesPerception(mySpecies); }
                 
                 let otherPos = positionsIn[otherIdx];
+                let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 let rangeSq = range * range;
@@ -1345,33 +1361,86 @@ fn calculateInterSpeciesForce(
                 let dir = delta / dist;
                 
                 switch (behavior) {
-                    case BEHAVIOR_AVOID: {
-                        // Flee: force away from other species
-                        let avoidWeight = separationKernel(dist, range) * strength;
-                        avoidSum -= dir * avoidWeight;
-                        avoidCount++;
+                    case BEHAVIOR_FLEE: {
+                        // Strong escape response - prey behavior
+                        // Uses stronger close-range kernel for urgent escape
+                        let fleeWeight = separationKernel(dist, range) * strength;
+                        fleeSum -= dir * fleeWeight;
+                        fleeCount++;
                     }
-                    case BEHAVIOR_PURSUE: {
-                        // Hunt: force toward other species
-                        pursueSum += delta * weight * strength;
-                        pursueCount++;
+                    case BEHAVIOR_CHASE: {
+                        // Predatory pursuit - target predicted future position
+                        let prediction = otherPos + otherVel * 0.5;  // Predict 0.5s ahead
+                        let predictDelta = getNeighborDelta(myPos, prediction);
+                        chaseSum += delta * weight * strength;
+                        chasePredictSum += predictDelta * weight * strength;
+                        chaseCount++;
                     }
-                    case BEHAVIOR_ATTRACT: {
-                        // Gentle attraction
-                        attractSum += delta * weight * strength;
-                        attractWeight += weight;
+                    case BEHAVIOR_COHERE: {
+                        // Mutualistic flocking - attraction + partial alignment
+                        cohereSum += delta * weight * strength;
+                        cohereVelSum += otherVel * weight * strength * 0.5;  // Partial alignment
+                        cohereWeight += weight;
                     }
-                    case BEHAVIOR_MIRROR: {
-                        // Match their velocity
-                        let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
-                        mirrorSum += otherVel * weight * strength;
-                        mirrorWeight += weight;
+                    case BEHAVIOR_ALIGN: {
+                        // Pure velocity matching - information transfer
+                        alignSum += otherVel * weight * strength;
+                        alignWeight += weight;
                     }
                     case BEHAVIOR_ORBIT: {
-                        // Perpendicular force (orbit around them)
+                        // Circular motion around target - territorial/escort
                         let perpDir = vec2<f32>(-dir.y, dir.x);
                         orbitSum += perpDir * weight * strength;
                         orbitCount++;
+                    }
+                    case BEHAVIOR_FOLLOW: {
+                        // Trail behind - leader-follower dynamics
+                        // Target position behind the other's velocity vector
+                        let otherSpeed = length(otherVel);
+                        var followOffset = delta;
+                        if (otherSpeed > 0.1) {
+                            let otherDir = otherVel / otherSpeed;
+                            // Position 30 units behind the leader
+                            let targetPos = otherPos - otherDir * 30.0;
+                            followOffset = getNeighborDelta(myPos, targetPos);
+                        }
+                        followSum += followOffset * weight * strength;
+                        followCount++;
+                    }
+                    case BEHAVIOR_GUARD: {
+                        // Maintain optimal distance - protective escort
+                        // Attracted when far, repelled when close (homeostatic)
+                        let optimalDist = range * 0.5;  // Stay at half the perception range
+                        let distError = dist - optimalDist;
+                        if (distError > 0.0) {
+                            // Too far: move closer
+                            guardSum += dir * smoothKernel(abs(distError), range * 0.5) * strength;
+                        } else {
+                            // Too close: move away
+                            guardSum -= dir * separationKernel(dist, optimalDist) * strength;
+                        }
+                        guardCount++;
+                    }
+                    case BEHAVIOR_DISPERSE: {
+                        // Explosive scatter - confusion effect
+                        // Strong repulsion + random perturbation
+                        let disperseWeight = separationKernel(dist, range) * strength * 2.0;
+                        disperseSum -= dir * disperseWeight;
+                        // Add randomized component for confusion
+                        let randAngle = hash(boidIndex * 17u + otherIdx * 31u + uniforms.frameCount) * 6.283185;
+                        disperseSum += vec2<f32>(cos(randAngle), sin(randAngle)) * disperseWeight * 0.3;
+                        disperseCount++;
+                    }
+                    case BEHAVIOR_MOB: {
+                        // Aggressive swarming - counter-attack behavior
+                        // Rapid approach + tight chaotic orbiting
+                        mobSum += delta * weight * strength * 1.5;  // Stronger attraction
+                        // Add tight orbit component
+                        let perpDir = vec2<f32>(-dir.y, dir.x);
+                        // Alternate orbit direction based on boid index for chaos
+                        let orbitDir = select(-1.0, 1.0, (boidIndex % 2u) == 0u);
+                        mobOrbitSum += perpDir * weight * strength * orbitDir;
+                        mobCount++;
                     }
                     default: {}
                 }
@@ -1382,21 +1451,57 @@ fn calculateInterSpeciesForce(
     // Combine forces using per-species maxForce
     let maxForce = getSpeciesMaxForce(mySpecies);
     
-    if (avoidCount > 0u) {
-        interForce += limitMagnitude(avoidSum, maxForce * 4.0);
+    // Flee: strong escape (4x force multiplier)
+    if (fleeCount > 0u) {
+        interForce += limitMagnitude(fleeSum, maxForce * 4.0);
     }
-    if (pursueCount > 0u) {
-        interForce += limitMagnitude(pursueSum / f32(pursueCount), maxForce * 2.0);
+    
+    // Chase: predatory pursuit (blend direct + predicted)
+    if (chaseCount > 0u) {
+        let directChase = chaseSum / f32(chaseCount);
+        let predictChase = chasePredictSum / f32(chaseCount);
+        let blendedChase = directChase * 0.3 + predictChase * 0.7;  // Favor prediction
+        interForce += limitMagnitude(blendedChase, maxForce * 2.0);
     }
-    if (attractWeight > 0.0) {
-        interForce += limitMagnitude(attractSum / attractWeight, maxForce);
+    
+    // Cohere: mutualistic flocking (attraction + partial alignment)
+    if (cohereWeight > 0.0) {
+        let cohereAttract = cohereSum / cohereWeight;
+        let cohereAlign = cohereVelSum / cohereWeight - myVel;
+        interForce += limitMagnitude(cohereAttract, maxForce);
+        interForce += limitMagnitude(cohereAlign, maxForce * 0.5);
     }
-    if (mirrorWeight > 0.0) {
-        let targetVel = mirrorSum / mirrorWeight;
+    
+    // Align: pure velocity matching
+    if (alignWeight > 0.0) {
+        let targetVel = alignSum / alignWeight;
         interForce += limitMagnitude(targetVel - myVel, maxForce);
     }
+    
+    // Orbit: circular motion
     if (orbitCount > 0u) {
         interForce += limitMagnitude(orbitSum / f32(orbitCount), maxForce * 2.0);
+    }
+    
+    // Follow: leader-follower dynamics
+    if (followCount > 0u) {
+        interForce += limitMagnitude(followSum / f32(followCount), maxForce * 1.5);
+    }
+    
+    // Guard: maintain optimal distance
+    if (guardCount > 0u) {
+        interForce += limitMagnitude(guardSum, maxForce * 1.5);
+    }
+    
+    // Disperse: explosive scatter (strong force)
+    if (disperseCount > 0u) {
+        interForce += limitMagnitude(disperseSum, maxForce * 5.0);
+    }
+    
+    // Mob: aggressive swarming (approach + orbit)
+    if (mobCount > 0u) {
+        interForce += limitMagnitude(mobSum / f32(mobCount), maxForce * 2.0);
+        interForce += limitMagnitude(mobOrbitSum / f32(mobCount), maxForce * 1.5);
     }
     
     return interForce;

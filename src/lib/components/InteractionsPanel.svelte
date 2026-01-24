@@ -10,24 +10,39 @@
 		type Species
 	} from '$lib/stores/simulation';
 	import { InteractionBehavior, HeadShape } from '$lib/webgpu/types';
+	import CircleOff from '@lucide/svelte/icons/circle-off';
+	import MoveUpLeft from '@lucide/svelte/icons/move-up-left';
+	import Crosshair from '@lucide/svelte/icons/crosshair';
+	import GitMerge from '@lucide/svelte/icons/git-merge';
+	import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
+	import Orbit from '@lucide/svelte/icons/orbit';
+	import Footprints from '@lucide/svelte/icons/footprints';
+	import Shield from '@lucide/svelte/icons/shield';
+	import Maximize2 from '@lucide/svelte/icons/maximize-2';
+	import Swords from '@lucide/svelte/icons/swords';
 
 	let currentParams = $derived($params);
 	let activeSpecies = $derived(getActiveSpecies(currentParams));
 	let allSpecies = $derived(currentParams.species);
 	let otherSpecies = $derived(allSpecies.filter((s) => s.id !== activeSpecies?.id));
 
-	// Dropdown states
+	// Dropdown state for target selection only
 	let openTargetDropdown = $state<number | null>(null);
-	let openBehaviorDropdown = $state<number | null>(null);
 
-	// Behavior options
+	// Behavior options with Lucide icons - 10 behaviors in 2 rows of 5
 	const behaviorOptions = [
-		{ value: InteractionBehavior.Ignore, label: 'Ignore', icon: '○' },
-		{ value: InteractionBehavior.Avoid, label: 'Avoid', icon: '←' },
-		{ value: InteractionBehavior.Pursue, label: 'Pursue', icon: '→' },
-		{ value: InteractionBehavior.Attract, label: 'Attract', icon: '◎' },
-		{ value: InteractionBehavior.Mirror, label: 'Mirror', icon: '⇄' },
-		{ value: InteractionBehavior.Orbit, label: 'Orbit', icon: '↻' }
+		// Row 1
+		{ value: InteractionBehavior.Ignore, label: 'Ignore', Icon: CircleOff },
+		{ value: InteractionBehavior.Flee, label: 'Flee', Icon: MoveUpLeft },
+		{ value: InteractionBehavior.Chase, label: 'Chase', Icon: Crosshair },
+		{ value: InteractionBehavior.Cohere, label: 'Cohere', Icon: GitMerge },
+		{ value: InteractionBehavior.Align, label: 'Align', Icon: ChevronsRight },
+		// Row 2
+		{ value: InteractionBehavior.Orbit, label: 'Orbit', Icon: Orbit },
+		{ value: InteractionBehavior.Follow, label: 'Follow', Icon: Footprints },
+		{ value: InteractionBehavior.Guard, label: 'Guard', Icon: Shield },
+		{ value: InteractionBehavior.Disperse, label: 'Scatter', Icon: Maximize2 },
+		{ value: InteractionBehavior.Mob, label: 'Mob', Icon: Swords }
 	];
 
 	// Get species by ID
@@ -38,11 +53,6 @@
 	// Convert HSL to color string
 	function hslColor(hue: number, saturation: number, lightness: number): string {
 		return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-	}
-
-	// Get behavior option by value
-	function getBehaviorOption(value: InteractionBehavior) {
-		return behaviorOptions.find((b) => b.value === value) || behaviorOptions[0];
 	}
 
 	// Get SVG path for species shape
@@ -80,7 +90,6 @@
 	function handleBehaviorChange(ruleIndex: number, behavior: InteractionBehavior) {
 		if (!activeSpecies) return;
 		updateInteractionRule(activeSpecies.id, ruleIndex, { behavior });
-		openBehaviorDropdown = null;
 	}
 
 	// Handle strength change
@@ -102,23 +111,16 @@
 		openTargetDropdown = null;
 	}
 
-	// Toggle dropdowns
+	// Toggle target dropdown
 	function toggleTargetDropdown(ruleIndex: number) {
-		openBehaviorDropdown = null;
 		openTargetDropdown = openTargetDropdown === ruleIndex ? null : ruleIndex;
 	}
 
-	function toggleBehaviorDropdown(ruleIndex: number) {
-		openTargetDropdown = null;
-		openBehaviorDropdown = openBehaviorDropdown === ruleIndex ? null : ruleIndex;
-	}
-
-	// Close dropdowns on click outside
+	// Close dropdown on click outside
 	function handleClickOutside(event: MouseEvent) {
 		const target = event.target as HTMLElement;
 		if (!target.closest('.dropdown-wrapper')) {
 			openTargetDropdown = null;
-			openBehaviorDropdown = null;
 		}
 	}
 
@@ -133,7 +135,7 @@
 
 		addInteractionRule(activeSpecies.id, {
 			targetSpecies,
-			behavior: InteractionBehavior.Avoid,
+			behavior: InteractionBehavior.Flee,
 			strength: 0.5,
 			range: 0
 		});
@@ -160,7 +162,7 @@
 		<div class="rules-list">
 			{#each activeSpecies.interactions as rule, ruleIndex (ruleIndex)}
 				<div class="rule-card" transition:slide={{ duration: 150, easing: cubicOut }}>
-					<!-- Combined row: Source → Target + Behavior + Delete -->
+					<!-- Header row: Source → Target + Delete -->
 					<div class="rule-header">
 						<div class="rule-flow">
 							<!-- Source species icon -->
@@ -179,7 +181,7 @@
 									d="M4 8a.5.5 0 0 1 .5-.5h5.793L8.146 5.354a.5.5 0 1 1 .708-.708l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L10.293 8.5H4.5A.5.5 0 0 1 4 8z"
 								/>
 							</svg>
-							<!-- Target dropdown (compact, no chevron) -->
+							<!-- Target dropdown -->
 							<div class="dropdown-wrapper">
 								<button
 									class="dropdown-btn compact"
@@ -204,6 +206,7 @@
 											<rect x="3" y="14" width="7" height="7" rx="1" />
 											<circle cx="17.5" cy="17.5" r="3.5" />
 										</svg>
+										<span class="target-label">Others</span>
 									{:else}
 										{@const target = getSpeciesById(rule.targetSpecies)}
 										{#if target}
@@ -213,19 +216,19 @@
 													fill={hslColor(target.hue, target.saturation, target.lightness)}
 												/>
 											</svg>
+											<span class="target-label">{target.name}</span>
 										{/if}
 									{/if}
 								</button>
 								{#if openTargetDropdown === ruleIndex}
 									<div
-										class="dropdown-menu target-grid"
+										class="dropdown-menu target-list"
 										transition:slide={{ duration: 120, easing: cubicOut }}
 									>
 										<button
-											class="target-cell"
+											class="target-item"
 											class:active={rule.targetSpecies === -1}
 											onclick={() => handleTargetChange(ruleIndex, -1)}
-											title="All Others"
 										>
 											<svg
 												class="all-icon"
@@ -242,13 +245,13 @@
 												<rect x="3" y="14" width="7" height="7" rx="1" />
 												<circle cx="17.5" cy="17.5" r="3.5" />
 											</svg>
+											<span class="target-item-label">All Others</span>
 										</button>
 										{#each otherSpecies as other (other.id)}
 											<button
-												class="target-cell"
+												class="target-item"
 												class:active={rule.targetSpecies === other.id}
 												onclick={() => handleTargetChange(ruleIndex, other.id)}
-												title={other.name}
 											>
 												<svg class="species-icon-sm" viewBox="0 0 20 20">
 													<path
@@ -256,41 +259,11 @@
 														fill={hslColor(other.hue, other.saturation, other.lightness)}
 													/>
 												</svg>
+												<span class="target-item-label">{other.name}</span>
 											</button>
 										{/each}
 									</div>
 								{/if}
-							</div>
-							<!-- Behavior dropdown (compact, no chevron) - pushed to right -->
-							<div class="behavior-group">
-								<span class="inline-label">Behavior</span>
-								<div class="dropdown-wrapper">
-									<button
-										class="dropdown-btn behavior-btn"
-										onclick={() => toggleBehaviorDropdown(ruleIndex)}
-										title={getBehaviorOption(rule.behavior).label}
-									>
-										<span class="behavior-icon">{getBehaviorOption(rule.behavior).icon}</span>
-										<span class="behavior-label">{getBehaviorOption(rule.behavior).label}</span>
-									</button>
-									{#if openBehaviorDropdown === ruleIndex}
-										<div
-											class="dropdown-menu behavior-menu"
-											transition:slide={{ duration: 120, easing: cubicOut }}
-										>
-											{#each behaviorOptions as opt (opt.value)}
-												<button
-													class="behavior-cell"
-													class:active={rule.behavior === opt.value}
-													onclick={() => handleBehaviorChange(ruleIndex, opt.value)}
-												>
-													<span class="behavior-cell-icon">{opt.icon}</span>
-													<span class="behavior-cell-label">{opt.label}</span>
-												</button>
-											{/each}
-										</div>
-									{/if}
-								</div>
 							</div>
 						</div>
 						{#if activeSpecies.interactions.length > 1}
@@ -308,34 +281,51 @@
 						{/if}
 					</div>
 
+					<!-- Behavior button grid (2 rows x 5 columns) -->
+					<div class="behavior-grid">
+						{#each behaviorOptions as opt (opt.value)}
+							<button
+								class="behavior-btn"
+								class:active={rule.behavior === opt.value}
+								onclick={() => handleBehaviorChange(ruleIndex, opt.value)}
+								title={opt.label}
+							>
+								<opt.Icon size={16} strokeWidth={2} />
+								<span class="behavior-label">{opt.label}</span>
+							</button>
+						{/each}
+					</div>
+
 					<!-- Strength and Range sliders -->
 					{#if rule.behavior !== InteractionBehavior.Ignore}
-						<div class="row">
-							<span class="label">Strength</span>
-							<input
-								type="range"
-								class="slider"
-								min="0"
-								max="1"
-								step="0.05"
-								value={rule.strength}
-								oninput={(e) => handleStrengthChange(ruleIndex, parseFloat(e.currentTarget.value))}
-							/>
-							<span class="value">{(rule.strength * 100).toFixed(0)}%</span>
-						</div>
+						<div class="sliders-section">
+							<div class="row">
+								<span class="label">Strength</span>
+								<input
+									type="range"
+									class="slider"
+									min="0"
+									max="1"
+									step="0.05"
+									value={rule.strength}
+									oninput={(e) => handleStrengthChange(ruleIndex, parseFloat(e.currentTarget.value))}
+								/>
+								<span class="value">{(rule.strength * 100).toFixed(0)}%</span>
+							</div>
 
-						<div class="row">
-							<span class="label">Range</span>
-							<input
-								type="range"
-								class="slider"
-								min="0"
-								max="200"
-								step="10"
-								value={rule.range}
-								oninput={(e) => handleRangeChange(ruleIndex, parseFloat(e.currentTarget.value))}
-							/>
-							<span class="value">{rule.range === 0 ? 'Auto' : rule.range}</span>
+							<div class="row">
+								<span class="label">Range</span>
+								<input
+									type="range"
+									class="slider"
+									min="0"
+									max="200"
+									step="10"
+									value={rule.range}
+									oninput={(e) => handleRangeChange(ruleIndex, parseFloat(e.currentTarget.value))}
+								/>
+								<span class="value">{rule.range === 0 ? 'Auto' : rule.range}</span>
+							</div>
 						</div>
 					{/if}
 				</div>
@@ -432,17 +422,17 @@
 	.rules-list {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: 8px;
 	}
 
 	.rule-card {
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(255, 255, 255, 0.06);
 		border-radius: 8px;
-		padding: 6px 8px;
+		padding: 8px;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 8px;
 	}
 
 	.rule-header {
@@ -502,41 +492,12 @@
 	}
 
 	.dropdown-btn.compact {
-		padding: 3px 5px;
+		padding: 3px 6px;
 	}
 
-	.dropdown-btn.behavior-btn {
-		padding: 4px 8px;
-		gap: 5px;
-	}
-
-	.behavior-group {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		margin-left: auto;
-	}
-
-	.inline-label {
-		font-size: 9px;
-		color: rgba(255, 255, 255, 0.5);
-		text-transform: uppercase;
-		letter-spacing: 0.3px;
-		flex-shrink: 0;
-	}
-
-	.behavior-icon {
-		font-size: 11px;
-		color: rgba(255, 255, 255, 0.7);
-		width: 14px;
-		text-align: center;
-		flex-shrink: 0;
-	}
-
-	.behavior-label {
+	.target-label {
 		font-size: 10px;
-		color: rgba(255, 255, 255, 0.8);
-		white-space: nowrap;
+		color: rgba(255, 255, 255, 0.7);
 	}
 
 	.dropdown-menu {
@@ -553,89 +514,113 @@
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 	}
 
-	.dropdown-menu.behavior-menu {
-		left: auto;
-		right: 0;
-		min-width: auto;
-		display: grid;
-		grid-template-columns: 1fr 1fr;
+	.dropdown-menu.target-list {
+		min-width: 120px;
+		display: flex;
+		flex-direction: column;
 		gap: 2px;
 		padding: 4px;
 	}
 
-	.dropdown-menu.target-grid {
-		min-width: auto;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 3px;
-		padding: 5px;
-		max-width: 140px;
-	}
-
-	.target-cell {
+	.target-item {
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		padding: 0;
-		background: rgba(255, 255, 255, 0.04);
+		gap: 8px;
+		padding: 6px 8px;
+		background: rgba(255, 255, 255, 0.02);
 		border: none;
 		border-radius: 4px;
 		cursor: pointer;
 		transition: background 0.1s;
 	}
 
-	.target-cell:hover {
-		background: rgba(255, 255, 255, 0.12);
+	.target-item:hover {
+		background: rgba(255, 255, 255, 0.1);
 	}
 
-	.target-cell.active {
-		background: rgba(99, 102, 241, 0.3);
+	.target-item.active {
+		background: rgba(99, 102, 241, 0.25);
 	}
 
-	.target-cell .all-icon {
+	.target-item .all-icon {
 		width: 16px;
 		height: 16px;
+		flex-shrink: 0;
 	}
 
-	.target-cell .species-icon-sm {
+	.target-item .species-icon-sm {
 		width: 16px;
 		height: 16px;
+		flex-shrink: 0;
 	}
 
-	.behavior-cell {
+	.target-item-label {
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.8);
+		white-space: nowrap;
+	}
+
+	.target-item:hover .target-item-label {
+		color: rgba(255, 255, 255, 1);
+	}
+
+	.target-item.active .target-item-label {
+		color: rgba(165, 180, 252, 1);
+	}
+
+	/* Behavior button grid - 2 rows x 5 columns */
+	.behavior-grid {
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		gap: 4px;
+	}
+
+	.behavior-btn {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		gap: 2px;
-		padding: 8px 12px;
+		padding: 6px 2px;
 		background: rgba(255, 255, 255, 0.03);
-		border: none;
-		border-radius: 4px;
+		border: 1px solid transparent;
+		border-radius: 6px;
 		cursor: pointer;
-		transition: background 0.1s;
+		transition: all 0.15s;
+		color: rgba(255, 255, 255, 0.5);
 	}
 
-	.behavior-cell:hover {
-		background: rgba(255, 255, 255, 0.1);
-	}
-
-	.behavior-cell.active {
-		background: rgba(99, 102, 241, 0.25);
-	}
-
-	.behavior-cell-icon {
-		font-size: 14px;
+	.behavior-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
 		color: rgba(255, 255, 255, 0.8);
 	}
 
-	.behavior-cell-label {
-		font-size: 9px;
-		color: rgba(255, 255, 255, 0.6);
+	.behavior-btn.active {
+		background: rgba(99, 102, 241, 0.2);
+		border-color: rgba(99, 102, 241, 0.5);
+		color: rgba(129, 140, 248, 1);
+	}
+
+	.behavior-btn .behavior-label {
+		font-size: 7px;
 		text-transform: uppercase;
-		letter-spacing: 0.3px;
+		letter-spacing: 0.2px;
+		white-space: nowrap;
+		opacity: 0.7;
+	}
+
+	.behavior-btn:hover .behavior-label {
+		opacity: 1;
+	}
+
+	.behavior-btn.active .behavior-label {
+		color: rgba(165, 180, 252, 0.9);
+		opacity: 1;
+	}
+
+	.sliders-section {
+		padding-top: 4px;
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
 	}
 
 	.remove-btn {

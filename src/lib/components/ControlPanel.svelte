@@ -1060,35 +1060,52 @@
 							<span>Species</span>
 						</div>`,
 						description: `<p>Create multiple swarms with unique behaviors:${kbd('N', isTouch)}</p>
-							<ul>
+							<ul style="margin-bottom: 8px;">
 								<li><strong>Add/Remove</strong> — Manage up to 7 species</li>
-								<li><strong>Quick Select</strong> — Click icons in header</li>
-								<li><strong>Interactions</strong> — Define how species interact:</li>
+								<li><strong>Interactions</strong> — Rules define how species react to each other</li>
+								<li><strong>"All Others"</strong> sets default; specific rules override</li>
 							</ul>
-							<div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px; font-size: 11px;">
-								<div style="display: flex; align-items: center; gap: 6px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>
-									<span><strong>Ignore</strong> — No interaction</span>
+							<p style="font-size: 10px; color: #a1a1aa; margin-bottom: 6px;">10 interaction behaviors:</p>
+							<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px;">
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+									<span><strong>Ignore</strong> — No effect</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 6px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M12 8 L12 1 M9 4 L12 1 L15 4"/><path d="M7.5 13.5 L1.5 19.5"/><path d="M16.5 13.5 L22.5 19.5"/></svg>
-									<span><strong>Avoid</strong> — Flee from others</span>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M5 19 19 5"/><path d="M5 5v14"/><path d="M5 19h14"/></svg>
+									<span><strong>Flee</strong> — Escape (prey)</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 6px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><circle cx="12" cy="12" r="3" fill="#fb923c"/><path d="M12 1v5M12 18v5M23 12h-5M6 12H1"/></svg>
-									<span><strong>Pursue</strong> — Chase/hunt others</span>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+									<span><strong>Chase</strong> — Hunt (predator)</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 6px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M12 1 L12 8 M9 5 L12 8 L15 5"/><path d="M1.5 19.5 L7.5 13.5"/><path d="M22.5 19.5 L16.5 13.5"/></svg>
-									<span><strong>Attract</strong> — Gentle attraction</span>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+									<span><strong>Cohere</strong> — Flock together</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 6px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><path d="M4 12h4m8 0h4"/><path d="M8 8h8v8H8z"/></svg>
-									<span><strong>Mirror</strong> — Match velocity</span>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/></svg>
+									<span><strong>Align</strong> — Match direction</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 6px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" style="width: 12px; height: 12px; flex-shrink: 0;"><circle cx="12" cy="12" r="8" stroke-dasharray="4 3"/><circle cx="12" cy="12" r="2" fill="#f97316"/></svg>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
 									<span><strong>Orbit</strong> — Circle around</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 6.5-6C14 2 15.5 5 15.5 8v.5"/><path d="M20 20c.5-1.5.5-3.5 0-5 0 0-1.5.5-3 .5s-3-.5-3-.5c-.5 1.5-.5 3.5 0 5"/><path d="M7 14c-1.5 0-3 0-3-3"/><path d="M17 13c1.5 0 3 0 3-3"/></svg>
+									<span><strong>Follow</strong> — Trail behind</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+									<span><strong>Guard</strong> — Protect (escort)</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></svg>
+									<span><strong>Scatter</strong> — Explode apart</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/><path d="m14.5 6.5 6-6H18l-4 4"/><path d="M5 14l6-6"/><path d="M7 17l-4 4"/><path d="M3 19l2 2"/></svg>
+									<span><strong>Mob</strong> — Swarm attack</span>
 								</div>
 							</div>`,
 						side: 'left',

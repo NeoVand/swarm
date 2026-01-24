@@ -88,11 +88,15 @@ export enum HeadShape {
 // Inter-species interaction behaviors
 export enum InteractionBehavior {
 	Ignore = 0, // No interaction
-	Avoid = 1, // Flee from other species
-	Pursue = 2, // Chase/hunt other species
-	Attract = 3, // Gentle attraction toward other species
-	Mirror = 4, // Match their velocity (alignment with other species)
-	Orbit = 5 // Circle around them (perpendicular force)
+	Flee = 1, // Strong escape response - prey behavior
+	Chase = 2, // Predatory pursuit with prediction
+	Cohere = 3, // Gentle attraction + partial alignment (mutualistic flocking)
+	Align = 4, // Pure velocity matching - information transfer
+	Orbit = 5, // Circular motion around target - territorial/escort
+	Follow = 6, // Trail behind - leader-follower dynamics
+	Guard = 7, // Maintain optimal distance - protective escort
+	Disperse = 8, // Explosive scatter - confusion effect
+	Mob = 9 // Aggressive swarming - counter-attack behavior
 }
 
 // Per-species cursor response
@@ -160,8 +164,8 @@ export const SPECIES_HUES = [
 	330 // Pink
 ];
 
-// Default species names
-export const SPECIES_NAMES = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta'];
+// Default species names (simple numbered names)
+export const SPECIES_NAMES = ['Species 1', 'Species 2', 'Species 3', 'Species 4', 'Species 5', 'Species 6', 'Species 7'];
 
 // Create a default species
 export function createDefaultSpecies(id: number, population: number): Species {
@@ -195,7 +199,7 @@ export function createDefaultSpecies(id: number, population: number): Species {
 		interactions: [
 			{
 				targetSpecies: -1, // All others
-				behavior: InteractionBehavior.Avoid,
+				behavior: InteractionBehavior.Flee,
 				strength: 0.5,
 				range: 0 // Use default perception
 			}
