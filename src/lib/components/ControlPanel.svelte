@@ -1017,40 +1017,29 @@
 							<span>Interaction</span>
 						</div>`,
 						description: `<p><strong style="color: #e4e4e7;">Cursor Force</strong> — ${isTouch ? 'Touch' : 'Move cursor over'} canvas (per-species):</p>
-							<div style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" style="width: 15px; height: 15px; flex-shrink: 0;">
-										<g stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-											<path d="M12 1 L12 8 M9 5 L12 8 L15 5"/>
-											<path d="M1.5 19.5 L7.5 13.5 M2 14.5 L7.5 13.5 L6.5 19"/>
-											<path d="M22.5 19.5 L16.5 13.5 M22 14.5 L16.5 13.5 L17.5 19"/>
-										</g>
-										<circle cx="12" cy="12" r="2.5" fill="#22d3ee"/>
-									</svg>
+							<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+								<div style="display: flex; align-items: center; gap: 10px;">
+									<div id="tour-icon-power" style="width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center;">
+										<svg viewBox="0 0 24 24" style="width: 14px; height: 14px;" fill="none" stroke="#71717a" stroke-width="2.2" stroke-linecap="round">
+											<path d="M12 3 L12 11"/><path d="M6.3 6.3 A8.5 8.5 0 1 0 17.7 6.3"/>
+										</svg>
+									</div>
+									<span><strong>Power</strong> — Toggle on/off${kbd('1', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 10px;">
+									<div id="tour-icon-attract" style="width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; overflow: hidden;"></div>
 									<span><strong>Attract</strong> — Pull boids${kbd('2', isTouch)}</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" style="width: 15px; height: 15px; flex-shrink: 0;">
-										<g stroke="#fb7185" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-											<path d="M12 8 L12 1 M9 4 L12 1 L15 4"/>
-											<path d="M7.5 13.5 L1.5 19.5 M5 19.5 L1.5 19.5 L1.5 16"/>
-											<path d="M16.5 13.5 L22.5 19.5 M19 19.5 L22.5 19.5 L22.5 16"/>
-										</g>
-										<circle cx="12" cy="12" r="2.5" fill="#fb7185"/>
-									</svg>
+								<div style="display: flex; align-items: center; gap: 10px;">
+									<div id="tour-icon-repel" style="width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; overflow: hidden;"></div>
 									<span><strong>Repel</strong> — Push boids${kbd('3', isTouch)}</span>
 								</div>
-								<div style="display: flex; align-items: center; gap: 8px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 15px; height: 15px; flex-shrink: 0;">
-										<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-										<path d="M21 3v5h-5"/>
-										<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-										<path d="M3 21v-5h5"/>
-									</svg>
-									<span><strong>Vortex</strong> — Spin${kbd('4', isTouch)}</span>
+								<div style="display: flex; align-items: center; gap: 10px;">
+									<div id="tour-icon-vortex" style="width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; overflow: hidden;"></div>
+									<span><strong>Vortex</strong> — Spin (cycle CW/CCW)${kbd('4', isTouch)}</span>
 								</div>
 							</div>
-							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">${isTouch ? 'Press and hold' : 'Click'} canvas to boost force! Each species can respond differently.</p>`,
+							<p style="margin-top: 10px; font-size: 11px; color: #71717a;">${isTouch ? 'Press and hold' : 'Click'} canvas to boost force! Each species can respond differently.</p>`,
 						side: 'left',
 						align: 'start'
 					},
@@ -1290,6 +1279,9 @@
 				});
 			}
 
+			// Store animation frame IDs for cleanup
+			let tourAnimationIds: number[] = [];
+
 			const driverObj = driver({
 				showProgress: true,
 				animate: true,
@@ -1301,6 +1293,152 @@
 				popoverClass: 'tour-popover',
 				popoverOffset: 12,
 				onPopoverRender: (popover, { state }) => {
+					// Cancel any previous tour animations
+					tourAnimationIds.forEach((id) => cancelAnimationFrame(id));
+					tourAnimationIds = [];
+
+					// Step 3: Interaction - inject animated canvas icons
+					if (state.activeIndex === 3) {
+						setTimeout(() => {
+							const configs = [
+								{ id: 'tour-icon-attract', type: 'attract', color: '#22d3ee' },
+								{ id: 'tour-icon-repel', type: 'repel', color: '#fb7185' },
+								{ id: 'tour-icon-vortex', type: 'vortex', color: '#f97316' }
+							];
+
+							configs.forEach(({ id, type, color }) => {
+								const container = document.getElementById(id);
+								if (!container) return;
+
+								const size = 24;
+								const canvas = document.createElement('canvas');
+								canvas.width = size;
+								canvas.height = size;
+								canvas.style.cssText = `width: ${size}px; height: ${size}px; display: block; border-radius: 50%;`;
+								container.appendChild(canvas);
+
+								const ctx = canvas.getContext('2d');
+								if (!ctx) return;
+
+								const centerX = size / 2;
+								const centerY = size / 2;
+								const maxRadius = size / 2 - 1;
+								let progress = Math.random();
+								let outerAngle = Math.random() * Math.PI * 2;
+								let lastTime = performance.now();
+
+								const drawTriangle = (x: number, y: number, triSize: number, rotation: number) => {
+									ctx.save();
+									ctx.translate(x, y);
+									ctx.rotate(rotation);
+									ctx.beginPath();
+									const s = triSize * 0.5;
+									ctx.moveTo(2 * s, 0);
+									ctx.lineTo(-s, -s);
+									ctx.lineTo(-s, s);
+									ctx.closePath();
+									ctx.fill();
+									ctx.restore();
+								};
+
+								const animate = (currentTime: number) => {
+									const deltaTime = (currentTime - lastTime) / 1000;
+									lastTime = currentTime;
+									ctx.clearRect(0, 0, size, size);
+									ctx.save();
+									ctx.beginPath();
+									ctx.arc(centerX, centerY, size / 2, 0, Math.PI * 2);
+									ctx.clip();
+
+									if (type === 'attract' || type === 'repel') {
+										const isAttract = type === 'attract';
+										const numTriangles = 8;
+										const triangleSize = 2.5;
+										progress += deltaTime * 0.5;
+										if (progress >= 1) progress -= 1;
+
+										for (let wave = 0; wave < 2; wave++) {
+											const waveT = (progress + wave / 2) % 1;
+											const fadeAlpha = Math.sin(waveT * Math.PI);
+											const posBoost = isAttract ? 1 - waveT * 0.2 : 0.8 + waveT * 0.2;
+											const finalAlpha = fadeAlpha * posBoost * 0.95;
+
+											if (finalAlpha > 0.02) {
+												const outerRadius = maxRadius * 1.1;
+												const innerRadius = maxRadius * 0.08;
+												const radius = isAttract
+													? outerRadius - (outerRadius - innerRadius) * waveT
+													: innerRadius + (outerRadius - innerRadius) * waveT;
+
+												for (let i = 0; i < numTriangles; i++) {
+													const angle = (i * Math.PI * 2) / numTriangles;
+													const rotation = isAttract ? angle + Math.PI : angle;
+													const x = centerX + Math.cos(angle) * radius;
+													const y = centerY + Math.sin(angle) * radius;
+													ctx.fillStyle = color;
+													ctx.globalAlpha = finalAlpha;
+													drawTriangle(x, y, triangleSize, rotation);
+												}
+											}
+										}
+									} else if (type === 'vortex') {
+										const rotationSpeed = 2.5;
+										outerAngle += deltaTime * rotationSpeed;
+
+										const drawArm = (baseAngle: number, alpha: number, lineWidth: number) => {
+											ctx.beginPath();
+											ctx.strokeStyle = color;
+											ctx.lineWidth = lineWidth;
+											ctx.lineCap = 'round';
+											ctx.globalAlpha = alpha;
+											const steps = 8;
+											for (let i = 0; i <= steps; i++) {
+												const t = i / steps;
+												const r = t * maxRadius * 0.85;
+												const spiralTwist = t * 1.0;
+												const angle = baseAngle + spiralTwist;
+												const x = centerX + Math.cos(angle) * r;
+												const y = centerY + Math.sin(angle) * r;
+												if (i === 0) ctx.moveTo(x, y);
+												else ctx.lineTo(x, y);
+											}
+											ctx.stroke();
+										};
+
+										const trailCount = 6;
+										const trailSpacing = 0.15;
+										for (let trailIdx = trailCount - 1; trailIdx >= 0; trailIdx--) {
+											const trailOffset = (trailIdx + 1) * trailSpacing;
+											const trailAlpha = 0.5 * (1 - (trailIdx + 1) / (trailCount + 2));
+											const trailWidth = 1.2 * (1 - trailIdx * 0.1);
+											for (let armIndex = 0; armIndex < 3; armIndex++) {
+												const armBaseAngle = outerAngle - trailOffset + (armIndex * Math.PI * 2) / 3;
+												drawArm(armBaseAngle, trailAlpha, trailWidth);
+											}
+										}
+										for (let armIndex = 0; armIndex < 3; armIndex++) {
+											const armBaseAngle = outerAngle + (armIndex * Math.PI * 2) / 3;
+											drawArm(armBaseAngle, 0.9, 1.5);
+										}
+										ctx.beginPath();
+										ctx.arc(centerX, centerY, 1.5, 0, Math.PI * 2);
+										ctx.fillStyle = color;
+										ctx.globalAlpha = 0.9;
+										ctx.fill();
+									}
+
+									ctx.globalAlpha = 1;
+									ctx.restore();
+									const animId = requestAnimationFrame(animate);
+									tourAnimationIds.push(animId);
+								};
+
+								const animId = requestAnimationFrame(animate);
+								tourAnimationIds.push(animId);
+							});
+						}, 50);
+					}
+
 					// On the first step, replace the disabled Previous button with GitHub link
 					if (state.activeIndex === 0) {
 						const prevBtn = popover.previousButton;
