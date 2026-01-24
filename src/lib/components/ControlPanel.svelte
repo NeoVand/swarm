@@ -1525,8 +1525,8 @@
 				smoothScroll: true,
 				allowClose: true,
 				overlayColor: 'rgba(0, 0, 0, 0.85)',
-				stagePadding: 0,
-				stageRadius: 6,
+				stagePadding: 8,
+				stageRadius: 8,
 				popoverClass: 'tour-popover',
 				popoverOffset: 12,
 				onPopoverRender: (popover, { state }) => {
