@@ -2395,7 +2395,7 @@
 							{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
 								<!-- Color swatch that opens picker -->
 								<span class="label">Color</span>
-								<div class="relative" bind:this={colorPickerRef}>
+								<div class="relative flex items-center" bind:this={colorPickerRef}>
 									<button
 										class="color-swatch-btn"
 										style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
@@ -2464,8 +2464,9 @@
 									{/if}
 								</div>
 								<!-- Alpha mode dropdown with label -->
-								<span class="label" style="width: auto; margin-left: 12px;">Alpha</span>
-								<div class="relative flex-1" bind:this={alphaDropdownRef}>
+								<span class="flex-1"></span>
+								<span class="label" style="width: auto;">Alpha</span>
+								<div class="relative flex items-center" style="width: 90px; margin-left: 6px;" bind:this={alphaDropdownRef}>
 									<button
 										class="sel flex w-full items-center gap-1 text-left"
 										onclick={() => (alphaDropdownOpen = !alphaDropdownOpen)}
@@ -4154,12 +4155,13 @@
 	}
 
 	.color-swatch-btn {
-		width: 28px;
-		height: 28px;
+		width: 24px;
+		height: 24px;
 		border-radius: 4px;
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		cursor: pointer;
 		transition: all 0.15s ease;
+		flex-shrink: 0;
 	}
 
 	.color-swatch-btn:hover {

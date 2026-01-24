@@ -371,7 +371,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	cursorRadius: 50,
 	boidSize: 1.5,
 	trailLength: 30,
-	colorMode: ColorMode.Orientation,
+	colorMode: ColorMode.Species,
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
 	population: 6000, // Default total (will be recalculated based on screen size)
