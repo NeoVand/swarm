@@ -212,12 +212,13 @@ export function createComputePipelines(
 		]
 	});
 
-	// Second bind group for species data
+	// Second bind group for species data and metrics
 	const simulateBindGroupLayout1 = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // speciesIds
 			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // speciesParams (uniform for small data)
-			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } } // interactionMatrix (uniform for small data)
+			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // interactionMatrix (uniform for small data)
+			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } } // metrics output (density, anisotropy)
 		]
 	});
 
@@ -264,13 +265,14 @@ export function createComputePipelines(
 		]
 	});
 
-	// Bind group 1: Species data (shared between A and B)
+	// Bind group 1: Species data and metrics (shared between A and B)
 	const simulateBindGroup1 = device.createBindGroup({
 		layout: simulateBindGroupLayout1,
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.speciesIds } },
 			{ binding: 1, resource: { buffer: buffers.speciesParams } },
-			{ binding: 2, resource: { buffer: buffers.interactionMatrix } }
+			{ binding: 2, resource: { buffer: buffers.interactionMatrix } },
+			{ binding: 3, resource: { buffer: buffers.metrics } }
 		]
 	});
 

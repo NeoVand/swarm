@@ -185,6 +185,7 @@ const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
 @group(1) @binding(0) var<storage, read> speciesIds: array<u32>;
 @group(1) @binding(1) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s per species
 @group(1) @binding(2) var<uniform> interactionMatrix: array<vec4<f32>, 49>;  // 7*7 entries
+@group(1) @binding(3) var<storage, read_write> metricsOut: array<vec4<f32>>;  // per-boid metrics [density, anisotropy, 0, 0]
 
 // Species constants
 const MAX_SPECIES: u32 = 7u;
@@ -768,6 +769,13 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
     var separationCount = 0u;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
+    // Metrics accumulators (species-specific)
+    var densitySum: f32 = 0.0;
+    var metricWeight: f32 = 0.0;
+    var cxx: f32 = 0.0;
+    var cxy: f32 = 0.0;
+    var cyy: f32 = 0.0;
+    
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
             let cx = myCellX + dx;
@@ -832,8 +840,19 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
             // Transform neighbor velocity for alignment across flip boundaries
             let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
             alignmentSum += otherVel * weight;
-            cohesionSum += getNeighborDelta(myPos, otherPos) * weight;
+            let neighborDelta = getNeighborDelta(myPos, otherPos);
+            cohesionSum += neighborDelta * weight;
             totalWeight += weight;
+            
+            // Metrics (same-species only)
+            let otherSpecies = speciesIds[otherIdx];
+            if (otherSpecies == speciesId) {
+                densitySum += weight;
+                metricWeight += weight;
+                cxx += weight * neighborDelta.x * neighborDelta.x;
+                cxy += weight * neighborDelta.x * neighborDelta.y;
+                cyy += weight * neighborDelta.y * neighborDelta.y;
+            }
         }
     }
     
@@ -851,6 +870,24 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
     if (separationCount > 0u && spSeparation > 0.0) {
         acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
+    
+    // Compute and write metrics
+    var aniso: f32 = 0.0;
+    if (metricWeight > 1e-6) {
+        let inv = 1.0 / metricWeight;
+        let ncxx = cxx * inv;
+        let ncxy = cxy * inv;
+        let ncyy = cyy * inv;
+        
+        // 2×2 eigensolve (closed form)
+        let tr = ncxx + ncyy;
+        let det = ncxx * ncyy - ncxy * ncxy;
+        let disc = sqrt(max(tr * tr - 4.0 * det, 0.0));
+        let l1 = 0.5 * (tr + disc);
+        let l2 = 0.5 * (tr - disc);
+        aniso = (l1 - l2) / (l1 + l2 + 1e-6);
+    }
+    metricsOut[boidIndex] = vec4<f32>(densitySum, aniso, 0.0, 0.0);
     
     return acceleration;
 }
@@ -881,6 +918,13 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
     var totalWeight = 0.0;
     var separationCount = 0u;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
+    
+    // Metrics accumulators (species-specific)
+    var densitySum: f32 = 0.0;
+    var metricWeight: f32 = 0.0;
+    var cxx: f32 = 0.0;
+    var cxy: f32 = 0.0;
+    var cyy: f32 = 0.0;
     
     for (var dy = -1i; dy <= 1i; dy++) {
         for (var dx = -1i; dx <= 1i; dx++) {
@@ -919,6 +963,16 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                     
+                    // Metrics (same-species only)
+                    let otherSpecies = speciesIds[otherIdx];
+                    if (otherSpecies == speciesId) {
+                        densitySum += weight;
+                        metricWeight += weight;
+                        cxx += weight * delta.x * delta.x;
+                        cxy += weight * delta.x * delta.y;
+                        cyy += weight * delta.y * delta.y;
+                    }
+                    
                     if (dist < separationRadius) {
                         separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                         separationCount++;
@@ -942,6 +996,24 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
     if (separationCount > 0u && spSeparation > 0.0) {
         acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
+    
+    // Compute and write metrics
+    var aniso: f32 = 0.0;
+    if (metricWeight > 1e-6) {
+        let inv = 1.0 / metricWeight;
+        let ncxx = cxx * inv;
+        let ncxy = cxy * inv;
+        let ncyy = cyy * inv;
+        
+        // 2×2 eigensolve (closed form)
+        let tr = ncxx + ncyy;
+        let det = ncxx * ncyy - ncxy * ncxy;
+        let disc = sqrt(max(tr * tr - 4.0 * det, 0.0));
+        let l1 = 0.5 * (tr + disc);
+        let l2 = 0.5 * (tr - disc);
+        aniso = (l1 - l2) / (l1 + l2 + 1e-6);
+    }
+    metricsOut[boidIndex] = vec4<f32>(densitySum, aniso, 0.0, 0.0);
     
     return acceleration;
 }
@@ -972,6 +1044,13 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, species
     var separationCount = 0u;
     let perception = spPerception;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
+    
+    // Metrics accumulators (species-specific)
+    var densitySum: f32 = 0.0;
+    var metricWeight: f32 = 0.0;
+    var cxx: f32 = 0.0;
+    var cxy: f32 = 0.0;
+    var cyy: f32 = 0.0;
     
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
@@ -1009,6 +1088,16 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, species
                     alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
+                    
+                    // Metrics (same-species only)
+                    let otherSpecies = speciesIds[otherIdx];
+                    if (otherSpecies == speciesId) {
+                        densitySum += weight;
+                        metricWeight += weight;
+                        cxx += weight * delta.x * delta.x;
+                        cxy += weight * delta.x * delta.y;
+                        cyy += weight * delta.y * delta.y;
+                    }
                 }
                 
                 if (dist < separationRadius) {
@@ -1033,6 +1122,24 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, species
     if (separationCount > 0u && spSeparation > 0.0) {
         acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
+    
+    // Compute and write metrics
+    var aniso: f32 = 0.0;
+    if (metricWeight > 1e-6) {
+        let inv = 1.0 / metricWeight;
+        let ncxx = cxx * inv;
+        let ncxy = cxy * inv;
+        let ncyy = cyy * inv;
+        
+        // 2×2 eigensolve (closed form)
+        let tr = ncxx + ncyy;
+        let det = ncxx * ncyy - ncxy * ncxy;
+        let disc = sqrt(max(tr * tr - 4.0 * det, 0.0));
+        let l1 = 0.5 * (tr + disc);
+        let l2 = 0.5 * (tr - disc);
+        aniso = (l1 - l2) / (l1 + l2 + 1e-6);
+    }
+    metricsOut[boidIndex] = vec4<f32>(densitySum, aniso, 0.0, 0.0);
     
     return acceleration;
 }
@@ -1064,6 +1171,13 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
     
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
+    
+    // Metrics accumulators (species-specific)
+    var densitySum: f32 = 0.0;
+    var metricWeight: f32 = 0.0;
+    var cxx: f32 = 0.0;
+    var cxy: f32 = 0.0;
+    var cyy: f32 = 0.0;
     
     // First pass: check immediate vicinity (3x3)
     for (var dy = -1i; dy <= 1i; dy++) {
@@ -1102,6 +1216,16 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
                     alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
+                    
+                    // Metrics (same-species only)
+                    let otherSpecies = speciesIds[otherIdx];
+                    if (otherSpecies == speciesId) {
+                        densitySum += weight;
+                        metricWeight += weight;
+                        cxx += weight * delta.x * delta.x;
+                        cxy += weight * delta.x * delta.y;
+                        cyy += weight * delta.y * delta.y;
+                    }
                 }
                 
                 if (dist < separationRadius) {
@@ -1156,6 +1280,16 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
             alignmentSum += otherVel * weight;
             cohesionSum += delta * weight;
             totalWeight += weight;
+            
+            // Metrics (same-species only)
+            let otherSpecies = speciesIds[otherIdx];
+            if (otherSpecies == speciesId) {
+                densitySum += weight;
+                metricWeight += weight;
+                cxx += weight * delta.x * delta.x;
+                cxy += weight * delta.x * delta.y;
+                cyy += weight * delta.y * delta.y;
+            }
         }
         
         if (dist < separationRadius && dist > 0.1) {
@@ -1178,6 +1312,24 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
     if (separationCount > 0u && spSeparation > 0.0) {
         acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
+    
+    // Compute and write metrics
+    var aniso: f32 = 0.0;
+    if (metricWeight > 1e-6) {
+        let inv = 1.0 / metricWeight;
+        let ncxx = cxx * inv;
+        let ncxy = cxy * inv;
+        let ncyy = cyy * inv;
+        
+        // 2×2 eigensolve (closed form)
+        let tr = ncxx + ncyy;
+        let det = ncxx * ncyy - ncxy * ncxy;
+        let disc = sqrt(max(tr * tr - 4.0 * det, 0.0));
+        let l1 = 0.5 * (tr + disc);
+        let l2 = 0.5 * (tr - disc);
+        aniso = (l1 - l2) / (l1 + l2 + 1e-6);
+    }
+    metricsOut[boidIndex] = vec4<f32>(densitySum, aniso, 0.0, 0.0);
     
     return acceleration;
 }
@@ -1210,6 +1362,13 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     
     let perception = spPerception;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
+    
+    // Metrics accumulators (species-specific)
+    var densitySum: f32 = 0.0;
+    var metricWeight: f32 = 0.0;
+    var cxx: f32 = 0.0;
+    var cxy: f32 = 0.0;
+    var cyy: f32 = 0.0;
     
     for (var dy = -2i; dy <= 2i; dy++) {
         for (var dx = -2i; dx <= 2i; dx++) {
@@ -1251,6 +1410,16 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                     alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
+                    
+                    // Metrics (same-species only)
+                    let otherSpecies = speciesIds[otherIdx];
+                    if (otherSpecies == speciesId) {
+                        densitySum += weight;
+                        metricWeight += weight;
+                        cxx += weight * delta.x * delta.x;
+                        cxy += weight * delta.x * delta.y;
+                        cyy += weight * delta.y * delta.y;
+                    }
                 }
                 
                 if (dist < separationRadius) {
@@ -1278,6 +1447,24 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     if (separationCount > 0u && spSeparation > 0.0) {
         acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
     }
+    
+    // Compute and write metrics
+    var aniso: f32 = 0.0;
+    if (metricWeight > 1e-6) {
+        let inv = 1.0 / metricWeight;
+        let ncxx = cxx * inv;
+        let ncxy = cxy * inv;
+        let ncyy = cyy * inv;
+        
+        // 2×2 eigensolve (closed form)
+        let tr = ncxx + ncyy;
+        let det = ncxx * ncyy - ncxy * ncxy;
+        let disc = sqrt(max(tr * tr - 4.0 * det, 0.0));
+        let l1 = 0.5 * (tr + disc);
+        let l2 = 0.5 * (tr - disc);
+        aniso = (l1 - l2) / (l1 + l2 + 1e-6);
+    }
+    metricsOut[boidIndex] = vec4<f32>(densitySum, aniso, 0.0, 0.0);
     
     return acceleration;
 }

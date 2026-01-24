@@ -637,7 +637,9 @@
 			ColorMode.Density,
 			ColorMode.Acceleration,
 			ColorMode.Turning,
-			ColorMode.Species
+			ColorMode.Species,
+			ColorMode.LocalDensity,
+			ColorMode.Anisotropy
 		];
 		const algorithmModes = [
 			AlgorithmMode.TopologicalKNN,
@@ -1788,6 +1790,8 @@
 		{ value: ColorMode.Speed, label: 'Speed' },
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
+		{ value: ColorMode.LocalDensity, label: 'Local Density' },
+		{ value: ColorMode.Anisotropy, label: 'Structure' },
 		{ value: ColorMode.None, label: 'None' }
 	];
 
@@ -1812,7 +1816,9 @@
 		{ value: AlphaMode.Direction, label: 'Direction' },
 		{ value: AlphaMode.Speed, label: 'Speed' },
 		{ value: AlphaMode.Turning, label: 'Turning' },
-		{ value: AlphaMode.Acceleration, label: 'Acceleration' }
+		{ value: AlphaMode.Acceleration, label: 'Acceleration' },
+		{ value: AlphaMode.Density, label: 'Density' },
+		{ value: AlphaMode.Anisotropy, label: 'Anisotropy' }
 	];
 
 	// Cursor toggle indicator position - based on per-species cursorResponse
@@ -2303,6 +2309,34 @@
 												r="3.5"
 											/></svg
 										>
+									{:else if currentParams.colorMode === ColorMode.LocalDensity}
+										<!-- Lucide: layers (local density) -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path
+												d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"
+											/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" /></svg
+										>
+									{:else if currentParams.colorMode === ColorMode.Anisotropy}
+										<!-- Lucide: scan-line (structure/anisotropy) -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path
+												d="M21 17v2a2 2 0 0 1-2 2h-2"
+											/><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg
+										>
 									{/if}
 									<span class="flex-1 truncate"
 										>{colorOptions.find((o) => o.value === currentParams.colorMode)?.label}</span
@@ -2447,6 +2481,34 @@
 															cy="17.5"
 															r="3.5"
 														/></svg
+													>
+												{:else if opt.value === ColorMode.LocalDensity}
+													<!-- Lucide: layers (local density) -->
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path
+															d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"
+														/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" /></svg
+													>
+												{:else if opt.value === ColorMode.Anisotropy}
+													<!-- Lucide: scan-line (structure/anisotropy) -->
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path
+															d="M21 17v2a2 2 0 0 1-2 2h-2"
+														/><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg
 													>
 												{/if}
 												<span>{opt.label}</span>

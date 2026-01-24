@@ -118,14 +118,15 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<GPUContext 
 		// Request device with required features
 		let device: GPUDevice;
 		try {
-			// We need 9 storage buffers in the compute shader for multi-species support
-			// (8 original + 1 for speciesIds)
-			const requiredStorageBuffers = 9;
+			// We need 10 storage buffers in the compute shader for metrics support
+			// Bind group 0: 8 storage (positionsIn/Out, velocitiesIn/Out, prefixSums, cellCounts, sortedIndices, trails)
+			// Bind group 1: 2 storage (speciesIds, metrics)
+			const requiredStorageBuffers = 10;
 			const adapterStorageLimit = adapter.limits.maxStorageBuffersPerShaderStage;
 
 			if (adapterStorageLimit < requiredStorageBuffers) {
 				console.warn(
-					`Adapter only supports ${adapterStorageLimit} storage buffers, but we need ${requiredStorageBuffers}. Multi-species features may not work.`
+					`Adapter only supports ${adapterStorageLimit} storage buffers, but we need ${requiredStorageBuffers}. Metrics features may not work.`
 				);
 			}
 

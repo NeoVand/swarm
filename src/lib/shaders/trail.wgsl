@@ -50,6 +50,8 @@ const COLOR_TURNING: u32 = 4u;
 const COLOR_NONE: u32 = 5u;
 const COLOR_DENSITY: u32 = 6u;
 const COLOR_SPECIES: u32 = 7u;
+const COLOR_LOCAL_DENSITY: u32 = 8u;
+const COLOR_ANISOTROPY: u32 = 9u;
 
 // Get species color params from speciesParams buffer (5 vec4s per species)
 fn getSpeciesHue(speciesId: u32) -> f32 {
@@ -78,6 +80,8 @@ const ALPHA_DIRECTION: u32 = 1u;
 const ALPHA_SPEED: u32 = 2u;
 const ALPHA_TURNING: u32 = 3u;
 const ALPHA_ACCELERATION: u32 = 4u;
+const ALPHA_DENSITY: u32 = 5u;
+const ALPHA_ANISOTROPY: u32 = 6u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -102,6 +106,7 @@ struct VertexOutput {
 @group(0) @binding(4) var<storage, read> birthColors: array<f32>;
 @group(0) @binding(5) var<storage, read> speciesIds: array<u32>;
 @group(0) @binding(6) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s
+@group(0) @binding(7) var<storage, read> metrics: array<vec4<f32>>;  // per-boid metrics [density, anisotropy, 0, 0]
 
 fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
     let h = hsv.x;
@@ -510,6 +515,16 @@ fn vs_main(
             let speciesId = speciesIds[boidIndex];
             colorValue = getSpeciesHue(speciesId);
         }
+        case COLOR_LOCAL_DENSITY: {
+            // Computed same-species neighbor density
+            let m = metrics[boidIndex];
+            colorValue = clamp(log(1.0 + m.x * 0.5) / 3.0, 0.0, 1.0);
+        }
+        case COLOR_ANISOTROPY: {
+            // Computed local structure - edges/filaments vs blobs
+            let m = metrics[boidIndex];
+            colorValue = m.y;
+        }
         default: { 
             colorValue = 0.5; 
         }
@@ -554,6 +569,17 @@ fn vs_main(
                 // Alpha based on speed ratio (proxy for acceleration state)
                 let accAlpha = clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
                 speciesAlphaFactor = 0.3 + (1.0 - accAlpha) * 0.7;
+            }
+            case ALPHA_DENSITY: {
+                // Alpha based on local same-species density - higher density = more visible
+                let m = metrics[boidIndex];
+                let normalizedDensity = clamp(log(1.0 + m.x * 0.5) / 3.0, 0.0, 1.0);
+                speciesAlphaFactor = 0.3 + normalizedDensity * 0.7;
+            }
+            case ALPHA_ANISOTROPY: {
+                // Alpha based on local structure - edges/filaments more visible than blobs
+                let m = metrics[boidIndex];
+                speciesAlphaFactor = 0.3 + m.y * 0.7;  // aniso is already [0,1]
             }
             default: {
                 speciesAlphaFactor = 1.0;

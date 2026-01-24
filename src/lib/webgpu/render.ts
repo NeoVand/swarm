@@ -46,7 +46,8 @@ export function createRenderPipelines(
 			{ binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // birthColors
 			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // speciesIds
-			{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } } // speciesParams (uniform)
+			{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // speciesParams (uniform)
+			{ binding: 6, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // metrics (density, anisotropy)
 		]
 	});
 
@@ -93,7 +94,8 @@ export function createRenderPipelines(
 			{ binding: 2, resource: { buffer: buffers.velocityA } },
 			{ binding: 3, resource: { buffer: buffers.birthColors } },
 			{ binding: 4, resource: { buffer: buffers.speciesIds } },
-			{ binding: 5, resource: { buffer: buffers.speciesParams } }
+			{ binding: 5, resource: { buffer: buffers.speciesParams } },
+			{ binding: 6, resource: { buffer: buffers.metrics } }
 		]
 	});
 
@@ -105,7 +107,8 @@ export function createRenderPipelines(
 			{ binding: 2, resource: { buffer: buffers.velocityB } },
 			{ binding: 3, resource: { buffer: buffers.birthColors } },
 			{ binding: 4, resource: { buffer: buffers.speciesIds } },
-			{ binding: 5, resource: { buffer: buffers.speciesParams } }
+			{ binding: 5, resource: { buffer: buffers.speciesParams } },
+			{ binding: 6, resource: { buffer: buffers.metrics } }
 		]
 	});
 
@@ -122,7 +125,8 @@ export function createRenderPipelines(
 			{ binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
 			{ binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // birthColors
 			{ binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // speciesIds
-			{ binding: 6, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } } // speciesParams (uniform)
+			{ binding: 6, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // speciesParams (uniform)
+			{ binding: 7, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } } // metrics (density, anisotropy)
 		]
 	});
 
@@ -170,7 +174,8 @@ export function createRenderPipelines(
 			{ binding: 3, resource: { buffer: buffers.trails } },
 			{ binding: 4, resource: { buffer: buffers.birthColors } },
 			{ binding: 5, resource: { buffer: buffers.speciesIds } },
-			{ binding: 6, resource: { buffer: buffers.speciesParams } }
+			{ binding: 6, resource: { buffer: buffers.speciesParams } },
+			{ binding: 7, resource: { buffer: buffers.metrics } }
 		]
 	});
 
@@ -183,7 +188,8 @@ export function createRenderPipelines(
 			{ binding: 3, resource: { buffer: buffers.trails } },
 			{ binding: 4, resource: { buffer: buffers.birthColors } },
 			{ binding: 5, resource: { buffer: buffers.speciesIds } },
-			{ binding: 6, resource: { buffer: buffers.speciesParams } }
+			{ binding: 6, resource: { buffer: buffers.speciesParams } },
+			{ binding: 7, resource: { buffer: buffers.metrics } }
 		]
 	});
 

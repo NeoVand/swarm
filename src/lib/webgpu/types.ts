@@ -19,8 +19,10 @@ export enum ColorMode {
 	Acceleration = 3,
 	Turning = 4,
 	None = 5,
-	Density = 6,
-	Species = 7
+	Density = 6, // Position-based (birth color)
+	Species = 7,
+	LocalDensity = 8, // Computed same-species neighbor density
+	Anisotropy = 9 // Computed local structure (edge vs blob)
 }
 
 export enum ColorSpectrum {
@@ -37,7 +39,9 @@ export enum AlphaMode {
 	Direction = 1, // Alpha based on movement direction
 	Speed = 2, // Alpha based on speed
 	Turning = 3, // Alpha based on turning rate
-	Acceleration = 4 // Alpha based on acceleration
+	Acceleration = 4, // Alpha based on acceleration
+	Density = 5, // Alpha based on local same-species density
+	Anisotropy = 6 // Alpha based on local structure (edge vs interior)
 }
 
 export enum CursorMode {
@@ -283,6 +287,8 @@ export interface SimulationBuffers {
 	speciesIds: GPUBuffer; // u32 per boid - which species each boid belongs to
 	speciesParams: GPUBuffer; // Per-species flocking parameters (alignment, cohesion, etc.)
 	interactionMatrix: GPUBuffer; // MAX_SPECIES × MAX_SPECIES interaction rules
+	// Metrics buffer for visualization
+	metrics: GPUBuffer; // vec4<f32> per boid [density, anisotropy, reserved, reserved]
 }
 
 export interface ComputePipelines {

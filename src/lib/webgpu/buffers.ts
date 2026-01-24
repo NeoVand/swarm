@@ -137,6 +137,13 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
+	// Metrics buffer: vec4<f32> per boid [density, anisotropy, reserved, reserved]
+	// Used for species-specific structure visualization
+	const metrics = device.createBuffer({
+		size: boidCount * 4 * 4, // vec4<f32> per boid = 16 bytes
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+
 	return {
 		positionA,
 		positionB,
@@ -155,7 +162,8 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		wallSampler,
 		speciesIds,
 		speciesParams,
-		interactionMatrix
+		interactionMatrix,
+		metrics
 	};
 }
 
@@ -177,6 +185,7 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.speciesIds.destroy();
 	buffers.speciesParams.destroy();
 	buffers.interactionMatrix.destroy();
+	buffers.metrics.destroy();
 }
 
 export function initializeBoids(
