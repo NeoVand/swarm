@@ -153,16 +153,20 @@ export interface Species {
 	interactions: InteractionRule[];
 }
 
-// Default species colors (hues) - evenly spaced for maximum distinction
-export const SPECIES_HUES = [
-	210, // Blue
-	20, // Red-Orange
-	120, // Green
-	280, // Purple
-	55, // Yellow-Orange
-	180, // Cyan
-	330 // Pink
+// Default species colors - tuned per-hue for vibrant, visually distinct appearance
+// Each entry: [hue, saturation, lightness]
+export const SPECIES_COLORS: [number, number, number][] = [
+	[210, 90, 50], // Blue - vibrant, slightly dark
+	[25, 95, 58], // Orange - rich, warm
+	[145, 80, 48], // Green - saturated, earthy
+	[275, 85, 60], // Purple - vivid, bright
+	[50, 90, 55], // Gold/Yellow - rich, warm
+	[185, 85, 50], // Teal/Cyan - saturated, balanced
+	[340, 85, 60] // Pink/Magenta - vivid, lively
 ];
+
+// Legacy exports for backwards compatibility
+export const SPECIES_HUES = SPECIES_COLORS.map(([h]) => h);
 
 // Default species names (simple numbered names)
 export const SPECIES_NAMES = ['Species 1', 'Species 2', 'Species 3', 'Species 4', 'Species 5', 'Species 6', 'Species 7'];
@@ -171,13 +175,15 @@ export const SPECIES_NAMES = ['Species 1', 'Species 2', 'Species 3', 'Species 4'
 export function createDefaultSpecies(id: number, population: number): Species {
 	// Cycle through available shapes (0-4: Triangle, Square, Pentagon, Hexagon, Arrow)
 	const numShapes = 5;
+	const colorIndex = id % SPECIES_COLORS.length;
+	const [hue, saturation, lightness] = SPECIES_COLORS[colorIndex] || [((id * 51) % 360), 85, 55];
 	return {
 		id,
 		name: SPECIES_NAMES[id] || `Species ${id + 1}`,
 		headShape: (id % numShapes) as HeadShape,
-		hue: SPECIES_HUES[id] || (id * 51) % 360,
-		saturation: 70, // Default saturation
-		lightness: 55, // Default lightness
+		hue,
+		saturation,
+		lightness,
 		alphaMode: AlphaMode.Turning, // Default: alpha based on turning
 		population,
 		// Per-species visual parameters
@@ -299,6 +305,55 @@ export interface BindGroups {
 	render: GPUBindGroup[];
 }
 
+// Create default species with predefined interactions for interesting dynamics
+function createDefaultSpecies1(population: number): Species {
+	const base = createDefaultSpecies(0, population);
+	// Species 1: Main flock - flees from Species 2 (prey behavior)
+	return {
+		...base,
+		interactions: [
+			{
+				targetSpecies: -1, // All others
+				behavior: InteractionBehavior.Flee,
+				strength: 0.6,
+				range: 0
+			}
+		]
+	};
+}
+
+function createDefaultSpecies2(population: number): Species {
+	const base = createDefaultSpecies(1, population);
+	// Species 2: Secondary group - flees from all others
+	return {
+		...base,
+		interactions: [
+			{
+				targetSpecies: -1, // All others
+				behavior: InteractionBehavior.Flee,
+				strength: 0.5,
+				range: 0
+			}
+		]
+	};
+}
+
+function createDefaultSpecies3(population: number): Species {
+	const base = createDefaultSpecies(2, population);
+	// Species 3: Tertiary group - flees from all others
+	return {
+		...base,
+		interactions: [
+			{
+				targetSpecies: -1, // All others
+				behavior: InteractionBehavior.Flee,
+				strength: 0.5,
+				range: 0
+			}
+		]
+	};
+}
+
 export const DEFAULT_PARAMS: SimulationParams = {
 	alignment: 1.3,
 	cohesion: 0.6,
@@ -319,7 +374,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorMode: ColorMode.Orientation,
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
-	population: 7000,
+	population: 6000, // Default total (will be recalculated based on screen size)
 	algorithmMode: AlgorithmMode.SmoothMetric,
 	// Algorithm-specific defaults
 	kNeighbors: 12, // Topological K-NN
@@ -330,8 +385,8 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	// Wall drawing
 	wallBrushSize: 30, // Default brush size
 	wallBrushShape: WallBrushShape.Solid, // Default brush shape
-	// Multi-species defaults
-	species: [createDefaultSpecies(0, 7000)],
+	// Multi-species defaults: Start with three species, all avoiding each other
+	species: [createDefaultSpecies1(4500), createDefaultSpecies2(1000), createDefaultSpecies3(500)],
 	activeSpeciesId: 0
 };
 
@@ -361,6 +416,54 @@ export function calculateOptimalPopulation(width: number, height: number): numbe
 	population = Math.round(population / 500) * 500;
 
 	return population;
+}
+
+/**
+ * Calculate optimal populations for default three-species setup.
+ * Species 1 gets ~75% (main swarm), Species 2 gets ~17%, Species 3 gets ~8%.
+ * This creates visually interesting multi-swarm dynamics.
+ *
+ * @param width Canvas width in pixels
+ * @param height Canvas height in pixels
+ * @returns Object with species1, species2, species3 populations and total
+ */
+export function calculateOptimalSpeciesPopulations(
+	width: number,
+	height: number
+): { species1: number; species2: number; species3: number; total: number } {
+	const area = width * height;
+
+	// Target density: roughly 1 boid per 300 square pixels
+	const density = 300;
+	let totalPopulation = Math.floor(area / density);
+
+	// Mobile detection: smaller screens get reduced populations
+	const isMobile = width < 768 || area < 500000;
+
+	// Clamp to reasonable bounds (tighter bounds for mobile)
+	const MIN_POPULATION = isMobile ? 600 : 1000;
+	const MAX_POPULATION = isMobile ? 6000 : 15000;
+
+	totalPopulation = Math.max(MIN_POPULATION, Math.min(MAX_POPULATION, totalPopulation));
+
+	// Split: Species 1 ~75%, Species 2 ~17%, Species 3 ~8% (9:2:1 ratio roughly)
+	// This creates good visual dynamics - main flock with two smaller groups
+	const species1Raw = Math.floor(totalPopulation * 0.75);
+	const species2Raw = Math.floor(totalPopulation * 0.17);
+	const species3Raw = totalPopulation - species1Raw - species2Raw;
+
+	// Round to nearest 100 for cleaner numbers (50 for mobile)
+	const roundTo = isMobile ? 50 : 100;
+	const species1 = Math.round(species1Raw / roundTo) * roundTo;
+	const species2 = Math.max(roundTo, Math.round(species2Raw / roundTo) * roundTo);
+	const species3 = Math.max(roundTo, Math.round(species3Raw / roundTo) * roundTo);
+
+	return {
+		species1,
+		species2,
+		species3,
+		total: species1 + species2 + species3
+	};
 }
 
 // Uniform buffer layout (must match WGSL struct)

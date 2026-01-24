@@ -10,7 +10,7 @@
 		VortexDirection,
 		WallTool,
 		WallBrushShape,
-		calculateOptimalPopulation
+		calculateOptimalSpeciesPopulations
 	} from '$lib/webgpu/types';
 	import {
 		params,
@@ -321,16 +321,19 @@
 			// Set initial dimensions
 			updateDimensions();
 
-			// Calculate optimal population based on screen size
-			const optimalPopulation = calculateOptimalPopulation(canvas.width, canvas.height);
+			// Calculate optimal populations for all three species based on screen size
+			const optimalPops = calculateOptimalSpeciesPopulations(canvas.width, canvas.height);
 
-			// Update params with optimal population directly (without triggering reallocation flag)
-			// IMPORTANT: Also update the first species' population to match, otherwise
-			// there's a mismatch that causes new species to not appear
+			// Update params with optimal populations for all species
 			params.update((p) => ({
 				...p,
-				population: optimalPopulation,
-				species: p.species.map((s, i) => (i === 0 ? { ...s, population: optimalPopulation } : s))
+				population: optimalPops.total,
+				species: p.species.map((s) => {
+					if (s.id === 0) return { ...s, population: optimalPops.species1 };
+					if (s.id === 1) return { ...s, population: optimalPops.species2 };
+					if (s.id === 2) return { ...s, population: optimalPops.species3 };
+					return s;
+				})
 			}));
 
 			// Get params for simulation init
