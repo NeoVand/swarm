@@ -4,7 +4,6 @@ import type { SimulationBuffers } from './types';
 import { WORKGROUP_SIZE } from './types';
 
 import clearShader from '$lib/shaders/clear.wgsl?raw';
-import clearOffsetsShader from '$lib/shaders/clear_offsets.wgsl?raw';
 import countShader from '$lib/shaders/count.wgsl?raw';
 import prefixSumShader from '$lib/shaders/prefix_sum.wgsl?raw';
 import scatterShader from '$lib/shaders/scatter.wgsl?raw';
@@ -15,7 +14,6 @@ import writeMetricsShader from '$lib/shaders/write_metrics.wgsl?raw';
 
 export interface ComputeBindGroups {
 	clear: GPUBindGroup;
-	clearOffsets: GPUBindGroup;
 	count: GPUBindGroup[];
 	prefixSum: GPUBindGroup;
 	prefixSumAggregate: GPUBindGroup;
@@ -40,9 +38,9 @@ export interface ComputeBindGroups {
 export interface ComputeResources {
 	pipelines: {
 		clear: GPUComputePipeline;
-		clearOffsets: GPUComputePipeline;
 		count: GPUComputePipeline;
 		prefixSum: GPUComputePipeline;
+		prefixSumCumulative: GPUComputePipeline; // New: compute cumulative block sums
 		prefixSumAggregate: GPUComputePipeline;
 		scatter: GPUComputePipeline;
 		simulate: GPUComputePipeline;
@@ -64,17 +62,17 @@ export function createComputePipelines(
 ): ComputeResources {
 	// Create shader modules
 	const clearModule = device.createShaderModule({ code: clearShader });
-	const clearOffsetsModule = device.createShaderModule({ code: clearOffsetsShader });
 	const countModule = device.createShaderModule({ code: countShader });
 	const prefixSumModule = device.createShaderModule({ code: prefixSumShader });
 	const scatterModule = device.createShaderModule({ code: scatterShader });
 	const simulateModule = device.createShaderModule({ code: simulateShader });
 
-	// === Clear Pipeline ===
+	// === Clear Pipeline (clears both cellCounts and cellOffsets in one pass) ===
 	const clearBindGroupLayout = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }
+			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }
 		]
 	});
 
@@ -87,28 +85,8 @@ export function createComputePipelines(
 		layout: clearBindGroupLayout,
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
-			{ binding: 1, resource: { buffer: buffers.cellCounts } }
-		]
-	});
-
-	// === Clear Offsets Pipeline ===
-	const clearOffsetsBindGroupLayout = device.createBindGroupLayout({
-		entries: [
-			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }
-		]
-	});
-
-	const clearOffsetsPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({ bindGroupLayouts: [clearOffsetsBindGroupLayout] }),
-		compute: { module: clearOffsetsModule, entryPoint: 'main' }
-	});
-
-	const clearOffsetsBindGroup = device.createBindGroup({
-		layout: clearOffsetsBindGroupLayout,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.uniforms } },
-			{ binding: 1, resource: { buffer: buffers.cellOffsets } }
+			{ binding: 1, resource: { buffer: buffers.cellCounts } },
+			{ binding: 2, resource: { buffer: buffers.cellOffsets } }
 		]
 	});
 
@@ -161,6 +139,12 @@ export function createComputePipelines(
 	const prefixSumPipeline = device.createComputePipeline({
 		layout: device.createPipelineLayout({ bindGroupLayouts: [prefixSumBindGroupLayout] }),
 		compute: { module: prefixSumModule, entryPoint: 'main' }
+	});
+
+	// New: compute cumulative block sums (runs with 1 thread)
+	const prefixSumCumulativePipeline = device.createComputePipeline({
+		layout: device.createPipelineLayout({ bindGroupLayouts: [prefixSumBindGroupLayout] }),
+		compute: { module: prefixSumModule, entryPoint: 'computeCumulativeBlockSums' }
 	});
 
 	const prefixSumAggregatePipeline = device.createComputePipeline({
@@ -497,9 +481,9 @@ export function createComputePipelines(
 	return {
 		pipelines: {
 			clear: clearPipeline,
-			clearOffsets: clearOffsetsPipeline,
 			count: countPipeline,
 			prefixSum: prefixSumPipeline,
+			prefixSumCumulative: prefixSumCumulativePipeline,
 			prefixSumAggregate: prefixSumAggregatePipeline,
 			scatter: scatterPipeline,
 			simulate: simulatePipeline,
@@ -511,7 +495,6 @@ export function createComputePipelines(
 		},
 		bindGroups: {
 			clear: clearBindGroup,
-			clearOffsets: clearOffsetsBindGroup,
 			count: [countBindGroupA, countBindGroupB],
 			prefixSum: prefixSumBindGroup,
 			prefixSumAggregate: prefixSumAggregateBindGroup,
@@ -553,20 +536,11 @@ export function encodeComputePasses(
 	const cellWorkgroups = Math.ceil(totalSlots / WORKGROUP_SIZE);
 	const prefixSumWorkgroups = Math.ceil(totalSlots / (WORKGROUP_SIZE * 2));
 
-	// Pass 1: Clear cell counts
+	// Pass 1: Clear cell counts and cell offsets (merged into single pass)
 	{
 		const pass = encoder.beginComputePass();
 		pass.setPipeline(resources.pipelines.clear);
 		pass.setBindGroup(0, resources.bindGroups.clear);
-		pass.dispatchWorkgroups(cellWorkgroups);
-		pass.end();
-	}
-
-	// Pass 1b: Clear cell offsets
-	{
-		const pass = encoder.beginComputePass();
-		pass.setPipeline(resources.pipelines.clearOffsets);
-		pass.setBindGroup(0, resources.bindGroups.clearOffsets);
 		pass.dispatchWorkgroups(cellWorkgroups);
 		pass.end();
 	}
@@ -589,7 +563,17 @@ export function encodeComputePasses(
 		pass.end();
 	}
 
-	// Pass 3b: Aggregate block sums (for large grids)
+	// Pass 3b: Compute cumulative block sums (for large grids)
+	// This converts blockSums from per-block totals to exclusive prefix sums
+	if (prefixSumWorkgroups > 1) {
+		const pass = encoder.beginComputePass();
+		pass.setPipeline(resources.pipelines.prefixSumCumulative);
+		pass.setBindGroup(0, resources.bindGroups.prefixSum);
+		pass.dispatchWorkgroups(1); // Single workgroup, single thread
+		pass.end();
+	}
+
+	// Pass 3c: Add cumulative block sums to get final prefix sums - O(1) per element
 	if (prefixSumWorkgroups > 1) {
 		const pass = encoder.beginComputePass();
 		pass.setPipeline(resources.pipelines.prefixSumAggregate);

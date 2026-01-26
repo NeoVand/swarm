@@ -35,10 +35,6 @@ struct Uniforms {
     deltaTime: f32,
     time: f32,
     frameCount: u32,
-    algorithmMode: u32,
-    kNeighbors: u32,
-    sampleCount: u32,
-    idealDensity: f32,
     timeScale: f32,
     saturationSource: u32,
     brightnessSource: u32,
@@ -126,7 +122,20 @@ fn main(
     }
 }
 
-// Second pass: add block sums to get final prefix sums
+// Second pass: convert block sums to cumulative (exclusive prefix) sums
+// Run with 1 workgroup of 1 thread - blockSums array is small (typically <100 elements)
+@compute @workgroup_size(1)
+fn computeCumulativeBlockSums(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let numBlocks = (uniforms.totalSlots + WORKGROUP_SIZE * 2u - 1u) / (WORKGROUP_SIZE * 2u);
+    var sum = 0u;
+    for (var i = 0u; i < numBlocks; i++) {
+        let current = blockSums[i];
+        blockSums[i] = sum;  // Convert to exclusive prefix
+        sum += current;
+    }
+}
+
+// Third pass: add cumulative block sums to get final prefix sums - O(1) per element
 @compute @workgroup_size(256)
 fn addBlockSums(
     @builtin(global_invocation_id) global_id: vec3<u32>,
@@ -149,11 +158,6 @@ fn addBlockSums(
         return;
     }
     
-    // Add the sum of all previous blocks
-    var blockSum = 0u;
-    for (var i = 0u; i < originalBlock; i++) {
-        blockSum += blockSums[i];
-    }
-    
-    prefixSums[idx] += blockSum;
+    // O(1) lookup - blockSums now contains cumulative sums
+    prefixSums[idx] += blockSums[originalBlock];
 }

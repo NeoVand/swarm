@@ -34,10 +34,6 @@ struct Uniforms {
     deltaTime: f32,
     time: f32,
     frameCount: u32,
-    algorithmMode: u32,
-    kNeighbors: u32,
-    sampleCount: u32,
-    idealDensity: f32,
     timeScale: f32,
     saturationSource: u32,  // What controls saturation (ColorMode enum)
     brightnessSource: u32,  // What controls brightness (ColorMode enum)

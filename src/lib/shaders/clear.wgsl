@@ -1,4 +1,4 @@
-// Clear cell counts to zero (used before count pass)
+// Clear cell counts and cell offsets to zero (used before count pass)
 
 struct Uniforms {
     canvasWidth: f32,
@@ -34,10 +34,6 @@ struct Uniforms {
     deltaTime: f32,
     time: f32,
     frameCount: u32,
-    algorithmMode: u32,
-    kNeighbors: u32,
-    sampleCount: u32,
-    idealDensity: f32,
     timeScale: f32,
     saturationSource: u32,
     brightnessSource: u32,
@@ -49,6 +45,7 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read_write> cellCounts: array<atomic<u32>>;
+@group(0) @binding(2) var<storage, read_write> cellOffsets: array<atomic<u32>>;
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -60,4 +57,5 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
     
     atomicStore(&cellCounts[cellIndex], 0u);
+    atomicStore(&cellOffsets[cellIndex], 0u);
 }

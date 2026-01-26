@@ -64,14 +64,6 @@ export enum CursorShape {
 	Disk = 1 // Filled circle - attraction/repulsion area
 }
 
-export enum AlgorithmMode {
-	TopologicalKNN = 0, // k-nearest neighbors with smooth kernels
-	SmoothMetric = 1, // Metric neighbors with smooth kernels + jitter
-	HashFree = 2, // Per-boid randomized grid offset (no global seams)
-	StochasticSample = 3, // Random neighbor sampling with distance weighting
-	DensityAdaptive = 4 // Hash-free with advanced density-adaptive forces
-}
-
 export enum WallTool {
 	None = 0, // Normal cursor interaction mode
 	Pencil = 1, // Draw walls
@@ -256,11 +248,6 @@ export interface SimulationParams {
 	colorSpectrum: ColorSpectrum;
 	sensitivity: number;
 	population: number;
-	algorithmMode: AlgorithmMode;
-	// Algorithm-specific parameters
-	kNeighbors: number; // Topological K-NN: number of neighbors (4-24)
-	sampleCount: number; // Stochastic: random samples per frame (8-64)
-	idealDensity: number; // Density Adaptive: target neighbor density (1-10)
 	// Simulation timing
 	timeScale: number; // Simulation speed multiplier (0.25-2.0)
 	// Wall drawing
@@ -428,11 +415,6 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
 	population: 6000, // Default total (will be recalculated based on screen size)
-	algorithmMode: AlgorithmMode.HashFree, // Hash-free with locally perfect hashing (best performance)
-	// Algorithm-specific defaults
-	kNeighbors: 12, // Topological K-NN
-	sampleCount: 32, // Stochastic
-	idealDensity: 5.0, // Density Adaptive
 	// Simulation timing
 	timeScale: 1.0, // Normal speed
 	// Wall drawing
