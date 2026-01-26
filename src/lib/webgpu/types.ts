@@ -173,8 +173,8 @@ export interface Species {
 export const SPECIES_COLORS: [number, number, number][] = [
 	[210, 90, 50], // Blue - vibrant, slightly dark
 	[25, 95, 58], // Orange - rich, warm
-	[145, 80, 48], // Green - saturated, earthy
-	[275, 85, 60], // Purple - vivid, bright
+	[145, 75, 40], // Green - toned down (green appears brighter perceptually)
+	[275, 85, 68], // Purple - boosted (purple appears darker perceptually)
 	[50, 90, 55], // Gold/Yellow - rich, warm
 	[185, 85, 50], // Teal/Cyan - saturated, balanced
 	[340, 85, 60] // Pink/Magenta - vivid, lively
@@ -383,13 +383,13 @@ function createDefaultSpecies3(population: number): Species {
 
 function createDefaultSpecies4(population: number): Species {
 	const base = createDefaultSpecies(3, population);
-	// Species 4: Fourth group - flees from all others (like species 2 and 3)
+	// Species 4: Fourth group - chases all others (predator species)
 	return {
 		...base,
 		interactions: [
 			{
 				targetSpecies: -1, // All others
-				behavior: InteractionBehavior.Flee,
+				behavior: InteractionBehavior.Chase,
 				strength: 0.5,
 				range: 0
 			}
@@ -434,7 +434,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	spectralMode: SpectralMode.FlowDivergence,
 	// HSL control defaults
 	saturationSource: ColorMode.None, // None = full saturation (100%)
-	brightnessSource: ColorMode.FlowDivergence  // Turning gives good visual dynamics
+	brightnessSource: ColorMode.LocalDensity  // Local density shows cluster structure nicely
 };
 
 /**

@@ -172,7 +172,7 @@ const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
 @group(0) @binding(5) var<storage, read> prefixSums: array<u32>;
 @group(0) @binding(6) var<storage, read> cellCounts: array<u32>;
 @group(0) @binding(7) var<storage, read> sortedIndices: array<u32>;
-@group(0) @binding(8) var<storage, read_write> trails: array<vec2<f32>>;
+@group(0) @binding(8) var<storage, read_write> trails: array<vec4<f32>>;  // (pos.x, pos.y, vel.x, vel.y) for gradient colors
 @group(0) @binding(9) var wallTexture: texture_2d<f32>;
 @group(0) @binding(10) var wallSampler: sampler;
 
@@ -1460,6 +1460,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             trailPos = newPos - trailDir * 0.7 * speciesSize * 6.0;
         }
         // Use MAX_TRAIL_LENGTH for buffer stride so changing trailLength doesn't shift data
-        trails[boidIndex * MAX_TRAIL_LENGTH + uniforms.trailHead] = trailPos;
+        // Store position + velocity for gradient trail colors
+        trails[boidIndex * MAX_TRAIL_LENGTH + uniforms.trailHead] = vec4(trailPos.x, trailPos.y, newVel.x, newVel.y);
     }
 }

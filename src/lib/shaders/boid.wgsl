@@ -632,12 +632,12 @@ fn vs_main(
             colorValue = getSpeciesHue(speciesId);
         }
         case COLOR_LOCAL_DENSITY: {
-            // Computed same-species neighbor density with better scaling
+            // Computed same-species neighbor density with balanced scaling
             let m = metrics[boidIndex];
-            // Softer log scale: sqrt-log hybrid for better range utilization
-            // Low density (~1-5): distinct colors, High density (~20+): still varies
+            // Balanced scaling: sqrt(density) / 4.0 reaches max at ~16 neighbors
+            // Shows structure without maxing out too quickly
             let density = m.x;
-            let scaled = sqrt(density) / 5.0;  // sqrt spreads values more evenly
+            let scaled = sqrt(density) / 5.0;
             colorValue = clamp(scaled, 0.0, 1.0);
         }
         case COLOR_ANISOTROPY: {
@@ -776,7 +776,8 @@ fn vs_main(
             }
             case COLOR_LOCAL_DENSITY: {
                 let m = metrics[boidIndex];
-                brightValue = clamp(sqrt(m.x) / 5.0, 0.0, 1.0);
+                // Extended range for local density: 0.1 to 0.95 for better structure visibility
+                brightness = 0.1 + clamp(sqrt(m.x) / 5.0, 0.0, 1.0) * 0.85;
             }
             case COLOR_ANISOTROPY: {
                 let m = metrics[boidIndex];
@@ -808,7 +809,10 @@ fn vs_main(
             }
             case COLOR_FLOW_DIVERGENCE: {
                 let m = metrics[boidIndex];
-                brightValue = fract(m.w);
+                // Extended range for flow divergence: 0.1 to 0.95
+                // Apply slight curve to spread out mid-range values
+                let raw = fract(m.w);
+                brightness = 0.1 + pow(raw, 0.8) * 0.85;
             }
             case COLOR_TRUE_TURNING: {
                 let m = metrics[boidIndex];
@@ -817,8 +821,8 @@ fn vs_main(
             }
             default: { brightValue = 0.5; }
         }
-        // Apply standard brightness mapping for non-turn-rate modes
-        if (uniforms.brightnessSource != COLOR_TRUE_TURNING) {
+        // Apply standard brightness mapping for modes that don't have custom ranges
+        if (uniforms.brightnessSource != COLOR_TRUE_TURNING && uniforms.brightnessSource != COLOR_LOCAL_DENSITY && uniforms.brightnessSource != COLOR_FLOW_DIVERGENCE) {
             brightness = 0.25 + brightValue * 0.5;  // Range 0.25-0.75
         }
     }

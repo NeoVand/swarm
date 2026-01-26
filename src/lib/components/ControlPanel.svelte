@@ -558,56 +558,66 @@
 	function selectColorize(mode: ColorMode) {
 		setColorMode(mode);
 		// Auto-set spectral mode based on color selection
-		if (mode === ColorMode.Influence) {
-			setSpectralMode(SpectralMode.Angular);
-		} else if (mode === ColorMode.SpectralRadial) {
-			setSpectralMode(SpectralMode.Radial);
-		} else if (mode === ColorMode.SpectralAsymmetry) {
-			setSpectralMode(SpectralMode.Asymmetry);
-		} else if (mode === ColorMode.FlowAngular) {
-			setSpectralMode(SpectralMode.FlowAngular);
-		} else if (mode === ColorMode.FlowRadial) {
-			setSpectralMode(SpectralMode.FlowRadial);
-		} else if (mode === ColorMode.FlowDivergence) {
-			setSpectralMode(SpectralMode.FlowDivergence);
+		// Hue takes priority, so always set if it's a spectral mode
+		const spectral = getSpectralModeFor(mode);
+		if (spectral !== null) {
+			setSpectralMode(spectral);
+		} else {
+			// If hue is not spectral, check if saturation or brightness need it
+			const satSpectral = getSpectralModeFor($params.saturationSource);
+			const brightSpectral = getSpectralModeFor($params.brightnessSource);
+			if (satSpectral !== null) {
+				setSpectralMode(satSpectral);
+			} else if (brightSpectral !== null) {
+				setSpectralMode(brightSpectral);
+			}
 		}
 		colorizeDropdownOpen = false;
 	}
 
+	// Check if a color mode requires spectral computation
+	function isSpectralMode(mode: ColorMode): boolean {
+		return mode === ColorMode.Influence ||
+			mode === ColorMode.SpectralRadial ||
+			mode === ColorMode.SpectralAsymmetry ||
+			mode === ColorMode.FlowAngular ||
+			mode === ColorMode.FlowRadial ||
+			mode === ColorMode.FlowDivergence;
+	}
+
+	// Get the spectral mode for a color mode
+	function getSpectralModeFor(mode: ColorMode): SpectralMode | null {
+		if (mode === ColorMode.Influence) return SpectralMode.Angular;
+		if (mode === ColorMode.SpectralRadial) return SpectralMode.Radial;
+		if (mode === ColorMode.SpectralAsymmetry) return SpectralMode.Asymmetry;
+		if (mode === ColorMode.FlowAngular) return SpectralMode.FlowAngular;
+		if (mode === ColorMode.FlowRadial) return SpectralMode.FlowRadial;
+		if (mode === ColorMode.FlowDivergence) return SpectralMode.FlowDivergence;
+		return null;
+	}
+
 	function selectSaturationSource(mode: ColorMode) {
 		setSaturationSource(mode);
-		// Auto-set spectral mode based on saturation selection
-		if (mode === ColorMode.Influence) {
-			setSpectralMode(SpectralMode.Angular);
-		} else if (mode === ColorMode.SpectralRadial) {
-			setSpectralMode(SpectralMode.Radial);
-		} else if (mode === ColorMode.SpectralAsymmetry) {
-			setSpectralMode(SpectralMode.Asymmetry);
-		} else if (mode === ColorMode.FlowAngular) {
-			setSpectralMode(SpectralMode.FlowAngular);
-		} else if (mode === ColorMode.FlowRadial) {
-			setSpectralMode(SpectralMode.FlowRadial);
-		} else if (mode === ColorMode.FlowDivergence) {
-			setSpectralMode(SpectralMode.FlowDivergence);
+		// Only set spectral mode if hue (colorMode) doesn't already use a spectral mode
+		// Hue takes priority over saturation/brightness for spectral computation
+		if (!isSpectralMode($params.colorMode)) {
+			const spectral = getSpectralModeFor(mode);
+			if (spectral !== null) {
+				setSpectralMode(spectral);
+			}
 		}
 		saturationDropdownOpen = false;
 	}
 
 	function selectBrightnessSource(mode: ColorMode) {
 		setBrightnessSource(mode);
-		// Auto-set spectral mode based on brightness selection
-		if (mode === ColorMode.Influence) {
-			setSpectralMode(SpectralMode.Angular);
-		} else if (mode === ColorMode.SpectralRadial) {
-			setSpectralMode(SpectralMode.Radial);
-		} else if (mode === ColorMode.SpectralAsymmetry) {
-			setSpectralMode(SpectralMode.Asymmetry);
-		} else if (mode === ColorMode.FlowAngular) {
-			setSpectralMode(SpectralMode.FlowAngular);
-		} else if (mode === ColorMode.FlowRadial) {
-			setSpectralMode(SpectralMode.FlowRadial);
-		} else if (mode === ColorMode.FlowDivergence) {
-			setSpectralMode(SpectralMode.FlowDivergence);
+		// Only set spectral mode if neither hue nor saturation use a spectral mode
+		// Priority: hue > saturation > brightness
+		if (!isSpectralMode($params.colorMode) && !isSpectralMode($params.saturationSource)) {
+			const spectral = getSpectralModeFor(mode);
+			if (spectral !== null) {
+				setSpectralMode(spectral);
+			}
 		}
 		brightnessDropdownOpen = false;
 	}

@@ -41,9 +41,10 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
-	// Trail buffer: vec2<f32> × MAX_TRAIL_LENGTH per boid (pre-allocated for max)
+	// Trail buffer: vec4<f32> × MAX_TRAIL_LENGTH per boid (pre-allocated for max)
+	// Stores (position.x, position.y, velocity.x, velocity.y) for gradient trail colors
 	const trails = device.createBuffer({
-		size: boidCount * MAX_TRAIL_LENGTH * 2 * 4,
+		size: boidCount * MAX_TRAIL_LENGTH * 4 * 4,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
@@ -307,8 +308,8 @@ export function clearTrails(
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	_trailLength?: number
 ): void {
-	// Zero out trail buffer (full pre-allocated size)
-	const zeros = new Float32Array(boidCount * MAX_TRAIL_LENGTH * 2);
+	// Zero out trail buffer (full pre-allocated size, vec4 per trail point)
+	const zeros = new Float32Array(boidCount * MAX_TRAIL_LENGTH * 4);
 	device.queue.writeBuffer(buffers.trails, 0, zeros);
 
 	// Reset trail head

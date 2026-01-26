@@ -114,7 +114,7 @@ struct VertexOutput {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> positions: array<vec2<f32>>;
 @group(0) @binding(2) var<storage, read> velocities: array<vec2<f32>>;
-@group(0) @binding(3) var<storage, read> trails: array<vec2<f32>>;
+@group(0) @binding(3) var<storage, read> trails: array<vec4<f32>>;  // (pos.x, pos.y, vel.x, vel.y) for gradient colors
 @group(0) @binding(4) var<storage, read> birthColors: array<f32>;
 @group(0) @binding(5) var<storage, read> speciesIds: array<u32>;
 @group(0) @binding(6) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s
@@ -386,8 +386,14 @@ fn vs_main(
     let idx1 = (head + MAX_TRAIL_LENGTH - age - 1u) % MAX_TRAIL_LENGTH;
     let idx2 = (head + MAX_TRAIL_LENGTH - age) % MAX_TRAIL_LENGTH;
     
-    var p1 = trails[trailBase + idx1];
-    var p2 = trails[trailBase + idx2];
+    // Read trail data: vec4(pos.x, pos.y, vel.x, vel.y)
+    let trail1 = trails[trailBase + idx1];
+    let trail2 = trails[trailBase + idx2];
+    var p1 = trail1.xy;
+    var p2 = trail2.xy;
+    
+    // Historical velocity for this segment (used for gradient trail colors)
+    var historicalVel: vec2<f32>;
     
     // For the newest segment (age == 0), connect to the current boid's base position
     // The boid triangle has vertices at (1.0, 0.0), (-0.7, ±0.5) in local space
@@ -405,6 +411,11 @@ fn vs_main(
         } else {
             p2 = currentPos;
         }
+        // For newest segment, use current velocity
+        historicalVel = vel;
+    } else {
+        // For older segments, use stored historical velocity
+        historicalVel = trail2.zw;
     }
     
     // Skip if points are at origin (uninitialized)
@@ -501,11 +512,11 @@ fn vs_main(
     
     output.position = vec4<f32>(clipX, clipY, 0.0, 1.0);
     
-    // Color based on current velocity of the boid
-    let vel = velocities[boidIndex];
-    let pos = positions[boidIndex];
-    let speed = length(vel);
-    let angle = atan2(vel.y, vel.x);
+    // Color based on historical velocity for gradient trail effect
+    // historicalVel was computed earlier from trail buffer (or current vel for newest segment)
+    let speed = length(historicalVel);
+    let angle = atan2(historicalVel.y, historicalVel.x);
+    let pos = positions[boidIndex];  // Position still needed for some color modes
     
     var colorValue: f32;
     switch (uniforms.colorMode) {
@@ -522,7 +533,7 @@ fn vs_main(
             let cellY = floor(pos.y / uniforms.perception);
             let cellHash = fract(sin(cellX * 12.9898 + cellY * 78.233) * 43758.5453);
             // Combine with velocity for more variation
-            let velFactor = length(vel) / uniforms.maxSpeed;
+            let velFactor = speed / uniforms.maxSpeed;
             colorValue = fract(cellHash + velFactor * 0.3);
         }
         case COLOR_ACCELERATION: {
@@ -535,7 +546,7 @@ fn vs_main(
             // Create distinct color bands based on heading angle
             // As boids turn, they smoothly transition between color bands
             let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
-            colorValue = fract(angleNorm * 3.0); // 3 color cycles per full rotation
+            colorValue = fract(angleNorm * 2.0); // 2 color cycles per full rotation (must match boid.wgsl)
         }
         case COLOR_NONE: {
             // Solid color - use middle of spectrum
@@ -551,8 +562,9 @@ fn vs_main(
             colorValue = getSpeciesHue(speciesId);
         }
         case COLOR_LOCAL_DENSITY: {
-            // Computed same-species neighbor density with better scaling
+            // Computed same-species neighbor density with balanced scaling
             let m = metrics[boidIndex];
+            // Balanced scaling: sqrt(density) / 4.0 reaches max at ~16 neighbors
             let density = m.x;
             let scaled = sqrt(density) / 5.0;
             colorValue = clamp(scaled, 0.0, 1.0);
@@ -689,7 +701,8 @@ fn vs_main(
             }
             case COLOR_LOCAL_DENSITY: {
                 let m = metrics[boidIndex];
-                brightValue = clamp(sqrt(m.x) / 5.0, 0.0, 1.0);
+                // Extended range for local density: 0.1 to 0.95 for better structure visibility
+                brightness = 0.1 + clamp(sqrt(m.x) / 5.0, 0.0, 1.0) * 0.85;
             }
             case COLOR_ANISOTROPY: {
                 let m = metrics[boidIndex];
@@ -721,7 +734,10 @@ fn vs_main(
             }
             case COLOR_FLOW_DIVERGENCE: {
                 let m = metrics[boidIndex];
-                brightValue = fract(m.w);
+                // Extended range for flow divergence: 0.1 to 0.95
+                // Apply slight curve to spread out mid-range values
+                let raw = fract(m.w);
+                brightness = 0.1 + pow(raw, 0.8) * 0.85;
             }
             case COLOR_TRUE_TURNING: {
                 let m = metrics[boidIndex];
@@ -730,8 +746,8 @@ fn vs_main(
             }
             default: { brightValue = 0.5; }
         }
-        // Apply standard brightness mapping for non-turn-rate modes
-        if (uniforms.brightnessSource != COLOR_TRUE_TURNING) {
+        // Apply standard brightness mapping for modes that don't have custom ranges
+        if (uniforms.brightnessSource != COLOR_TRUE_TURNING && uniforms.brightnessSource != COLOR_LOCAL_DENSITY && uniforms.brightnessSource != COLOR_FLOW_DIVERGENCE) {
             brightness = 0.25 + brightValue * 0.5;
         }
     }
