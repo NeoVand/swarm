@@ -33,10 +33,6 @@
 		setColorMode,
 		setColorSpectrum,
 		setPopulation,
-		setAlgorithmMode,
-		setKNeighbors,
-		setSampleCount,
-		setIdealDensity,
 		setEnableInfluence,
 		setInfluenceIterations,
 		setSpectralMode,
@@ -69,7 +65,6 @@
 		ColorSpectrum,
 		CursorMode,
 		CursorShape,
-		AlgorithmMode,
 		AlphaMode,
 		WallTool,
 		WallBrushShape,
@@ -181,8 +176,6 @@
 	let saturationDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let brightnessDropdownOpen = $state(false);
 	let brightnessDropdownRef = $state<HTMLDivElement | undefined>(undefined);
-	let algorithmDropdownOpen = $state(false);
-	let algorithmDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let colorPickerOpen = $state(false);
 	let colorPickerRef = $state<HTMLDivElement | undefined>(undefined);
 	let alphaDropdownOpen = $state(false);
@@ -462,7 +455,7 @@
 
 	// Accordion - only one section open at a time
 	let openSection = $state<
-		'boids' | 'color' | 'world' | 'interaction' | 'species' | 'flocking' | 'dynamics' | 'algorithm'
+		'boids' | 'color' | 'world' | 'interaction' | 'species' | 'flocking' | 'dynamics'
 	>('boids');
 
 	function toggleSection(section: typeof openSection) {
@@ -470,7 +463,7 @@
 	}
 
 	// Section tour step indices (for jumping to specific cards)
-	// Order: Welcome(0), Controls(1), Boids(2), Color(3), Interaction(4), Species(5), Flocking(6), World(7), Dynamics(8), Algorithm(9)
+	// Order: Welcome(0), Controls(1), Boids(2), Color(3), Interaction(4), Species(5), Flocking(6), World(7), Dynamics(8)
 	const sectionTourSteps: Record<typeof openSection, number> = {
 		boids: 2,
 		color: 3,
@@ -478,8 +471,7 @@
 		species: 5,
 		flocking: 6,
 		world: 7,
-		dynamics: 8,
-		algorithm: 9
+		dynamics: 8
 	};
 
 	// Start tour at a specific section
@@ -547,13 +539,6 @@
 		setTimeScale(DEFAULT_PARAMS.timeScale);
 	}
 
-	function resetAlgorithmSection(e: Event): void {
-		e.stopPropagation();
-		setAlgorithmMode(DEFAULT_PARAMS.algorithmMode);
-		setKNeighbors(DEFAULT_PARAMS.kNeighbors);
-		setSampleCount(DEFAULT_PARAMS.sampleCount);
-		setIdealDensity(DEFAULT_PARAMS.idealDensity);
-	}
 
 	// Keyboard handler for accessible span buttons
 	function handleKeydown(e: KeyboardEvent, action: (e: Event) => void): void {
@@ -566,11 +551,6 @@
 	function selectPalette(spectrum: ColorSpectrum) {
 		setColorSpectrum(spectrum);
 		paletteDropdownOpen = false;
-	}
-
-	function selectAlgorithm(mode: AlgorithmMode) {
-		setAlgorithmMode(mode);
-		algorithmDropdownOpen = false;
 	}
 
 	function selectColorize(mode: ColorMode) {
@@ -660,13 +640,6 @@
 		) {
 			brightnessDropdownOpen = false;
 		}
-		if (
-			algorithmDropdownOpen &&
-			algorithmDropdownRef &&
-			!algorithmDropdownRef.contains(event.target as Node)
-		) {
-			algorithmDropdownOpen = false;
-		}
 		if (colorPickerOpen && colorPickerRef && !colorPickerRef.contains(event.target as Node)) {
 			colorPickerOpen = false;
 		}
@@ -681,7 +654,6 @@
 			colorizeDropdownOpen ||
 			saturationDropdownOpen ||
 			brightnessDropdownOpen ||
-			algorithmDropdownOpen ||
 			colorPickerOpen ||
 			alphaDropdownOpen
 		) {
@@ -729,13 +701,6 @@
 			ColorMode.Influence,
 			ColorMode.SpectralRadial,
 			ColorMode.SpectralAsymmetry
-		];
-		const algorithmModes = [
-			AlgorithmMode.TopologicalKNN,
-			AlgorithmMode.SmoothMetric,
-			AlgorithmMode.HashFree,
-			AlgorithmMode.StochasticSample,
-			AlgorithmMode.DensityAdaptive
 		];
 		const colorSpectrums = [
 			ColorSpectrum.Rainbow,
@@ -863,15 +828,6 @@
 				break;
 			}
 
-			// Algorithm cycling disabled - using hash-free as the sole production algorithm
-			// case 'a': {
-			// 	event.preventDefault();
-			// 	const currentAlgo = currentParams?.algorithmMode ?? AlgorithmMode.SmoothMetric;
-			// 	const algoIndex = algorithmModes.indexOf(currentAlgo);
-			// 	const nextAlgo = algorithmModes[(algoIndex + 1) % algorithmModes.length];
-			// 	setAlgorithmMode(nextAlgo);
-			// 	break;
-			// }
 
 			case 'p': {
 				event.preventDefault();
@@ -1595,31 +1551,6 @@
 								<li><strong>Time</strong> — Simulation speed</li>
 							</ul>`,
 						side: 'left',
-						align: 'start'
-					},
-					onHighlightStarted: () => {
-						openSection = 'dynamics';
-					}
-				},
-				// Step 9: Algorithm
-				{
-					element: '#section-algorithm',
-					popover: {
-						title: `<div style="display: flex; align-items: center; gap: 8px;">
-							<svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-								<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-							</svg>
-							<span>Algorithm</span>
-						</div>`,
-						description: `<p>Choose the neighbor detection algorithm${kbd('A', isTouch)}</p>
-							<ul>
-								<li><strong>Smooth Metric</strong> — Smooth kernel weighting</li>
-								<li><strong>Topological k-NN</strong> — Fixed k neighbors</li>
-								<li><strong>Hash-Free</strong> — No grid artifacts</li>
-								<li><strong>Stochastic</strong> — Random sampling</li>
-								<li><strong>Density Adaptive</strong> — Crowding-aware</li>
-							</ul>`,
-						side: 'left',
 						align: 'start',
 						onNextClick: () => {
 							// Close the control panel before showing keyboard shortcuts
@@ -1631,7 +1562,7 @@
 						}
 					},
 					onHighlightStarted: () => {
-						openSection = 'algorithm';
+						openSection = 'dynamics';
 					}
 				}
 			];
@@ -1685,7 +1616,6 @@
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">B</kbd> Boundary</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">C</kbd> Color Mode</div>
 									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">P</kbd> Palette</div>
-									<div><kbd style="background:#27272a;padding:1px 3px;border-radius:2px;">A</kbd> Algorithm</div>
 								</div>
 								<div style="background: rgba(255,255,255,0.05); padding: 5px; border-radius: 5px;">
 									<div style="font-weight: 600; color: #fbbf24; margin-bottom: 2px; font-size: 10px;">Adjustments</div>
@@ -1975,13 +1905,6 @@
 		{ value: ColorSpectrum.Mono, label: 'Mono' }
 	];
 
-	const algorithmOptions = [
-		{ value: AlgorithmMode.TopologicalKNN, label: 'Topological k-NN' },
-		{ value: AlgorithmMode.SmoothMetric, label: 'Smooth Metric' },
-		{ value: AlgorithmMode.HashFree, label: 'Hash-Free' },
-		{ value: AlgorithmMode.StochasticSample, label: 'Stochastic' },
-		{ value: AlgorithmMode.DensityAdaptive, label: 'Density Adaptive' }
-	];
 
 	const alphaModeOptions = [
 		{ value: AlphaMode.Solid, label: 'Solid' },
@@ -4015,190 +3938,6 @@
 				{/if}
 			</div>
 
-			<!-- Algorithm section hidden: Using hash-free with locally perfect hashing as the sole production algorithm -->
-			<!-- To restore: change {#if false} to {#if true} below -->
-			{#if false}
-			<div class="section-divider"></div>
-			<!-- Algorithm -->
-			<div id="section-algorithm">
-				<button class="section-header" onclick={() => toggleSection('algorithm')}>
-					<div class="section-title">
-						<svg
-							class="section-icon icon-emerald"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
-							<rect x="9" y="9" width="6" height="6" />
-							<line x1="9" y1="1" x2="9" y2="4" />
-							<line x1="15" y1="1" x2="15" y2="4" />
-							<line x1="9" y1="20" x2="9" y2="23" />
-							<line x1="15" y1="20" x2="15" y2="23" />
-							<line x1="20" y1="9" x2="23" y2="9" />
-							<line x1="20" y1="14" x2="23" y2="14" />
-							<line x1="1" y1="9" x2="4" y2="9" />
-							<line x1="1" y1="14" x2="4" y2="14" />
-						</svg>
-						<span class="section-label">Algorithm</span>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'algorithm'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('algorithm');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('algorithm'))}
-								title="Help"
-							>
-								<svg viewBox="0 0 20 20" fill="currentColor"
-									><path
-										fill-rule="evenodd"
-										d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"
-										clip-rule="evenodd"
-									/></svg
-								>
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetAlgorithmSection}
-								onkeydown={(e) => handleKeydown(e, resetAlgorithmSection)}
-								title="Reset"
-							>
-								<svg
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path
-										d="M3 3v5h5"
-									/></svg
-								>
-							</span>
-						{/if}
-						<svg
-							class="section-chevron"
-							class:open={openSection === 'algorithm'}
-							viewBox="0 0 20 20"
-							fill="currentColor"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-								clip-rule="evenodd"
-							/>
-						</svg>
-					</div>
-				</button>
-				{#if openSection === 'algorithm'}
-					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<div class="row">
-							<span class="label">Mode</span>
-							<div class="relative flex-1" bind:this={algorithmDropdownRef}>
-								<button
-									class="sel flex w-full items-center gap-2 text-left"
-									onclick={() => (algorithmDropdownOpen = !algorithmDropdownOpen)}
-									aria-label="Algorithm"
-									aria-expanded={algorithmDropdownOpen}
-								>
-									<span class="flex-1 truncate"
-										>{algorithmOptions.find((o) => o.value === currentParams.algorithmMode)
-											?.label}</span
-									>
-									<svg
-										class="h-3 w-3 opacity-50 transition-transform"
-										class:rotate-180={algorithmDropdownOpen}
-										viewBox="0 0 20 20"
-										fill="currentColor"
-									>
-										<path
-											fill-rule="evenodd"
-											d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-											clip-rule="evenodd"
-										/>
-									</svg>
-								</button>
-								{#if algorithmDropdownOpen}
-									<div
-										class="dropdown-menu dropdown-up absolute right-0 bottom-full left-0 z-50 mb-1 max-h-48 overflow-y-auto rounded-md"
-										transition:slide={{ duration: 150, easing: cubicOut }}
-									>
-										{#each algorithmOptions as opt (opt.value)}
-											<button
-												class="dropdown-item flex w-full items-center gap-2 px-3 py-2 text-left text-[10px]"
-												class:active={currentParams.algorithmMode === opt.value}
-												onclick={() => selectAlgorithm(opt.value)}
-											>
-												<span>{opt.label}</span>
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</div>
-						</div>
-
-						<!-- Algorithm-specific parameters -->
-						{#if currentParams.algorithmMode === AlgorithmMode.TopologicalKNN}
-							<div class="row">
-								<span class="label">Neighbors</span>
-								<input
-									type="range"
-									min="4"
-									max="24"
-									step="1"
-									value={currentParams.kNeighbors}
-									oninput={(e) => setKNeighbors(parseInt(e.currentTarget.value))}
-									class="slider"
-									aria-label="Neighbors"
-								/>
-								<span class="value">{currentParams.kNeighbors}</span>
-							</div>
-						{:else if currentParams.algorithmMode === AlgorithmMode.StochasticSample}
-							<div class="row">
-								<span class="label">Samples</span>
-								<input
-									type="range"
-									min="8"
-									max="64"
-									step="4"
-									value={currentParams.sampleCount}
-									oninput={(e) => setSampleCount(parseInt(e.currentTarget.value))}
-									class="slider"
-									aria-label="Sample Count"
-								/>
-								<span class="value">{currentParams.sampleCount}</span>
-							</div>
-						{:else if currentParams.algorithmMode === AlgorithmMode.DensityAdaptive}
-							<div class="row">
-								<span class="label">Density</span>
-								<input
-									type="range"
-									min="1"
-									max="10"
-									step="0.5"
-									value={currentParams.idealDensity}
-									oninput={(e) => setIdealDensity(parseFloat(e.currentTarget.value))}
-									class="slider"
-									aria-label="Ideal Density"
-								/>
-								<span class="value">{currentParams.idealDensity.toFixed(1)}</span>
-							</div>
-						{/if}
-					</div>
-				{/if}
-			</div>
-			{/if}
 		</div>
 	</div>
 {/if}
@@ -4473,9 +4212,6 @@
 	}
 	.section-icon.icon-amber {
 		color: #fbbf24;
-	}
-	.section-icon.icon-emerald {
-		color: #34d399;
 	}
 	.section-icon.icon-orange {
 		color: #f97316;

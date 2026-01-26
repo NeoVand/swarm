@@ -14,7 +14,6 @@ import {
 	CursorShape,
 	CursorResponse,
 	VortexDirection,
-	AlgorithmMode,
 	AlphaMode,
 	WallTool,
 	WallBrushShape,
@@ -372,22 +371,6 @@ export function setPopulation(value: number): void {
 	needsBufferReallocation.set(true);
 }
 
-export function setAlgorithmMode(value: AlgorithmMode): void {
-	params.update((p) => ({ ...p, algorithmMode: value }));
-}
-
-// Algorithm-specific parameters
-export function setKNeighbors(value: number): void {
-	params.update((p) => ({ ...p, kNeighbors: value }));
-}
-
-export function setSampleCount(value: number): void {
-	params.update((p) => ({ ...p, sampleCount: value }));
-}
-
-export function setIdealDensity(value: number): void {
-	params.update((p) => ({ ...p, idealDensity: value }));
-}
 
 // Spectral/Flow metrics parameters
 export function setEnableInfluence(value: boolean): void {
@@ -698,7 +681,6 @@ export {
 	CursorShape,
 	CursorResponse,
 	VortexDirection,
-	AlgorithmMode,
 	AlphaMode,
 	WallTool,
 	WallBrushShape,
