@@ -251,6 +251,8 @@ export interface SimulationParams {
 	population: number;
 	// Simulation timing
 	timeScale: number; // Simulation speed multiplier (0.25-2.0)
+	// Dynamics
+	globalCollision: number; // 0-1, strength of cross-species collision avoidance
 	// Wall drawing
 	wallBrushSize: number; // Brush size for pencil/eraser (10-100 pixels)
 	wallBrushShape: WallBrushShape; // Brush shape
@@ -418,6 +420,8 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	population: 6000, // Default total (will be recalculated based on screen size)
 	// Simulation timing
 	timeScale: 1.0, // Normal speed
+	// Dynamics
+	globalCollision: 0.5, // Default cross-species collision strength
 	// Wall drawing
 	wallBrushSize: 30, // Default brush size
 	wallBrushShape: WallBrushShape.Solid, // Default brush shape

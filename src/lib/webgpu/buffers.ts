@@ -389,6 +389,8 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	// Locally perfect hashing
 	u32View[offset++] = data.reducedWidth;
 	u32View[offset++] = data.totalSlots;
+	// Dynamics
+	f32View[offset++] = data.params.globalCollision;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
 }

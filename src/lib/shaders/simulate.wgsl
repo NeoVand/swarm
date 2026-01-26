@@ -44,6 +44,8 @@ struct Uniforms {
     // Locally perfect hashing
     reducedWidth: u32,
     totalSlots: u32,
+    // Dynamics
+    globalCollision: f32,
 }
 
 // Cursor shapes
@@ -747,6 +749,8 @@ fn applyWallAvoidance(pos: vec2<f32>, vel: vec2<f32>) -> vec2<f32> {
 const SEPARATION_BASE_RADIUS: f32 = 25.0;   // Fixed base separation radius (independent of perception)
 const SEPARATION_FORCE_MULT: f32 = 4.0;     // Separation force multiplier (higher cap for slider range)
 const OVERLAP_PUSH_STRENGTH: f32 = 2.0;     // Force when boids overlap
+const GLOBAL_COLLISION_RADIUS_MULT: f32 = 32.0;  // Collision radius = avg size * this
+const GLOBAL_COLLISION_STRENGTH: f32 = 3.0;     // Base strength multiplier for collision force
 
 // ============================================================================
 // FLOCKING ALGORITHM: HASH-FREE (Per-boid randomized grid - no global seams)
@@ -770,6 +774,7 @@ fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
     var alignmentSum = vec2<f32>(0.0);
     var cohesionSum = vec2<f32>(0.0);
     var separationSum = vec2<f32>(0.0);
+    var globalCollisionSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     var separationCount = 0u;
     let perception = spPerception;
@@ -816,6 +821,17 @@ fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
                     cyy += weight * delta.y * delta.y;
                 }
                 
+                // Global collision (cross-species only) - prevents overlap
+                if (uniforms.globalCollision > 0.0 && !isSameSpecies) {
+                    let otherSize = getSpeciesSize(otherSpecies);
+                    let collisionRadius = (spSize + otherSize) * 0.5 * GLOBAL_COLLISION_RADIUS_MULT;
+                    if (dist < collisionRadius && dist > 0.001) {
+                        let dir = delta / dist;
+                        // Use same kernel as separation for consistent behavior
+                        globalCollisionSum -= dir * separationKernel(dist, collisionRadius) * GLOBAL_COLLISION_STRENGTH;
+                    }
+                }
+                
                 // Overlap push (same-species only)
                 if (distSq < 1.0 && isSameSpecies) {
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
@@ -857,6 +873,11 @@ fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
     
     if (separationCount > 0u && spSeparation > 0.0) {
         acceleration += limitMagnitude(separationSum, spMaxForce * SEPARATION_FORCE_MULT) * spSeparation;
+    }
+    
+    // Global collision force (cross-species only)
+    if (uniforms.globalCollision > 0.0) {
+        acceleration += limitMagnitude(globalCollisionSum, spMaxForce * SEPARATION_FORCE_MULT) * uniforms.globalCollision;
     }
     
     // Compute and write metrics

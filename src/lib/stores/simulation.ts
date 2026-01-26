@@ -389,6 +389,10 @@ export function setTimeScale(value: number): void {
 	params.update((p) => ({ ...p, timeScale: value }));
 }
 
+export function setGlobalCollision(value: number): void {
+	params.update((p) => ({ ...p, globalCollision: value }));
+}
+
 export function setWallBrushSize(value: number): void {
 	params.update((p) => ({ ...p, wallBrushSize: value }));
 }

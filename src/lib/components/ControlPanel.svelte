@@ -39,6 +39,7 @@
 		setSaturationSource,
 		setBrightnessSource,
 		setTimeScale,
+		setGlobalCollision,
 		setRecording,
 		setWallTool,
 		setWallBrushSize,
@@ -537,6 +538,7 @@
 		setMaxForce(DEFAULT_PARAMS.maxForce);
 		setNoise(DEFAULT_PARAMS.noise);
 		setTimeScale(DEFAULT_PARAMS.timeScale);
+		setGlobalCollision(DEFAULT_PARAMS.globalCollision);
 	}
 
 
@@ -3951,6 +3953,20 @@
 								aria-label="Time Scale"
 							/>
 							<span class="value">{currentParams.timeScale.toFixed(2)}×</span>
+						</div>
+						<div class="row">
+							<span class="label">Collision</span>
+							<input
+								type="range"
+								min="0"
+								max="1"
+								step="0.05"
+								value={currentParams.globalCollision}
+								oninput={(e) => setGlobalCollision(parseFloat(e.currentTarget.value))}
+								class="slider"
+								aria-label="Global Collision"
+							/>
+							<span class="value">{currentParams.globalCollision.toFixed(2)}</span>
 						</div>
 					</div>
 				{/if}
