@@ -42,6 +42,13 @@ struct Uniforms {
     idealDensity: f32,    // Density Adaptive: target neighbor density
     // Simulation timing
     timeScale: f32,       // Simulation speed multiplier
+    // Color control sources
+    saturationSource: u32,
+    brightnessSource: u32,
+    spectralMode: u32,
+    // Locally perfect hashing
+    reducedWidth: u32,
+    totalSlots: u32,
 }
 
 // Cursor shapes
@@ -531,15 +538,25 @@ fn transformNeighborVelocity(myPos: vec2<f32>, otherPos: vec2<f32>, otherVel: ve
     return vel;
 }
 
+// Locally perfect hashing constant
+const M: u32 = 9u;
+
 // Get cell index with proper wrapping (for spatial hash grid)
+// Uses locally perfect hashing to eliminate grid artifacts
 fn getCellIndex(cx: i32, cy: i32) -> u32 {
     let wcx = ((cx % i32(uniforms.gridWidth)) + i32(uniforms.gridWidth)) % i32(uniforms.gridWidth);
     let wcy = ((cy % i32(uniforms.gridHeight)) + i32(uniforms.gridHeight)) % i32(uniforms.gridHeight);
-    return u32(wcy) * uniforms.gridWidth + u32(wcx);
+    
+    // Locally perfect hash
+    let kappa = 3u * (u32(wcx) % 3u) + (u32(wcy) % 3u);
+    let beta = (u32(wcy) / 3u) * uniforms.reducedWidth + (u32(wcx) / 3u);
+    
+    return M * beta + kappa;
 }
 
 // Get cell index accounting for flip boundaries
 // When looking across a flip boundary, we need to look at the mirrored cell
+// Uses locally perfect hashing to eliminate grid artifacts
 fn getCellIndexWithFlip(cx: i32, cy: i32, myCellY: i32) -> u32 {
     let cfg = getBoundaryConfig();
     var wcx = cx;
@@ -565,7 +582,11 @@ fn getCellIndexWithFlip(cx: i32, cy: i32, myCellY: i32) -> u32 {
         wcy = ((wcy % gh) + gh) % gh;
     }
     
-    return u32(wcy) * uniforms.gridWidth + u32(wcx);
+    // Apply locally perfect hash AFTER flip adjustments
+    let kappa = 3u * (u32(wcx) % 3u) + (u32(wcy) % 3u);
+    let beta = (u32(wcy) / 3u) * uniforms.reducedWidth + (u32(wcx) / 3u);
+    
+    return M * beta + kappa;
 }
 
 // Check if we should search this neighboring cell (respects boundary config)
@@ -769,7 +790,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
     var separationCount = 0u;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
-    // Metrics accumulators (species-specific)
+    // Metrics accumulators (all species for visualization)
     var densitySum: f32 = 0.0;
     var metricWeight: f32 = 0.0;
     var cxx: f32 = 0.0;
@@ -795,8 +816,24 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
                 let otherPos = positionsIn[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
+                let otherSpecies = speciesIds[otherIdx];
+                let isSameSpecies = otherSpecies == speciesId;
                 
-                if (distSq < 1.0) {
+                // Metrics accumulation (all species for density visualization)
+                if (distSq < spPerception * spPerception) {
+                    let dist = sqrt(distSq);
+                    let weight = smoothKernel(dist, spPerception);
+                    if (weight > 0.0) {
+                        densitySum += weight;
+                        metricWeight += weight;
+                        cxx += weight * delta.x * delta.x;
+                        cxy += weight * delta.x * delta.y;
+                        cyy += weight * delta.y * delta.y;
+                    }
+                }
+                
+                // Overlap push (same-species only)
+                if (distSq < 1.0 && isSameSpecies) {
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
                     separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
@@ -804,13 +841,15 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
                     continue;
                 }
                 
-                if (distSq < separationRadius * separationRadius) {
+                // Separation (same-species only)
+                if (distSq < separationRadius * separationRadius && isSameSpecies) {
                     let dist = sqrt(distSq);
                     separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                     separationCount++;
                 }
                 
-                if (distSq < knnDistSq[k - 1u]) {
+                // K-NN list building (same-species only for flocking)
+                if (isSameSpecies && distSq < knnDistSq[k - 1u]) {
                     var insertPos = k - 1u;
                     for (var j = 0u; j < k - 1u; j++) {
                         if (distSq < knnDistSq[j]) { insertPos = j; break; }
@@ -830,6 +869,7 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
     var cohesionSum = vec2<f32>(0.0);
     var totalWeight = 0.0;
     
+    // K-NN consumption loop (already filtered to same-species)
     for (var i = 0u; i < k; i++) {
         if (knnIndex[i] == 0xFFFFFFFFu) { continue; }
         let otherIdx = knnIndex[i];
@@ -843,13 +883,6 @@ fn algorithmTopologicalKNN(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, s
             let neighborDelta = getNeighborDelta(myPos, otherPos);
             cohesionSum += neighborDelta * weight;
             totalWeight += weight;
-            
-            // Metrics (all neighbors)
-            densitySum += weight;
-            metricWeight += weight;
-            cxx += weight * neighborDelta.x * neighborDelta.x;
-            cxy += weight * neighborDelta.x * neighborDelta.y;
-            cyy += weight * neighborDelta.y * neighborDelta.y;
         }
     }
     
@@ -916,7 +949,7 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
     var separationCount = 0u;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
-    // Metrics accumulators (species-specific)
+    // Metrics accumulators (all species for visualization)
     var densitySum: f32 = 0.0;
     var metricWeight: f32 = 0.0;
     var cxx: f32 = 0.0;
@@ -941,8 +974,23 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
                 let otherPos = positionsIn[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
+                let otherSpecies = speciesIds[otherIdx];
+                let isSameSpecies = otherSpecies == speciesId;
                 
-                if (distSq < 1.0) {
+                let dist = sqrt(distSq);
+                let weight = smoothKernel(dist, spPerception);
+                
+                // Metrics accumulation (all species for density visualization)
+                if (weight > 0.0) {
+                    densitySum += weight;
+                    metricWeight += weight;
+                    cxx += weight * delta.x * delta.x;
+                    cxy += weight * delta.x * delta.y;
+                    cyy += weight * delta.y * delta.y;
+                }
+                
+                // Overlap push (same-species only)
+                if (distSq < 1.0 && isSameSpecies) {
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
                     separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
@@ -950,23 +998,15 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
                     continue;
                 }
                 
-                let dist = sqrt(distSq);
-                let weight = smoothKernel(dist, spPerception);
-                
-                if (weight > 0.0) {
+                // Flocking forces (same-species only)
+                if (weight > 0.0 && isSameSpecies) {
                     // Transform neighbor velocity for alignment across flip boundaries
                     let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
                     alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
                     
-                    // Metrics (all neighbors)
-                    densitySum += weight;
-                    metricWeight += weight;
-                    cxx += weight * delta.x * delta.x;
-                    cxy += weight * delta.x * delta.y;
-                    cyy += weight * delta.y * delta.y;
-                    
+                    // Separation (same-species only)
                     if (dist < separationRadius) {
                         separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                         separationCount++;
@@ -1039,7 +1079,7 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, species
     let perception = spPerception;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
-    // Metrics accumulators (species-specific)
+    // Metrics accumulators (all species for visualization)
     var densitySum: f32 = 0.0;
     var metricWeight: f32 = 0.0;
     var cxx: f32 = 0.0;
@@ -1065,25 +1105,14 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, species
                 let otherPos = positionsIn[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
-                
-                if (distSq < 1.0) {
-                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
-                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
-                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
-                    separationCount++;
-                    continue;
-                }
+                let otherSpecies = speciesIds[otherIdx];
+                let isSameSpecies = otherSpecies == speciesId;
                 
                 let dist = sqrt(distSq);
                 let weight = smoothKernel(dist, perception);
                 
+                // Metrics accumulation (all species for density visualization)
                 if (weight > 0.0) {
-                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
-                    alignmentSum += otherVel * weight;
-                    cohesionSum += delta * weight;
-                    totalWeight += weight;
-                    
-                    // Metrics (all neighbors)
                     densitySum += weight;
                     metricWeight += weight;
                     cxx += weight * delta.x * delta.x;
@@ -1091,7 +1120,25 @@ fn algorithmHashFree(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, species
                     cyy += weight * delta.y * delta.y;
                 }
                 
-                if (dist < separationRadius) {
+                // Overlap push (same-species only)
+                if (distSq < 1.0 && isSameSpecies) {
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
+                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
+                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
+                    separationCount++;
+                    continue;
+                }
+                
+                // Flocking forces (same-species only)
+                if (weight > 0.0 && isSameSpecies) {
+                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    alignmentSum += otherVel * weight;
+                    cohesionSum += delta * weight;
+                    totalWeight += weight;
+                }
+                
+                // Separation (same-species only)
+                if (dist < separationRadius && isSameSpecies) {
                     separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                     separationCount++;
                 }
@@ -1163,7 +1210,7 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
     
-    // Metrics accumulators (species-specific)
+    // Metrics accumulators (all species for visualization)
     var densitySum: f32 = 0.0;
     var metricWeight: f32 = 0.0;
     var cxx: f32 = 0.0;
@@ -1190,25 +1237,14 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
                 let otherPos = positionsIn[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
-                
-                if (distSq < 1.0) {
-                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
-                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
-                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
-                    separationCount++;
-                    continue;
-                }
+                let otherSpecies = speciesIds[otherIdx];
+                let isSameSpecies = otherSpecies == speciesId;
                 
                 let dist = sqrt(distSq);
                 let weight = smoothKernel(dist, perception);
                 
+                // Metrics accumulation (all species for density visualization)
                 if (weight > 0.0) {
-                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
-                    alignmentSum += otherVel * weight;
-                    cohesionSum += delta * weight;
-                    totalWeight += weight;
-                    
-                    // Metrics (all neighbors)
                     densitySum += weight;
                     metricWeight += weight;
                     cxx += weight * delta.x * delta.x;
@@ -1216,7 +1252,25 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
                     cyy += weight * delta.y * delta.y;
                 }
                 
-                if (dist < separationRadius) {
+                // Overlap push (same-species only)
+                if (distSq < 1.0 && isSameSpecies) {
+                    let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
+                    let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
+                    separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
+                    separationCount++;
+                    continue;
+                }
+                
+                // Flocking forces (same-species only)
+                if (weight > 0.0 && isSameSpecies) {
+                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    alignmentSum += otherVel * weight;
+                    cohesionSum += delta * weight;
+                    totalWeight += weight;
+                }
+                
+                // Separation (same-species only)
+                if (dist < separationRadius && isSameSpecies) {
                     separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                     separationCount++;
                 }
@@ -1257,19 +1311,16 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
         let otherPos = positionsIn[otherIdx];
         let delta = getNeighborDelta(myPos, otherPos);
         let distSq = dot(delta, delta);
+        let otherSpecies = speciesIds[otherIdx];
+        let isSameSpecies = otherSpecies == speciesId;
         
         if (distSq > perception * perception) { continue; }
         
         let dist = sqrt(distSq);
         let weight = smoothKernel(dist, perception);
         
+        // Metrics accumulation (all species for density visualization)
         if (weight > 0.0) {
-            let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
-            alignmentSum += otherVel * weight;
-            cohesionSum += delta * weight;
-            totalWeight += weight;
-            
-            // Metrics (all neighbors)
             densitySum += weight;
             metricWeight += weight;
             cxx += weight * delta.x * delta.x;
@@ -1277,7 +1328,16 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
             cyy += weight * delta.y * delta.y;
         }
         
-        if (dist < separationRadius && dist > 0.1) {
+        // Flocking forces (same-species only)
+        if (weight > 0.0 && isSameSpecies) {
+            let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+            alignmentSum += otherVel * weight;
+            cohesionSum += delta * weight;
+            totalWeight += weight;
+        }
+        
+        // Separation (same-species only)
+        if (dist < separationRadius && dist > 0.1 && isSameSpecies) {
             separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
             separationCount++;
         }
@@ -1348,7 +1408,7 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
     let perception = spPerception;
     let separationRadius = max(SEPARATION_BASE_RADIUS, spSize * 12.0);
     
-    // Metrics accumulators (species-specific)
+    // Metrics accumulators (all species for visualization)
     var densitySum: f32 = 0.0;
     var metricWeight: f32 = 0.0;
     var cxx: f32 = 0.0;
@@ -1374,14 +1434,28 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                 let otherPos = positionsIn[otherIdx];
                 let delta = getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
+                let otherSpecies = speciesIds[otherIdx];
+                let isSameSpecies = otherSpecies == speciesId;
                 
                 if (distSq > perception * perception) { continue; }
                 
                 let dist = sqrt(distSq);
                 let densityWeight = smoothKernel(dist, perception);
+                
+                // Local density includes all species for adaptive behavior
                 localDensity += densityWeight;
                 
-                if (dist < 1.0) {
+                // Metrics accumulation (all species for visualization)
+                if (densityWeight > 0.0) {
+                    densitySum += densityWeight;
+                    metricWeight += densityWeight;
+                    cxx += densityWeight * delta.x * delta.x;
+                    cxy += densityWeight * delta.x * delta.y;
+                    cyy += densityWeight * delta.y * delta.y;
+                }
+                
+                // Overlap push (same-species only)
+                if (dist < 1.0 && isSameSpecies) {
                     let pushAngle = f32(boidIndex ^ otherIdx) * 0.618033988749;
                     let pushDir = vec2<f32>(cos(pushAngle * 6.283185), sin(pushAngle * 6.283185));
                     separationSum += pushDir * OVERLAP_PUSH_STRENGTH;
@@ -1389,22 +1463,17 @@ fn algorithmDensityAdaptive(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, 
                     continue;
                 }
                 
+                // Flocking forces (same-species only)
                 let weight = smoothKernel(dist, perception);
-                if (weight > 0.0) {
+                if (weight > 0.0 && isSameSpecies) {
                     let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
                     alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
-                    
-                    // Metrics (all neighbors)
-                    densitySum += weight;
-                    metricWeight += weight;
-                    cxx += weight * delta.x * delta.x;
-                    cxy += weight * delta.x * delta.y;
-                    cyy += weight * delta.y * delta.y;
                 }
                 
-                if (dist < separationRadius) {
+                // Separation (same-species only)
+                if (dist < separationRadius && isSameSpecies) {
                     separationSum -= normalize(delta) * separationKernel(dist, separationRadius);
                     separationCount++;
                 }

@@ -863,14 +863,15 @@
 				break;
 			}
 
-			case 'a': {
-				event.preventDefault();
-				const currentAlgo = currentParams?.algorithmMode ?? AlgorithmMode.SmoothMetric;
-				const algoIndex = algorithmModes.indexOf(currentAlgo);
-				const nextAlgo = algorithmModes[(algoIndex + 1) % algorithmModes.length];
-				setAlgorithmMode(nextAlgo);
-				break;
-			}
+			// Algorithm cycling disabled - using hash-free as the sole production algorithm
+			// case 'a': {
+			// 	event.preventDefault();
+			// 	const currentAlgo = currentParams?.algorithmMode ?? AlgorithmMode.SmoothMetric;
+			// 	const algoIndex = algorithmModes.indexOf(currentAlgo);
+			// 	const nextAlgo = algorithmModes[(algoIndex + 1) % algorithmModes.length];
+			// 	setAlgorithmMode(nextAlgo);
+			// 	break;
+			// }
 
 			case 'p': {
 				event.preventDefault();
@@ -4014,6 +4015,9 @@
 				{/if}
 			</div>
 
+			<!-- Algorithm section hidden: Using hash-free with locally perfect hashing as the sole production algorithm -->
+			<!-- To restore: change {#if false} to {#if true} below -->
+			{#if false}
 			<div class="section-divider"></div>
 			<!-- Algorithm -->
 			<div id="section-algorithm">
@@ -4194,6 +4198,7 @@
 					</div>
 				{/if}
 			</div>
+			{/if}
 		</div>
 	</div>
 {/if}

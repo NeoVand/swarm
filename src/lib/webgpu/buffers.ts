@@ -16,7 +16,8 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 	const { boidCount, canvasWidth, canvasHeight } = config;
 
 	// Use max grid size for grid buffers to avoid reallocation when perception changes
-	const { maxTotalCells } = calculateMaxGridDimensions(canvasWidth, canvasHeight);
+	// Use maxTotalSlots for locally perfect hashing (may be larger than maxTotalCells)
+	const { maxTotalSlots } = calculateMaxGridDimensions(canvasWidth, canvasHeight);
 
 	// Position buffers (ping-pong): vec2<f32> per boid
 	const positionA = device.createBuffer({
@@ -46,21 +47,21 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
-	// Cell counts: u32 per cell (pre-allocated for max grid size)
+	// Cell counts: u32 per slot (pre-allocated for max grid size with locally perfect hashing)
 	const cellCounts = device.createBuffer({
-		size: maxTotalCells * 4,
+		size: maxTotalSlots * 4,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
-	// Cell offsets (for scatter atomics): u32 per cell (pre-allocated for max grid size)
+	// Cell offsets (for scatter atomics): u32 per slot (pre-allocated for max grid size)
 	const cellOffsets = device.createBuffer({
-		size: maxTotalCells * 4,
+		size: maxTotalSlots * 4,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
-	// Prefix sums: u32 per cell (pre-allocated for max grid size)
+	// Prefix sums: u32 per slot (pre-allocated for max grid size)
 	const prefixSums = device.createBuffer({
-		size: maxTotalCells * 4,
+		size: maxTotalSlots * 4,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
@@ -329,6 +330,9 @@ export interface UniformData {
 	deltaTime: number;
 	time: number;
 	frameCount: number;
+	// Locally perfect hashing
+	reducedWidth: number;
+	totalSlots: number;
 }
 
 export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: UniformData): void {
@@ -387,6 +391,9 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	u32View[offset++] = data.params.brightnessSource;
 	// Spectral visualization mode
 	u32View[offset++] = data.params.spectralMode;
+	// Locally perfect hashing
+	u32View[offset++] = data.reducedWidth;
+	u32View[offset++] = data.totalSlots;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
 }
@@ -402,22 +409,31 @@ export function calculateGridDimensions(
 	canvasWidth: number,
 	canvasHeight: number,
 	perception: number
-): { gridWidth: number; gridHeight: number; cellSize: number } {
+): { gridWidth: number; gridHeight: number; cellSize: number; reducedWidth: number; reducedHeight: number; totalSlots: number } {
 	const cellSize = perception;
 	const gridWidth = Math.ceil(canvasWidth / cellSize);
 	const gridHeight = Math.ceil(canvasHeight / cellSize);
-	return { gridWidth, gridHeight, cellSize };
+	// Locally perfect hashing: M=9 equivalence classes
+	const reducedWidth = Math.ceil(gridWidth / 3);
+	const reducedHeight = Math.ceil(gridHeight / 3);
+	const totalSlots = 9 * reducedWidth * reducedHeight;
+	return { gridWidth, gridHeight, cellSize, reducedWidth, reducedHeight, totalSlots };
 }
 
 // Calculate maximum grid dimensions for buffer pre-allocation
 // Uses minimum perception to ensure buffers are large enough for any perception value
+// Returns values for locally perfect hashing (totalSlots may be larger than gridWidth * gridHeight)
 export function calculateMaxGridDimensions(
 	canvasWidth: number,
 	canvasHeight: number
-): { maxGridWidth: number; maxGridHeight: number; maxTotalCells: number } {
+): { maxGridWidth: number; maxGridHeight: number; maxTotalCells: number; maxTotalSlots: number } {
 	const maxGridWidth = Math.ceil(canvasWidth / MIN_PERCEPTION_FOR_ALLOCATION);
 	const maxGridHeight = Math.ceil(canvasHeight / MIN_PERCEPTION_FOR_ALLOCATION);
-	return { maxGridWidth, maxGridHeight, maxTotalCells: maxGridWidth * maxGridHeight };
+	// Locally perfect hashing: M=9 equivalence classes
+	const maxReducedWidth = Math.ceil(maxGridWidth / 3);
+	const maxReducedHeight = Math.ceil(maxGridHeight / 3);
+	const maxTotalSlots = 9 * maxReducedWidth * maxReducedHeight;
+	return { maxGridWidth, maxGridHeight, maxTotalCells: maxGridWidth * maxGridHeight, maxTotalSlots };
 }
 
 // Calculate number of workgroups needed
@@ -432,8 +448,8 @@ export function createBlockSumsBuffer(
 	canvasWidth: number,
 	canvasHeight: number
 ): GPUBuffer {
-	const { maxTotalCells } = calculateMaxGridDimensions(canvasWidth, canvasHeight);
-	const numBlocks = Math.ceil(maxTotalCells / (WORKGROUP_SIZE * 2));
+	const { maxTotalSlots } = calculateMaxGridDimensions(canvasWidth, canvasHeight);
+	const numBlocks = Math.ceil(maxTotalSlots / (WORKGROUP_SIZE * 2));
 	return device.createBuffer({
 		size: Math.max(numBlocks * 4, 4),
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST

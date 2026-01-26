@@ -42,6 +42,9 @@ struct Uniforms {
     saturationSource: u32,  // What controls saturation
     brightnessSource: u32,  // What controls brightness
     spectralMode: u32,      // Which spectral mode to compute
+    // Locally perfect hashing
+    reducedWidth: u32,
+    totalSlots: u32,
 }
 
 // Color modes

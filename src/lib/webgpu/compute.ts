@@ -545,13 +545,13 @@ export function encodeComputePasses(
 	encoder: GPUCommandEncoder,
 	resources: ComputeResources,
 	boidCount: number,
-	totalCells: number,
+	totalSlots: number, // Use totalSlots for locally perfect hashing
 	readFromA: boolean,
 	iterativeConfig?: IterativeMetricsConfig
 ): void {
 	const boidWorkgroups = Math.ceil(boidCount / WORKGROUP_SIZE);
-	const cellWorkgroups = Math.ceil(totalCells / WORKGROUP_SIZE);
-	const prefixSumWorkgroups = Math.ceil(totalCells / (WORKGROUP_SIZE * 2));
+	const cellWorkgroups = Math.ceil(totalSlots / WORKGROUP_SIZE);
+	const prefixSumWorkgroups = Math.ceil(totalSlots / (WORKGROUP_SIZE * 2));
 
 	// Pass 1: Clear cell counts
 	{

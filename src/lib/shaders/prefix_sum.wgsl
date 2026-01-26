@@ -21,6 +21,7 @@ struct Uniforms {
     boundaryMode: u32,
     cursorMode: u32,
     cursorShape: u32,
+    cursorVortex: u32,
     cursorForce: f32,
     cursorRadius: f32,
     cursorX: f32,
@@ -39,6 +40,12 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    saturationSource: u32,
+    brightnessSource: u32,
+    spectralMode: u32,
+    // Locally perfect hashing
+    reducedWidth: u32,
+    totalSlots: u32,
 }
 
 const WORKGROUP_SIZE: u32 = 256u;
@@ -56,7 +63,8 @@ fn main(
     @builtin(local_invocation_id) local_id: vec3<u32>,
     @builtin(workgroup_id) workgroup_id: vec3<u32>
 ) {
-    let totalCells = uniforms.gridWidth * uniforms.gridHeight;
+    // Use totalSlots for locally perfect hashing
+    let totalSlots = uniforms.totalSlots;
     let tid = local_id.x;
     let blockOffset = workgroup_id.x * WORKGROUP_SIZE * 2u;
     
@@ -64,13 +72,13 @@ fn main(
     let idx1 = blockOffset + tid;
     let idx2 = blockOffset + tid + WORKGROUP_SIZE;
     
-    if (idx1 < totalCells) {
+    if (idx1 < totalSlots) {
         sharedData[tid] = cellCounts[idx1];
     } else {
         sharedData[tid] = 0u;
     }
     
-    if (idx2 < totalCells) {
+    if (idx2 < totalSlots) {
         sharedData[tid + WORKGROUP_SIZE] = cellCounts[idx2];
     } else {
         sharedData[tid + WORKGROUP_SIZE] = 0u;
@@ -110,10 +118,10 @@ fn main(
     workgroupBarrier();
     
     // Write results back
-    if (idx1 < totalCells) {
+    if (idx1 < totalSlots) {
         prefixSums[idx1] = sharedData[tid];
     }
-    if (idx2 < totalCells) {
+    if (idx2 < totalSlots) {
         prefixSums[idx2] = sharedData[tid + WORKGROUP_SIZE];
     }
 }
@@ -124,10 +132,11 @@ fn addBlockSums(
     @builtin(global_invocation_id) global_id: vec3<u32>,
     @builtin(workgroup_id) workgroup_id: vec3<u32>
 ) {
-    let totalCells = uniforms.gridWidth * uniforms.gridHeight;
+    // Use totalSlots for locally perfect hashing
+    let totalSlots = uniforms.totalSlots;
     let idx = global_id.x;
     
-    if (idx >= totalCells) {
+    if (idx >= totalSlots) {
         return;
     }
     

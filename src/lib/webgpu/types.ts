@@ -412,7 +412,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
 	population: 6000, // Default total (will be recalculated based on screen size)
-	algorithmMode: AlgorithmMode.SmoothMetric,
+	algorithmMode: AlgorithmMode.HashFree, // Hash-free with locally perfect hashing (best performance)
 	// Algorithm-specific defaults
 	kNeighbors: 12, // Topological K-NN
 	sampleCount: 32, // Stochastic

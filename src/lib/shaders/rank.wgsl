@@ -43,6 +43,9 @@ struct Uniforms {
     saturationSource: u32,
     brightnessSource: u32,
     spectralMode: u32,
+    // Locally perfect hashing
+    reducedWidth: u32,
+    totalSlots: u32,
 }
 
 // Spectral modes
@@ -174,14 +177,24 @@ fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
     return delta;
 }
 
+// Locally perfect hashing constant
+const M: u32 = 9u;
+
 // Get cell index with proper wrapping
+// Uses locally perfect hashing to eliminate grid artifacts
 fn getCellIndex(cx: i32, cy: i32) -> u32 {
     let wcx = ((cx % i32(uniforms.gridWidth)) + i32(uniforms.gridWidth)) % i32(uniforms.gridWidth);
     let wcy = ((cy % i32(uniforms.gridHeight)) + i32(uniforms.gridHeight)) % i32(uniforms.gridHeight);
-    return u32(wcy) * uniforms.gridWidth + u32(wcx);
+    
+    // Locally perfect hash
+    let kappa = 3u * (u32(wcx) % 3u) + (u32(wcy) % 3u);
+    let beta = (u32(wcy) / 3u) * uniforms.reducedWidth + (u32(wcx) / 3u);
+    
+    return M * beta + kappa;
 }
 
 // Get cell index accounting for flip boundaries
+// Uses locally perfect hashing to eliminate grid artifacts
 fn getCellIndexWithFlip(cx: i32, cy: i32, myCellY: i32) -> u32 {
     let cfg = getBoundaryConfig();
     var wcx = cx;
@@ -203,7 +216,11 @@ fn getCellIndexWithFlip(cx: i32, cy: i32, myCellY: i32) -> u32 {
         wcy = ((wcy % gh) + gh) % gh;
     }
     
-    return u32(wcy) * uniforms.gridWidth + u32(wcx);
+    // Apply locally perfect hash AFTER flip adjustments
+    let kappa = 3u * (u32(wcx) % 3u) + (u32(wcy) % 3u);
+    let beta = (u32(wcy) / 3u) * uniforms.reducedWidth + (u32(wcx) / 3u);
+    
+    return M * beta + kappa;
 }
 
 // Check if we should search this neighboring cell

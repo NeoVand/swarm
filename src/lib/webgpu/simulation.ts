@@ -158,7 +158,10 @@ export function createSimulation(
 			cursor,
 			deltaTime: Math.min(deltaTime, 0.1), // Cap to prevent huge jumps
 			time: time / 1000,
-			frameCount
+			frameCount,
+			// Locally perfect hashing
+			reducedWidth: gridInfo.reducedWidth,
+			totalSlots: gridInfo.totalSlots
 		});
 
 		// Create command encoder
@@ -183,11 +186,12 @@ export function createSimulation(
 		}
 
 		// Encode compute passes
+		// Use totalSlots for locally perfect hashing
 		encodeComputePasses(
 			encoder,
 			computeResources,
 			params.population,
-			gridInfo.gridWidth * gridInfo.gridHeight,
+			gridInfo.totalSlots,
 			readFromA,
 			iterativeConfig
 		);

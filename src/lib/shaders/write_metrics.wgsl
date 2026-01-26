@@ -40,6 +40,12 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    saturationSource: u32,
+    brightnessSource: u32,
+    spectralMode: u32,
+    // Locally perfect hashing
+    reducedWidth: u32,
+    totalSlots: u32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;

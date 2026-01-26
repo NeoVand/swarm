@@ -20,6 +20,7 @@ struct Uniforms {
     boundaryMode: u32,
     cursorMode: u32,
     cursorShape: u32,
+    cursorVortex: u32,
     cursorForce: f32,
     cursorRadius: f32,
     cursorX: f32,
@@ -38,6 +39,12 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    saturationSource: u32,
+    brightnessSource: u32,
+    spectralMode: u32,
+    // Locally perfect hashing
+    reducedWidth: u32,
+    totalSlots: u32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -46,9 +53,9 @@ struct Uniforms {
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let cellIndex = global_id.x;
-    let totalCells = uniforms.gridWidth * uniforms.gridHeight;
     
-    if (cellIndex >= totalCells) {
+    // Use totalSlots for locally perfect hashing
+    if (cellIndex >= uniforms.totalSlots) {
         return;
     }
     

@@ -20,6 +20,7 @@ struct Uniforms {
     boundaryMode: u32,
     cursorMode: u32,
     cursorShape: u32,
+    cursorVortex: u32,
     cursorForce: f32,
     cursorRadius: f32,
     cursorX: f32,
@@ -38,6 +39,12 @@ struct Uniforms {
     sampleCount: u32,
     idealDensity: f32,
     timeScale: f32,
+    saturationSource: u32,
+    brightnessSource: u32,
+    spectralMode: u32,
+    // Locally perfect hashing
+    reducedWidth: u32,
+    totalSlots: u32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -45,10 +52,18 @@ struct Uniforms {
 @group(0) @binding(2) var<storage, read> positions: array<vec2<f32>>;
 @group(0) @binding(3) var<storage, read_write> boidCellIndices: array<u32>;
 
+// Locally perfect hashing constant
+const M: u32 = 9u;
+
 fn getCellIndex(pos: vec2<f32>) -> u32 {
     let cellX = clamp(u32(pos.x / uniforms.cellSize), 0u, uniforms.gridWidth - 1u);
     let cellY = clamp(u32(pos.y / uniforms.cellSize), 0u, uniforms.gridHeight - 1u);
-    return cellY * uniforms.gridWidth + cellX;
+    
+    // Locally perfect hash: guarantees no two cells in any 3x3 neighborhood collide
+    let kappa = 3u * (cellX % 3u) + (cellY % 3u);
+    let beta = (cellY / 3u) * uniforms.reducedWidth + (cellX / 3u);
+    
+    return M * beta + kappa;
 }
 
 @compute @workgroup_size(256)
