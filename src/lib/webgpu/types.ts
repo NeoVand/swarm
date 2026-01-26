@@ -29,7 +29,8 @@ export enum ColorMode {
 	SpectralAsymmetry = 13, // Spectral Asymmetry - boundary detection
 	FlowAngular = 14, // Flow Angular - velocity vs local flow direction
 	FlowRadial = 15, // Flow Radial - moving toward/away from center
-	FlowDivergence = 16 // Flow Divergence - velocity alignment with neighbors
+	FlowDivergence = 16, // Flow Divergence - velocity alignment with neighbors
+	TrueTurning = 17 // True Turning - actual angular velocity (how fast turning)
 }
 
 export enum ColorSpectrum {

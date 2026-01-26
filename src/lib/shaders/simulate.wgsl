@@ -61,7 +61,7 @@ const KLEIN_X: u32 = 6u;
 const KLEIN_Y: u32 = 7u;
 const PROJECTIVE_PLANE: u32 = 8u;
 
-const MAX_TRAIL_LENGTH: u32 = 100u;
+const MAX_TRAIL_LENGTH: u32 = 50u;
 
 // ============================================================================
 // BOUNDARY SYSTEM - Modular configuration for all topology types
@@ -752,7 +752,7 @@ const OVERLAP_PUSH_STRENGTH: f32 = 2.0;     // Force when boids overlap
 // FLOCKING ALGORITHM: HASH-FREE (Per-boid randomized grid - no global seams)
 // ============================================================================
 
-fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speciesId: u32, rebelFactor: f32) -> vec2<f32> {
+fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speciesId: u32, rebelFactor: f32) -> vec4<f32> {
     // Get per-species parameters
     let spAlignment = getSpeciesAlignment(speciesId);
     let spCohesion = getSpeciesCohesion(speciesId);
@@ -875,9 +875,9 @@ fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
         let l2 = 0.5 * (tr - disc);
         aniso = (l1 - l2) / (l1 + l2 + 1e-6);
     }
-    metricsOut[boidIndex] = vec4<f32>(densitySum, aniso, 0.0, 0.0);
-    
-    return acceleration;
+    // Return acceleration in xy, metrics (density, anisotropy) in zw
+    // Metrics written in main() so we can add angular velocity
+    return vec4<f32>(acceleration.x, acceleration.y, densitySum, aniso);
 }
 
 // ============================================================================
@@ -1135,8 +1135,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let isRebel = rebelHash < speciesRebels && timeInCycle < rebelDuration;
     let rebelFactor = select(1.0, 0.1, isRebel);
     
-    // Compute flocking forces
-    var acceleration = computeFlockingForces(boidIndex, myPos, myVel, mySpecies, rebelFactor);
+    // Compute flocking forces (returns acceleration in xy, metrics in zw)
+    let flockResult = computeFlockingForces(boidIndex, myPos, myVel, mySpecies, rebelFactor);
+    var acceleration = flockResult.xy;
+    let density = flockResult.z;
+    let anisotropy = flockResult.w;
     
     // Add inter-species forces
     acceleration += calculateInterSpeciesForce(boidIndex, myPos, myVel, mySpecies);
@@ -1392,20 +1395,50 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let velMult = boundaryResult.zw;
     newVel = newVel * velMult;  // Flip velocity components when crossing flip boundaries
     
+    // Compute angular velocity (true turning rate) for visualization
+    // Compare heading angle change between old and new velocity
+    let oldSpeed = length(myVel);
+    let newSpeed = length(newVel);
+    var rawTurnRate = 0.0;
+    if (oldSpeed > 0.01 && newSpeed > 0.01) {
+        let oldAngle = atan2(myVel.y, myVel.x);
+        let newAngle = atan2(newVel.y, newVel.x);
+        var angleDiff = newAngle - oldAngle;
+        // Normalize to [-PI, PI] to handle wraparound
+        if (angleDiff > 3.14159265) { angleDiff -= 6.28318530; }
+        if (angleDiff < -3.14159265) { angleDiff += 6.28318530; }
+        // Convert to 0-1 with sqrt compression to amplify small turns
+        // Linear input: 90° turn = 1.0, then sqrt to lift small values
+        let linear = clamp(abs(angleDiff) / 1.5708, 0.0, 1.0);  // PI/2 = 90° = full intensity
+        rawTurnRate = sqrt(linear);  // sqrt amplifies small values: 0.1 → 0.316, 0.25 → 0.5
+    }
+    
+    // Temporal smoothing: blend with previous frame's value to reduce jitter
+    // Read previous value before overwriting
+    let prevTurnRate = metricsOut[boidIndex].z;
+    let smoothingFactor = 0.3;  // 0.3 = responsive but smooth, lower = smoother but laggier
+    let turnRate = mix(prevTurnRate, rawTurnRate, smoothingFactor);
+    
+    // Write metrics: density, anisotropy, angular velocity, (reserved for spectral/flow)
+    metricsOut[boidIndex] = vec4<f32>(density, anisotropy, turnRate, 0.0);
+    
     // Write output
     positionsOut[boidIndex] = newPos;
     velocitiesOut[boidIndex] = newVel;
     
-    // Update trail - store at the BASE of the boid (x = -0.7 in local space), not the center
-    // This ensures trails connect seamlessly to the triangle's back edge
-    let speciesSize = getSpeciesSize(mySpecies);
-    let finalSpeed = length(newVel);
-    var trailPos = newPos;
-    if (finalSpeed > 0.001) {
-        let trailDir = newVel / finalSpeed;
-        // Offset to the triangle's base: 0.7 * boidSize * 6.0
-        trailPos = newPos - trailDir * 0.7 * speciesSize * 6.0;
+    // Update trail - skip entirely when trailLength is 0 for max performance
+    if (uniforms.trailLength > 0u) {
+        // Store at the BASE of the boid (x = -0.7 in local space), not the center
+        // This ensures trails connect seamlessly to the triangle's back edge
+        let speciesSize = getSpeciesSize(mySpecies);
+        let finalSpeed = length(newVel);
+        var trailPos = newPos;
+        if (finalSpeed > 0.001) {
+            let trailDir = newVel / finalSpeed;
+            // Offset to the triangle's base: 0.7 * boidSize * 6.0
+            trailPos = newPos - trailDir * 0.7 * speciesSize * 6.0;
+        }
+        // Use MAX_TRAIL_LENGTH for buffer stride so changing trailLength doesn't shift data
+        trails[boidIndex * MAX_TRAIL_LENGTH + uniforms.trailHead] = trailPos;
     }
-    // Use MAX_TRAIL_LENGTH for buffer stride so changing trailLength doesn't shift data
-    trails[boidIndex * MAX_TRAIL_LENGTH + uniforms.trailHead] = trailPos;
 }

@@ -4,28 +4,28 @@ overview: A phased approach to optimize the boid simulation for better performan
 todos:
   - id: phase1-prefix-sum
     content: Fix O(N^2) prefix sum aggregate with pre-computed cumulative sums
-    status: pending
+    status: completed
   - id: phase1-merge-clears
     content: Merge cell count and cell offset clear passes into single shader
-    status: pending
+    status: completed
   - id: phase1-fix-sqrt
     content: Fix redundant sqrt() calls in simulate.wgsl neighbor loops
-    status: pending
+    status: completed
   - id: phase2-remove-algorithms
     content: Remove 4 unused algorithm functions from simulate.wgsl
-    status: pending
+    status: completed
   - id: phase2-cleanup-types
     content: Remove AlgorithmMode enum and params from types.ts and buffers.ts
-    status: pending
+    status: completed
   - id: phase2-cleanup-uniforms
     content: Update Uniforms struct in all 11 shader files
-    status: pending
+    status: completed
   - id: phase3-trail-interpolation
-    content: Implement trail interpolation and reduce MAX_TRAIL_LENGTH to 50
-    status: pending
+    content: Reduce MAX_TRAIL_LENGTH to 50 (interpolation not needed)
+    status: completed
   - id: phase3-distance-sampling
     content: Store trail points based on distance moved, not every frame
-    status: pending
+    status: cancelled
   - id: phase4-ghost-optimization
     content: Implement indirect draw for ghost rendering (optional, defer if Phase 1-3 sufficient)
     status: pending

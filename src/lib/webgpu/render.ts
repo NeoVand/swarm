@@ -298,12 +298,13 @@ export function encodeRenderPass(
 	renderPass.setBindGroup(0, resources.bindGroups.wall);
 	renderPass.draw(6); // Full-screen quad
 
-	// Render trails (underneath boids)
-	const trailSegments = boidCount * (trailLength - 1);
-
-	renderPass.setPipeline(resources.pipelines.trail);
-	renderPass.setBindGroup(0, readFromA ? resources.bindGroups.trailB : resources.bindGroups.trailA);
-	renderPass.draw(6, trailSegments); // 6 vertices per instance
+	// Render trails (underneath boids) - skip entirely if trailLength is 0 for max performance
+	if (trailLength > 1) {
+		const trailSegments = boidCount * (trailLength - 1);
+		renderPass.setPipeline(resources.pipelines.trail);
+		renderPass.setBindGroup(0, readFromA ? resources.bindGroups.trailB : resources.bindGroups.trailA);
+		renderPass.draw(6, trailSegments); // 6 vertices per instance
+	}
 
 	// Render boids on top
 	// We draw 4x instances to handle edge wrapping ghosts (original + X/Y/XY ghosts)

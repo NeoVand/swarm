@@ -399,8 +399,9 @@ const MIN_PERCEPTION_FOR_ALLOCATION = 20;
 // Cell size is half of perception to reduce boundary artifacts
 const MIN_CELL_SIZE_FOR_ALLOCATION = MIN_PERCEPTION_FOR_ALLOCATION / 2;
 
-// Maximum trail length for buffer pre-allocation (matches UI max)
-export const MAX_TRAIL_LENGTH = 100;
+// Maximum trail length for buffer pre-allocation
+// Reduced from 100 to 50 for performance (50% memory reduction)
+export const MAX_TRAIL_LENGTH = 50;
 
 // Calculate grid dimensions based on canvas size and perception radius
 export function calculateGridDimensions(

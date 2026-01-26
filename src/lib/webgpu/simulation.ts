@@ -136,12 +136,14 @@ export function createSimulation(
 			// Grid changed, may need to recreate some buffers
 		}
 
-		// Update trail head - use MAX_TRAIL_LENGTH since buffer is pre-allocated
-		// and per-species trail lengths vary
-		trailHead = (trailHead + 1) % MAX_TRAIL_LENGTH;
-
 		// Calculate actual max trail length from species for efficient rendering
-		const maxSpeciesTrailLength = Math.max(...params.species.map((s) => s.trailLength), 1);
+		// When 0, trails are completely disabled for max performance
+		const maxSpeciesTrailLength = Math.max(...params.species.map((s) => s.trailLength), 0);
+
+		// Update trail head only if trails are enabled - skip entirely when 0 for max performance
+		if (maxSpeciesTrailLength > 0) {
+			trailHead = (trailHead + 1) % MAX_TRAIL_LENGTH;
+		}
 
 		// Update uniform buffer
 		// Use maxSpeciesTrailLength so shader instance calculations match render instance count

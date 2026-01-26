@@ -1,5 +1,5 @@
 // Write final iterative metric values to the metrics buffer
-// Copies diffusion value to metrics.z and influence value to metrics.w
+// Copies influence value to metrics.w (metrics.z reserved for angular velocity from simulate.wgsl)
 
 struct Uniforms {
     canvasWidth: f32,
@@ -54,11 +54,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let boidIndex = id.x;
     if (boidIndex >= uniforms.boidCount) { return; }
     
-    // Read current metrics (density, anisotropy in x, y)
+    // Read current metrics (density, anisotropy in x, y; angular velocity in z from simulate.wgsl)
     var m = metrics[boidIndex];
     
-    // Write diffusion to z, influence to w
-    m.z = diffuseValues[boidIndex];
+    // Write influence to w (preserve z for angular velocity / true turning)
     m.w = rankValues[boidIndex];
     
     metrics[boidIndex] = m;

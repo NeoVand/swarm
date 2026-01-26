@@ -695,6 +695,7 @@
 			ColorMode.Density,
 			ColorMode.Acceleration,
 			ColorMode.Turning,
+			ColorMode.TrueTurning,
 			ColorMode.Species,
 			ColorMode.LocalDensity,
 			ColorMode.Anisotropy,
@@ -931,7 +932,7 @@
 			case ']':
 				event.preventDefault();
 				if (activeSpecies) {
-					const newTrail = Math.min((activeSpecies.trailLength ?? 30) + 10, 100);
+					const newTrail = Math.min((activeSpecies.trailLength ?? 30) + 10, 50);
 					setSpeciesTrailLength(activeSpecies.id, newTrail);
 				}
 				break;
@@ -939,7 +940,7 @@
 			case '[':
 				event.preventDefault();
 				if (activeSpecies) {
-					const newTrail = Math.max((activeSpecies.trailLength ?? 30) - 10, 1);
+					const newTrail = Math.max((activeSpecies.trailLength ?? 30) - 10, 0);
 					setSpeciesTrailLength(activeSpecies.id, newTrail);
 				}
 				break;
@@ -1843,7 +1844,8 @@
 	const colorOptions = [
 		{ value: ColorMode.Species, label: 'Species' },
 		{ value: ColorMode.Density, label: 'Position' },
-		{ value: ColorMode.Turning, label: 'Turning' },
+		{ value: ColorMode.Turning, label: 'Heading' },
+		{ value: ColorMode.TrueTurning, label: 'Turn Rate' },
 		{ value: ColorMode.Speed, label: 'Speed' },
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
@@ -1863,7 +1865,8 @@
 		{ value: ColorMode.None, label: 'Full' },
 		{ value: ColorMode.Species, label: 'Species' },
 		{ value: ColorMode.Density, label: 'Position' },
-		{ value: ColorMode.Turning, label: 'Turning' },
+		{ value: ColorMode.Turning, label: 'Heading' },
+		{ value: ColorMode.TrueTurning, label: 'Turn Rate' },
 		{ value: ColorMode.Speed, label: 'Speed' },
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
@@ -1882,7 +1885,8 @@
 		{ value: ColorMode.None, label: 'Default' },
 		{ value: ColorMode.Species, label: 'Species' },
 		{ value: ColorMode.Density, label: 'Position' },
-		{ value: ColorMode.Turning, label: 'Turning' },
+		{ value: ColorMode.Turning, label: 'Heading' },
+		{ value: ColorMode.TrueTurning, label: 'Turn Rate' },
 		{ value: ColorMode.Speed, label: 'Speed' },
 		{ value: ColorMode.Orientation, label: 'Direction' },
 		{ value: ColorMode.Neighbors, label: 'Neighbors' },
@@ -2268,8 +2272,8 @@
 							<span class="label">Trail</span>
 							<input
 								type="range"
-								min="1"
-								max="100"
+								min="0"
+								max="50"
 								step="1"
 								value={activeSpecies?.trailLength ?? 30}
 								oninput={(e) =>
@@ -2553,6 +2557,9 @@
 								{:else if currentParams.colorMode === ColorMode.FlowDivergence}
 									<!-- Flow Divergence - alignment -->
 									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+								{:else if currentParams.colorMode === ColorMode.TrueTurning}
+									<!-- Turn Rate - activity/zigzag -->
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
 								{/if}
 								<span class="flex-1 truncate"
 										>{colorOptions.find((o) => o.value === currentParams.colorMode)?.label}</span
@@ -2744,6 +2751,9 @@
 												{:else if opt.value === ColorMode.FlowDivergence}
 													<!-- Flow Divergence -->
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+												{:else if opt.value === ColorMode.TrueTurning}
+													<!-- Lucide: activity (turn rate) -->
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
@@ -2792,6 +2802,8 @@
 									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
 								{:else if currentParams.saturationSource === ColorMode.FlowDivergence}
 									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+								{:else if currentParams.saturationSource === ColorMode.TrueTurning}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
 								{/if}
 								<span class="flex-1 truncate">{saturationOptions.find((o) => o.value === currentParams.saturationSource)?.label ?? 'Full'}</span>
 									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={saturationDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
@@ -2832,6 +2844,8 @@
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
 												{:else if opt.value === ColorMode.FlowDivergence}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+												{:else if opt.value === ColorMode.TrueTurning}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
@@ -2880,6 +2894,8 @@
 									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
 								{:else if currentParams.brightnessSource === ColorMode.FlowDivergence}
 									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+								{:else if currentParams.brightnessSource === ColorMode.TrueTurning}
+									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
 								{/if}
 								<span class="flex-1 truncate">{brightnessOptions.find((o) => o.value === currentParams.brightnessSource)?.label ?? 'Default'}</span>
 									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={brightnessDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
@@ -2920,6 +2936,8 @@
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
 												{:else if opt.value === ColorMode.FlowDivergence}
 													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+												{:else if opt.value === ColorMode.TrueTurning}
+													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
 												{/if}
 												<span>{opt.label}</span>
 											</button>

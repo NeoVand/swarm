@@ -61,6 +61,7 @@ const COLOR_SPECTRAL_ASYMMETRY: u32 = 13u;
 const COLOR_FLOW_ANGULAR: u32 = 14u;
 const COLOR_FLOW_RADIAL: u32 = 15u;
 const COLOR_FLOW_DIVERGENCE: u32 = 16u;
+const COLOR_TRUE_TURNING: u32 = 17u;
 
 // Color spectrums
 const SPECTRUM_CHROME: u32 = 0u;
@@ -616,7 +617,7 @@ fn vs_main(
             // Create distinct color bands based on heading angle
             // As boids turn, they smoothly transition between color bands
             let angleNorm = (angle + 3.14159265) / (2.0 * 3.14159265);
-            colorValue = fract(angleNorm * 3.0); // 3 color cycles per full rotation
+            colorValue = fract(angleNorm * 2.0); // 2 color cycles per full rotation
         }
         case COLOR_NONE: {
             // Solid color - use middle of spectrum
@@ -673,6 +674,13 @@ fn vs_main(
         case COLOR_FLOW_DIVERGENCE: {
             let m = metrics[boidIndex];
             colorValue = fract(m.w);
+        }
+        case COLOR_TRUE_TURNING: {
+            // True angular velocity - how fast the boid is actually turning
+            // Stored in metrics.z by simulate.wgsl
+            // Use 2 color cycles like the Heading mode for visual variety
+            let m = metrics[boidIndex];
+            colorValue = fract(m.z * 2.0);
         }
         default: {
             colorValue = 0.5;
@@ -736,6 +744,10 @@ fn vs_main(
                 let m = metrics[boidIndex];
                 satValue = fract(m.w);
             }
+            case COLOR_TRUE_TURNING: {
+                let m = metrics[boidIndex];
+                satValue = m.z;
+            }
             default: { satValue = 1.0; }
         }
         saturation = 0.2 + satValue * 0.8;  // Range 0.2-1.0
@@ -798,9 +810,17 @@ fn vs_main(
                 let m = metrics[boidIndex];
                 brightValue = fract(m.w);
             }
+            case COLOR_TRUE_TURNING: {
+                let m = metrics[boidIndex];
+                // Extended range: 0.15 to 1.0 for maximum contrast (high turn = white)
+                brightness = 0.15 + m.z * 0.85;
+            }
             default: { brightValue = 0.5; }
         }
-        brightness = 0.25 + brightValue * 0.5;  // Range 0.25-0.75
+        // Apply standard brightness mapping for non-turn-rate modes
+        if (uniforms.brightnessSource != COLOR_TRUE_TURNING) {
+            brightness = 0.25 + brightValue * 0.5;  // Range 0.25-0.75
+        }
     }
     
     // === COLOR CALCULATION (HSL with dynamic S and L) ===
