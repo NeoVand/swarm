@@ -1584,8 +1584,9 @@ fn calculateInterSpeciesForce(
                 
                 if (behavior == BEHAVIOR_IGNORE || strength < 0.01) { continue; }
                 
-                // Use species-specific perception if range not specified
-                if (range < 1.0) { range = getSpeciesPerception(mySpecies); }
+                // Use 1.5x species perception if range not specified (auto)
+                // Inter-species interactions need longer range than same-species flocking
+                if (range < 1.0) { range = getSpeciesPerception(mySpecies) * 1.5; }
                 
                 let otherPos = positionsIn[otherIdx];
                 let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);

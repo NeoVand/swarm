@@ -321,7 +321,7 @@
 			// Set initial dimensions
 			updateDimensions();
 
-			// Calculate optimal populations for all three species based on screen size
+			// Calculate optimal populations for all four species based on screen size
 			const optimalPops = calculateOptimalSpeciesPopulations(canvas.width, canvas.height);
 
 			// Update params with optimal populations for all species
@@ -332,6 +332,7 @@
 					if (s.id === 0) return { ...s, population: optimalPops.species1 };
 					if (s.id === 1) return { ...s, population: optimalPops.species2 };
 					if (s.id === 2) return { ...s, population: optimalPops.species3 };
+					if (s.id === 3) return { ...s, population: optimalPops.species4 };
 					return s;
 				})
 			}));

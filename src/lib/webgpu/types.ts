@@ -391,6 +391,22 @@ function createDefaultSpecies3(population: number): Species {
 	};
 }
 
+function createDefaultSpecies4(population: number): Species {
+	const base = createDefaultSpecies(3, population);
+	// Species 4: Fourth group - flees from all others (like species 2 and 3)
+	return {
+		...base,
+		interactions: [
+			{
+				targetSpecies: -1, // All others
+				behavior: InteractionBehavior.Flee,
+				strength: 0.5,
+				range: 0
+			}
+		]
+	};
+}
+
 export const DEFAULT_PARAMS: SimulationParams = {
 	alignment: 1.3,
 	cohesion: 0.6,
@@ -422,8 +438,8 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	// Wall drawing
 	wallBrushSize: 30, // Default brush size
 	wallBrushShape: WallBrushShape.Solid, // Default brush shape
-	// Multi-species defaults: Start with three species, all avoiding each other
-	species: [createDefaultSpecies1(4500), createDefaultSpecies2(1000), createDefaultSpecies3(500)],
+	// Multi-species defaults: Start with four species, all avoiding each other
+	species: [createDefaultSpecies1(3500), createDefaultSpecies2(1000), createDefaultSpecies3(750), createDefaultSpecies4(750)],
 	activeSpeciesId: 0,
 	// Spectral/Flow metrics defaults
 	enableInfluence: true,
@@ -463,18 +479,18 @@ export function calculateOptimalPopulation(width: number, height: number): numbe
 }
 
 /**
- * Calculate optimal populations for default three-species setup.
- * Species 1 gets ~75% (main swarm), Species 2 gets ~17%, Species 3 gets ~8%.
+ * Calculate optimal populations for default four-species setup.
+ * Species 1 gets ~58% (main swarm), Species 2 gets ~17%, Species 3 & 4 get ~12.5% each.
  * This creates visually interesting multi-swarm dynamics.
  *
  * @param width Canvas width in pixels
  * @param height Canvas height in pixels
- * @returns Object with species1, species2, species3 populations and total
+ * @returns Object with species1, species2, species3, species4 populations and total
  */
 export function calculateOptimalSpeciesPopulations(
 	width: number,
 	height: number
-): { species1: number; species2: number; species3: number; total: number } {
+): { species1: number; species2: number; species3: number; species4: number; total: number } {
 	const area = width * height;
 
 	// Target density: roughly 1 boid per 300 square pixels
@@ -490,23 +506,26 @@ export function calculateOptimalSpeciesPopulations(
 
 	totalPopulation = Math.max(MIN_POPULATION, Math.min(MAX_POPULATION, totalPopulation));
 
-	// Split: Species 1 ~75%, Species 2 ~17%, Species 3 ~8% (9:2:1 ratio roughly)
-	// This creates good visual dynamics - main flock with two smaller groups
-	const species1Raw = Math.floor(totalPopulation * 0.75);
+	// Split: Species 1 ~58%, Species 2 ~17%, Species 3 ~12.5%, Species 4 ~12.5%
+	// This creates good visual dynamics - main flock with three smaller groups
+	const species1Raw = Math.floor(totalPopulation * 0.58);
 	const species2Raw = Math.floor(totalPopulation * 0.17);
-	const species3Raw = totalPopulation - species1Raw - species2Raw;
+	const species3Raw = Math.floor(totalPopulation * 0.125);
+	const species4Raw = totalPopulation - species1Raw - species2Raw - species3Raw;
 
 	// Round to nearest 100 for cleaner numbers (50 for mobile)
 	const roundTo = isMobile ? 50 : 100;
 	const species1 = Math.round(species1Raw / roundTo) * roundTo;
 	const species2 = Math.max(roundTo, Math.round(species2Raw / roundTo) * roundTo);
 	const species3 = Math.max(roundTo, Math.round(species3Raw / roundTo) * roundTo);
+	const species4 = Math.max(roundTo, Math.round(species4Raw / roundTo) * roundTo);
 
 	return {
 		species1,
 		species2,
 		species3,
-		total: species1 + species2 + species3
+		species4,
+		total: species1 + species2 + species3 + species4
 	};
 }
 
