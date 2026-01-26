@@ -401,6 +401,9 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 // Minimum perception for buffer pre-allocation (matches UI min)
 const MIN_PERCEPTION_FOR_ALLOCATION = 20;
 
+// Cell size is half of perception to reduce boundary artifacts
+const MIN_CELL_SIZE_FOR_ALLOCATION = MIN_PERCEPTION_FOR_ALLOCATION / 2;
+
 // Maximum trail length for buffer pre-allocation (matches UI max)
 export const MAX_TRAIL_LENGTH = 100;
 
@@ -410,7 +413,9 @@ export function calculateGridDimensions(
 	canvasHeight: number,
 	perception: number
 ): { gridWidth: number; gridHeight: number; cellSize: number; reducedWidth: number; reducedHeight: number; totalSlots: number } {
-	const cellSize = perception;
+	// Use half the perception radius for cell size to reduce boundary artifacts
+	// This requires searching more cells (5x5 instead of 3x3) but creates smoother behavior
+	const cellSize = perception / 2;
 	const gridWidth = Math.ceil(canvasWidth / cellSize);
 	const gridHeight = Math.ceil(canvasHeight / cellSize);
 	// Locally perfect hashing: M=9 equivalence classes
@@ -427,8 +432,9 @@ export function calculateMaxGridDimensions(
 	canvasWidth: number,
 	canvasHeight: number
 ): { maxGridWidth: number; maxGridHeight: number; maxTotalCells: number; maxTotalSlots: number } {
-	const maxGridWidth = Math.ceil(canvasWidth / MIN_PERCEPTION_FOR_ALLOCATION);
-	const maxGridHeight = Math.ceil(canvasHeight / MIN_PERCEPTION_FOR_ALLOCATION);
+	// Use min cell size (perception/2) for max grid dimensions
+	const maxGridWidth = Math.ceil(canvasWidth / MIN_CELL_SIZE_FOR_ALLOCATION);
+	const maxGridHeight = Math.ceil(canvasHeight / MIN_CELL_SIZE_FOR_ALLOCATION);
 	// Locally perfect hashing: M=9 equivalence classes
 	const maxReducedWidth = Math.ceil(maxGridWidth / 3);
 	const maxReducedHeight = Math.ceil(maxGridHeight / 3);

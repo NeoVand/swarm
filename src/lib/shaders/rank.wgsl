@@ -274,9 +274,9 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
     
-    // Iterate over 3x3 cell neighborhood
-    for (var dy = -1i; dy <= 1i; dy++) {
-        for (var dx = -1i; dx <= 1i; dx++) {
+    // Iterate over 5x5 cell neighborhood (needed for cellSize = perception/2)
+    for (var dy = -2i; dy <= 2i; dy++) {
+        for (var dx = -2i; dx <= 2i; dx++) {
             let ncx = myCellX + dx;
             let ncy = myCellY + dy;
             

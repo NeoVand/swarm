@@ -956,8 +956,9 @@ fn algorithmSmoothMetric(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
     var cxy: f32 = 0.0;
     var cyy: f32 = 0.0;
     
-    for (var dy = -1i; dy <= 1i; dy++) {
-        for (var dx = -1i; dx <= 1i; dx++) {
+    // Search 5x5 grid (needed for cellSize = perception/2)
+    for (var dy = -2i; dy <= 2i; dy++) {
+        for (var dx = -2i; dx <= 2i; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
@@ -1217,9 +1218,9 @@ fn algorithmStochastic(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, speci
     var cxy: f32 = 0.0;
     var cyy: f32 = 0.0;
     
-    // First pass: check immediate vicinity (3x3)
-    for (var dy = -1i; dy <= 1i; dy++) {
-        for (var dx = -1i; dx <= 1i; dx++) {
+    // First pass: check immediate vicinity (5x5 for cellSize = perception/2)
+    for (var dy = -2i; dy <= 2i; dy++) {
+        for (var dx = -2i; dx <= 2i; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
@@ -1557,9 +1558,9 @@ fn calculateInterSpeciesForce(
     var mobOrbitSum = vec2<f32>(0.0);
     var mobCount = 0u;
     
-    // Search neighbors in 3x3 grid
-    for (var dy = -1i; dy <= 1i; dy++) {
-        for (var dx = -1i; dx <= 1i; dx++) {
+    // Search neighbors in 5x5 grid (needed for cellSize = perception/2)
+    for (var dy = -2i; dy <= 2i; dy++) {
+        for (var dx = -2i; dx <= 2i; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
