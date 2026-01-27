@@ -12,7 +12,7 @@
 	import ForceAnimation from './ForceAnimation.svelte';
 	import CurveEditor from './CurveEditor.svelte';
 	import { TOPOLOGY_NAMES } from '$lib/utils/topologyMeshes';
-	import { HeadShape } from '$lib/webgpu/types';
+	import { getShapePath } from '$lib/utils/shapes';
 	import {
 		params,
 		isPanelOpen,
@@ -137,37 +137,6 @@
 		if (flaskAnimationInterval) {
 			clearInterval(flaskAnimationInterval);
 			flaskAnimationInterval = null;
-		}
-	}
-
-	// Helper function to generate SVG path for boid shape (for quick species selector)
-	function getQuickBoidPath(shape: HeadShape, cx: number, cy: number, size: number): string {
-		const s = size;
-		// Generate polygon points for n-sided polygon
-		const polygon = (n: number): string => {
-			const points: string[] = [];
-			for (let i = 0; i < n; i++) {
-				const angle = (i * 2 * Math.PI) / n - Math.PI / 2; // Start from top
-				const x = cx + s * Math.cos(angle);
-				const y = cy + s * Math.sin(angle);
-				points.push(`${x} ${y}`);
-			}
-			return `M ${points.join(' L ')} Z`;
-		};
-
-		switch (shape) {
-			case HeadShape.Triangle:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
-			case HeadShape.Square:
-				return `M ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} L ${cx} ${cy - s} Z`;
-			case HeadShape.Pentagon:
-				return polygon(5);
-			case HeadShape.Hexagon:
-				return polygon(6);
-			case HeadShape.Arrow:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.5} ${cy + s * 0.6} L ${cx - s * 0.2} ${cy} L ${cx - s * 0.5} ${cy - s * 0.6} Z`;
-			default:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
 		}
 	}
 
@@ -2403,7 +2372,7 @@
 					<div class="section-content" transition:slide={{ duration: 200, easing: cubicOut }}>
 						<div class="row">
 							<span class="label">Hue</span>
-							<div class="relative flex-1" bind:this={colorizeDropdownRef}>
+							<div class="relative flex-1 min-w-0" bind:this={colorizeDropdownRef}>
 								<button
 									class="sel flex w-full items-center gap-2 text-left"
 									onclick={() => (colorizeDropdownOpen = !colorizeDropdownOpen)}
@@ -2912,7 +2881,7 @@
 						<!-- Saturation source row -->
 						<div class="row">
 							<span class="label">Saturation</span>
-							<div class="relative flex-1" bind:this={saturationDropdownRef}>
+							<div class="relative flex-1 min-w-0" bind:this={saturationDropdownRef}>
 								<button
 									class="sel flex w-full items-center gap-2 text-left"
 									onclick={() => (saturationDropdownOpen = !saturationDropdownOpen)}
@@ -3023,7 +2992,7 @@
 						<!-- Brightness source row -->
 						<div class="row">
 							<span class="label">Brightness</span>
-							<div class="relative flex-1" bind:this={brightnessDropdownRef}>
+							<div class="relative flex-1 min-w-0" bind:this={brightnessDropdownRef}>
 								<button
 									class="sel flex w-full items-center gap-2 text-left"
 									onclick={() => (brightnessDropdownOpen = !brightnessDropdownOpen)}
@@ -3418,7 +3387,7 @@
 								>
 									<svg viewBox="0 0 20 20" class="quick-species-icon">
 										<path
-											d={getQuickBoidPath(species.headShape, 10, 10, 6)}
+											d={getShapePath(species.headShape, 10, 10, 6)}
 											fill="var(--species-color)"
 										/>
 									</svg>

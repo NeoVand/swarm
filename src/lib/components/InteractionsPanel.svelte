@@ -10,6 +10,8 @@
 		type Species
 	} from '$lib/stores/simulation';
 	import { InteractionBehavior, HeadShape } from '$lib/webgpu/types';
+	import { getShapePath } from '$lib/utils/shapes';
+	import { hslColor } from '$lib/utils/color';
 	import CircleOff from '@lucide/svelte/icons/circle-off';
 	import MoveUpLeft from '@lucide/svelte/icons/move-up-left';
 	import Crosshair from '@lucide/svelte/icons/crosshair';
@@ -50,40 +52,12 @@
 		return allSpecies.find((s) => s.id === id);
 	}
 
-	// Convert HSL to color string
-	function hslColor(hue: number, saturation: number, lightness: number): string {
-		return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-	}
-
-	// Get SVG path for species shape
-	function getShapePath(shape: HeadShape, size: number): string {
-		const s = size * 0.35;
-		const cx = size / 2;
-		const cy = size / 2;
-
-		function polygon(sides: number): string {
-			const points: string[] = [];
-			for (let i = 0; i < sides; i++) {
-				const angle = (2 * Math.PI * i) / sides;
-				points.push(`${cx + Math.cos(angle) * s},${cy + Math.sin(angle) * s}`);
-			}
-			return `M ${points.join(' L ')} Z`;
-		}
-
-		switch (shape) {
-			case HeadShape.Triangle:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
-			case HeadShape.Square:
-				return `M ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} L ${cx} ${cy - s} Z`;
-			case HeadShape.Pentagon:
-				return polygon(5);
-			case HeadShape.Hexagon:
-				return polygon(6);
-			case HeadShape.Arrow:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.5} ${cy + s * 0.6} L ${cx - s * 0.2} ${cy} L ${cx - s * 0.5} ${cy - s * 0.6} Z`;
-			default:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
-		}
+	// Wrapper to get shape path with container size
+	function getIconPath(shape: HeadShape, containerSize: number): string {
+		const s = containerSize * 0.35;
+		const cx = containerSize / 2;
+		const cy = containerSize / 2;
+		return getShapePath(shape, cx, cy, s);
 	}
 
 	// Handle behavior change
@@ -168,7 +142,7 @@
 							<!-- Source species icon -->
 							<svg class="species-icon" viewBox="0 0 20 20">
 								<path
-									d={getShapePath(activeSpecies.headShape, 20)}
+									d={getIconPath(activeSpecies.headShape, 20)}
 									fill={hslColor(
 										activeSpecies.hue,
 										activeSpecies.saturation,
@@ -212,7 +186,7 @@
 										{#if target}
 											<svg class="species-icon-sm" viewBox="0 0 20 20">
 												<path
-													d={getShapePath(target.headShape, 20)}
+													d={getIconPath(target.headShape, 20)}
 													fill={hslColor(target.hue, target.saturation, target.lightness)}
 												/>
 											</svg>
@@ -255,7 +229,7 @@
 											>
 												<svg class="species-icon-sm" viewBox="0 0 20 20">
 													<path
-														d={getShapePath(other.headShape, 20)}
+														d={getIconPath(other.headShape, 20)}
 														fill={hslColor(other.hue, other.saturation, other.lightness)}
 													/>
 												</svg>

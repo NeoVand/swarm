@@ -7,46 +7,19 @@
 		MAX_SPECIES
 	} from '$lib/stores/simulation';
 	import { HeadShape } from '$lib/webgpu/types';
+	import { getShapePath } from '$lib/utils/shapes';
+	import { hslColor } from '$lib/utils/color';
 
 	let currentParams = $derived($params);
 	let species = $derived(currentParams.species);
 	let activeSpeciesId = $derived(currentParams.activeSpeciesId);
 
-	// Get SVG path for each head shape (matching shader shapes)
-	function getShapePath(shape: HeadShape, size: number): string {
-		const s = size * 0.4;
-		const cx = size / 2;
-		const cy = size / 2;
-
-		// Helper to generate regular polygon with first vertex pointing right
-		function polygon(sides: number): string {
-			const points: string[] = [];
-			for (let i = 0; i < sides; i++) {
-				const angle = (2 * Math.PI * i) / sides;
-				points.push(`${cx + Math.cos(angle) * s},${cy + Math.sin(angle) * s}`);
-			}
-			return `M ${points.join(' L ')} Z`;
-		}
-
-		switch (shape) {
-			case HeadShape.Triangle:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
-			case HeadShape.Square:
-				return `M ${cx + s} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy} L ${cx} ${cy - s} Z`;
-			case HeadShape.Pentagon:
-				return polygon(5);
-			case HeadShape.Hexagon:
-				return polygon(6);
-			case HeadShape.Arrow:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.5} ${cy + s * 0.6} L ${cx - s * 0.2} ${cy} L ${cx - s * 0.5} ${cy - s * 0.6} Z`;
-			default:
-				return `M ${cx + s} ${cy} L ${cx - s * 0.7} ${cy + s * 0.5} L ${cx - s * 0.7} ${cy - s * 0.5} Z`;
-		}
-	}
-
-	// Convert HSL to color string
-	function hslColor(hue: number, saturation: number, lightness: number): string {
-		return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+	// Wrapper to get shape path with container size
+	function getIconPath(shape: HeadShape, containerSize: number): string {
+		const s = containerSize * 0.4;
+		const cx = containerSize / 2;
+		const cy = containerSize / 2;
+		return getShapePath(shape, cx, cy, s);
 	}
 
 	function handleAddSpecies() {
@@ -82,7 +55,7 @@
 			>
 				<svg class="boid-icon" viewBox="0 0 24 24">
 					<path
-						d={getShapePath(sp.headShape, 24)}
+						d={getIconPath(sp.headShape, 24)}
 						fill={hslColor(sp.hue, sp.saturation, sp.lightness)}
 					/>
 				</svg>
