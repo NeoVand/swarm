@@ -1375,15 +1375,15 @@
 							</svg>
 							<span>Color</span>
 						</div>`,
-						description: `<p>Control how boids are colorized using HSL:</p>
+						description: `<p>HSL color mapping with curve editors for fine control:</p>
 							<ul>
-								<li><strong>Hue</strong> — What controls color (species, speed, spectral, flow, etc.)${kbd('C', isTouch)}</li>
-								<li><strong>Saturation</strong> — What controls color intensity</li>
-								<li><strong>Brightness</strong> — What controls lightness (flow divergence shows speed contrast)</li>
-								<li><strong>Palette</strong> — Color spectrum for non-species modes${kbd('P', isTouch)}</li>
-								<li><strong>Color</strong> — Per-species color picker (in Species mode)</li>
+								<li><strong>Hue</strong> — Choose what drives color (Species, Speed, Heading, Local Density, Flow modes, etc.)${kbd('C', isTouch)}</li>
+								<li><strong>Palette/Color</strong> — Button between dropdown and curve: shows species color picker or gradient palette selector${kbd('P', isTouch)}</li>
+								<li><strong>Saturation</strong> — Control color intensity source</li>
+								<li><strong>Brightness</strong> — Control lightness source (Local Density is great for depth!)</li>
 							</ul>
-							<p style="margin-top: 8px; font-size: 11px; color: #71717a;">Try spectral modes for topology or flow modes for dynamics!</p>`,
+							<p style="margin-top: 8px;"><strong>Curve Editors</strong> <span style="font-size: 11px;">〰️</span> — Click the curve button next to each dropdown to customize the mapping. Drag points to reshape, click to add, double-click to remove.</p>
+							<p style="margin-top: 6px; font-size: 11px; color: #71717a;">Tip: Use Heading for rainbow trails, Local Density for depth, or Flow Divergence for dynamic contrast!</p>`,
 						side: 'left',
 						align: 'start'
 					},
