@@ -2,6 +2,8 @@
 
 import type { SimulationBuffers } from './types';
 
+import commonShader from '$lib/shaders/common.wgsl?raw';
+import colorShader from '$lib/shaders/color.wgsl?raw';
 import boidShader from '$lib/shaders/boid.wgsl?raw';
 import trailShader from '$lib/shaders/trail.wgsl?raw';
 import wallShader from '$lib/shaders/wall.wgsl?raw';
@@ -29,9 +31,9 @@ export function createRenderPipelines(
 	format: GPUTextureFormat,
 	buffers: SimulationBuffers
 ): RenderResources {
-	// Create shader modules
-	const boidModule = device.createShaderModule({ code: boidShader });
-	const trailModule = device.createShaderModule({ code: trailShader });
+	// Create shader modules (concatenate shared shaders for boid and trail)
+	const boidModule = device.createShaderModule({ code: commonShader + colorShader + boidShader });
+	const trailModule = device.createShaderModule({ code: commonShader + colorShader + trailShader });
 	const wallModule = device.createShaderModule({ code: wallShader });
 
 	// === Boid Render Pipeline ===

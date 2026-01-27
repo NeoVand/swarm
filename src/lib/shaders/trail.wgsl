@@ -1,72 +1,5 @@
 // Trail rendering shader - instanced line segments with fading
-
-struct Uniforms {
-    canvasWidth: f32,
-    canvasHeight: f32,
-    cellSize: f32,
-    gridWidth: u32,
-    gridHeight: u32,
-    boidCount: u32,
-    trailLength: u32,
-    trailHead: u32,
-    alignment: f32,
-    cohesion: f32,
-    separation: f32,
-    perception: f32,
-    maxSpeed: f32,
-    maxForce: f32,
-    noise: f32,
-    rebels: f32,
-    boundaryMode: u32,
-    cursorMode: u32,
-    cursorShape: u32,
-    cursorVortex: u32,
-    cursorForce: f32,
-    cursorRadius: f32,
-    cursorX: f32,
-    cursorY: f32,
-    cursorPressed: u32,
-    cursorActive: u32,
-    boidSize: f32,
-    colorMode: u32,
-    colorSpectrum: u32,
-    sensitivity: f32,
-    deltaTime: f32,
-    time: f32,
-    frameCount: u32,
-    timeScale: f32,
-    saturationSource: u32,  // What controls saturation
-    brightnessSource: u32,  // What controls brightness
-    spectralMode: u32,      // Which spectral mode to compute
-    // Locally perfect hashing
-    reducedWidth: u32,
-    totalSlots: u32,
-    globalCollision: f32,   // Cross-species collision strength
-    // Curve enabled flags
-    hueCurveEnabled: u32,
-    saturationCurveEnabled: u32,
-    brightnessCurveEnabled: u32,
-}
-
-// Color modes
-const COLOR_SPEED: u32 = 0u;
-const COLOR_ORIENTATION: u32 = 1u;
-const COLOR_NEIGHBORS: u32 = 2u;
-const COLOR_ACCELERATION: u32 = 3u;
-const COLOR_TURNING: u32 = 4u;
-const COLOR_NONE: u32 = 5u;
-const COLOR_DENSITY: u32 = 6u;
-const COLOR_SPECIES: u32 = 7u;
-const COLOR_LOCAL_DENSITY: u32 = 8u;
-const COLOR_ANISOTROPY: u32 = 9u;
-// 10u was COLOR_DIFFUSION - removed
-const COLOR_INFLUENCE: u32 = 11u;
-const COLOR_SPECTRAL_RADIAL: u32 = 12u;
-const COLOR_SPECTRAL_ASYMMETRY: u32 = 13u;
-const COLOR_FLOW_ANGULAR: u32 = 14u;
-const COLOR_FLOW_RADIAL: u32 = 15u;
-const COLOR_FLOW_DIVERGENCE: u32 = 16u;
-const COLOR_TRUE_TURNING: u32 = 17u;
+// Note: This shader requires common.wgsl and color.wgsl to be prepended at load time
 
 // Get species color params from speciesParams buffer (5 vec4s per species)
 fn getSpeciesHue(speciesId: u32) -> f32 {
@@ -85,16 +18,6 @@ fn getSpeciesTrailLength(speciesId: u32) -> f32 {
     return speciesParams[speciesId * 5u + 2u].w;  // vec4[2].w = trailLength
 }
 
-// Color spectrums
-const SPECTRUM_CHROME: u32 = 0u;
-const SPECTRUM_OCEAN: u32 = 1u;
-const SPECTRUM_BANDS: u32 = 2u;
-const SPECTRUM_RAINBOW: u32 = 3u;
-const SPECTRUM_MONO: u32 = 4u;
-
-// Maximum trail length for buffer stride (must match CPU-side MAX_TRAIL_LENGTH)
-const MAX_TRAIL_LENGTH: u32 = 50u;
-
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
@@ -111,12 +34,7 @@ struct VertexOutput {
 @group(0) @binding(7) var<storage, read> metrics: array<vec4<f32>>;  // per-boid metrics [density, anisotropy, 0, 0]
 @group(0) @binding(8) var<storage, read> curveSamples: array<f32>;  // 3 curves × 64 samples
 
-// Curve indices for lookupCurve
-const CURVE_HUE: u32 = 0u;
-const CURVE_SAT: u32 = 1u;
-const CURVE_BRIGHT: u32 = 2u;
-
-// Linear interpolation lookup into curve samples buffer
+// Linear interpolation lookup into curve samples buffer (shader-specific, uses curveSamples binding)
 fn lookupCurve(curveId: u32, t: f32) -> f32 {
     let base = curveId * 64u;
     let pos = clamp(t, 0.0, 1.0) * 63.0;
@@ -124,170 +42,6 @@ fn lookupCurve(curveId: u32, t: f32) -> f32 {
     let idx1 = min(idx0 + 1u, 63u);
     let frac = pos - f32(idx0);
     return mix(curveSamples[base + idx0], curveSamples[base + idx1], frac);
-}
-
-fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
-    let h = hsv.x;
-    let s = hsv.y;
-    let v = hsv.z;
-    
-    let c = v * s;
-    let x = c * (1.0 - abs((h * 6.0) % 2.0 - 1.0));
-    let m = v - c;
-    
-    var rgb: vec3<f32>;
-    let hi = i32(h * 6.0) % 6;
-    
-    switch (hi) {
-        case 0: { rgb = vec3<f32>(c, x, 0.0); }
-        case 1: { rgb = vec3<f32>(x, c, 0.0); }
-        case 2: { rgb = vec3<f32>(0.0, c, x); }
-        case 3: { rgb = vec3<f32>(0.0, x, c); }
-        case 4: { rgb = vec3<f32>(x, 0.0, c); }
-        default: { rgb = vec3<f32>(c, 0.0, x); }
-    }
-    
-    return rgb + m;
-}
-
-// HSL to RGB conversion
-fn hslToRgb(h: f32, s: f32, l: f32) -> vec3<f32> {
-    let c = (1.0 - abs(2.0 * l - 1.0)) * s;
-    let x = c * (1.0 - abs((h * 6.0) % 2.0 - 1.0));
-    let m = l - c * 0.5;
-    
-    var rgb: vec3<f32>;
-    let hi = i32(h * 6.0) % 6;
-    
-    switch (hi) {
-        case 0: { rgb = vec3<f32>(c, x, 0.0); }
-        case 1: { rgb = vec3<f32>(x, c, 0.0); }
-        case 2: { rgb = vec3<f32>(0.0, c, x); }
-        case 3: { rgb = vec3<f32>(0.0, x, c); }
-        case 4: { rgb = vec3<f32>(x, 0.0, c); }
-        default: { rgb = vec3<f32>(c, 0.0, x); }
-    }
-    
-    return rgb + m;
-}
-
-// RGB to Hue extraction (returns hue in 0-1 range)
-fn rgbToHue(rgb: vec3<f32>) -> f32 {
-    let maxC = max(max(rgb.r, rgb.g), rgb.b);
-    let minC = min(min(rgb.r, rgb.g), rgb.b);
-    let delta = maxC - minC;
-    
-    if (delta < 0.001) {
-        return 0.0;  // Gray, no hue
-    }
-    
-    var h: f32;
-    if (maxC == rgb.r) {
-        h = (rgb.g - rgb.b) / delta;
-        if (rgb.g < rgb.b) { h += 6.0; }
-    } else if (maxC == rgb.g) {
-        h = 2.0 + (rgb.b - rgb.r) / delta;
-    } else {
-        h = 4.0 + (rgb.r - rgb.g) / delta;
-    }
-    
-    return h / 6.0;  // Normalize to 0-1
-}
-
-fn getColorFromSpectrum(t: f32, spectrum: u32) -> vec3<f32> {
-    let tt = clamp(t, 0.0, 1.0);
-    
-    switch (spectrum) {
-        case SPECTRUM_CHROME: {
-            if (tt < 0.25) {
-                return mix(vec3<f32>(0.2, 0.4, 0.9), vec3<f32>(0.3, 0.8, 0.9), tt * 4.0);
-            } else if (tt < 0.5) {
-                return mix(vec3<f32>(0.3, 0.8, 0.9), vec3<f32>(0.95, 0.95, 0.9), (tt - 0.25) * 4.0);
-            } else if (tt < 0.75) {
-                return mix(vec3<f32>(0.95, 0.95, 0.9), vec3<f32>(0.95, 0.6, 0.2), (tt - 0.5) * 4.0);
-            } else {
-                return mix(vec3<f32>(0.95, 0.6, 0.2), vec3<f32>(0.9, 0.2, 0.2), (tt - 0.75) * 4.0);
-            }
-        }
-        case SPECTRUM_OCEAN: {
-            // Sophisticated circular palette - loops back to start
-            // Deep Blue -> Teal -> Seafoam -> Gold -> Coral -> Mauve -> Deep Blue
-            if (tt < 0.167) {
-                return mix(vec3<f32>(0.3, 0.42, 0.78), vec3<f32>(0.25, 0.65, 0.7), tt * 6.0);
-            } else if (tt < 0.333) {
-                return mix(vec3<f32>(0.25, 0.65, 0.7), vec3<f32>(0.35, 0.75, 0.55), (tt - 0.167) * 6.0);
-            } else if (tt < 0.5) {
-                return mix(vec3<f32>(0.35, 0.75, 0.55), vec3<f32>(0.92, 0.78, 0.35), (tt - 0.333) * 6.0);
-            } else if (tt < 0.667) {
-                return mix(vec3<f32>(0.92, 0.78, 0.35), vec3<f32>(0.88, 0.5, 0.45), (tt - 0.5) * 6.0);
-            } else if (tt < 0.833) {
-                return mix(vec3<f32>(0.88, 0.5, 0.45), vec3<f32>(0.65, 0.42, 0.65), (tt - 0.667) * 6.0);
-            } else {
-                return mix(vec3<f32>(0.65, 0.42, 0.65), vec3<f32>(0.3, 0.42, 0.78), (tt - 0.833) * 6.0);
-            }
-        }
-        case SPECTRUM_BANDS: {
-            // Distinct color bands - sharp transitions for maximum contrast
-            // 6 distinct colors with minimal blending
-            let band = u32(tt * 6.0);
-            let bandT = fract(tt * 6.0);
-            // Quick transition only at band edges (last 15%)
-            let blend = smoothstep(0.85, 1.0, bandT);
-            
-            var c1: vec3<f32>;
-            var c2: vec3<f32>;
-            switch (band) {
-                case 0u: { c1 = vec3<f32>(0.9, 0.2, 0.3); c2 = vec3<f32>(0.95, 0.6, 0.1); }  // Red -> Orange
-                case 1u: { c1 = vec3<f32>(0.95, 0.6, 0.1); c2 = vec3<f32>(0.95, 0.9, 0.2); } // Orange -> Yellow
-                case 2u: { c1 = vec3<f32>(0.95, 0.9, 0.2); c2 = vec3<f32>(0.2, 0.8, 0.4); }  // Yellow -> Green
-                case 3u: { c1 = vec3<f32>(0.2, 0.8, 0.4); c2 = vec3<f32>(0.2, 0.6, 0.9); }   // Green -> Blue
-                case 4u: { c1 = vec3<f32>(0.2, 0.6, 0.9); c2 = vec3<f32>(0.6, 0.3, 0.8); }   // Blue -> Purple
-                default: { c1 = vec3<f32>(0.6, 0.3, 0.8); c2 = vec3<f32>(0.9, 0.2, 0.3); }   // Purple -> Red
-            }
-            return mix(c1, c2, blend);
-        }
-        case SPECTRUM_RAINBOW: {
-            return hsv2rgb(vec3<f32>(tt, 0.85, 0.9));
-        }
-        case SPECTRUM_MONO: {
-            let brightness = 0.4 + tt * 0.6;
-            return vec3<f32>(brightness, brightness * 0.95, brightness * 0.9);
-        }
-        default: {
-            return vec3<f32>(1.0);
-        }
-    }
-}
-
-// Boundary modes (must match simulate.wgsl)
-const PLANE: u32 = 0u;
-const CYLINDER_X: u32 = 1u;
-const CYLINDER_Y: u32 = 2u;
-const TORUS: u32 = 3u;
-const MOBIUS_X: u32 = 4u;
-const MOBIUS_Y: u32 = 5u;
-const KLEIN_X: u32 = 6u;
-const KLEIN_Y: u32 = 7u;
-const PROJECTIVE_PLANE: u32 = 8u;
-
-// Check if X axis wraps for current boundary mode
-fn wrapsX() -> bool {
-    return uniforms.boundaryMode == TORUS || 
-           uniforms.boundaryMode == CYLINDER_X || 
-           uniforms.boundaryMode == MOBIUS_X ||
-           uniforms.boundaryMode == KLEIN_X ||
-           uniforms.boundaryMode == KLEIN_Y ||
-           uniforms.boundaryMode == PROJECTIVE_PLANE;
-}
-
-// Check if Y axis wraps for current boundary mode
-fn wrapsY() -> bool {
-    return uniforms.boundaryMode == TORUS || 
-           uniforms.boundaryMode == CYLINDER_Y || 
-           uniforms.boundaryMode == MOBIUS_Y ||
-           uniforms.boundaryMode == KLEIN_X ||
-           uniforms.boundaryMode == KLEIN_Y ||
-           uniforms.boundaryMode == PROJECTIVE_PLANE;
 }
 
 // Check if a segment wraps across boundary and calculate edge intersection

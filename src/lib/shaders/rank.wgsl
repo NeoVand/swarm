@@ -1,133 +1,14 @@
 // Spectral structure shader - computes approximate Fiedler vector (2nd eigenvector of graph Laplacian)
 // Creates beautiful structural colorization that reveals graph partitions and clusters
+// Note: This shader requires common.wgsl to be prepended at load time
 
-struct Uniforms {
-    canvasWidth: f32,
-    canvasHeight: f32,
-    cellSize: f32,
-    gridWidth: u32,
-    gridHeight: u32,
-    boidCount: u32,
-    trailLength: u32,
-    trailHead: u32,
-    alignment: f32,
-    cohesion: f32,
-    separation: f32,
-    perception: f32,
-    maxSpeed: f32,
-    maxForce: f32,
-    noise: f32,
-    rebels: f32,
-    boundaryMode: u32,
-    cursorMode: u32,
-    cursorShape: u32,
-    cursorVortex: u32,
-    cursorForce: f32,
-    cursorRadius: f32,
-    cursorX: f32,
-    cursorY: f32,
-    cursorPressed: u32,
-    cursorActive: u32,
-    boidSize: f32,
-    colorMode: u32,
-    colorSpectrum: u32,
-    sensitivity: f32,
-    deltaTime: f32,
-    time: f32,
-    frameCount: u32,
-    timeScale: f32,
-    saturationSource: u32,
-    brightnessSource: u32,
-    spectralMode: u32,
-    // Locally perfect hashing
-    reducedWidth: u32,
-    totalSlots: u32,
-}
-
-// Spectral modes
+// Spectral modes (unique to this shader)
 const SPECTRAL_ANGULAR: u32 = 0u;
 const SPECTRAL_RADIAL: u32 = 1u;
 const SPECTRAL_ASYMMETRY: u32 = 2u;
 const SPECTRAL_FLOW_ANGULAR: u32 = 3u;
 const SPECTRAL_FLOW_RADIAL: u32 = 4u;
 const SPECTRAL_FLOW_DIVERGENCE: u32 = 5u;
-
-// Boundary modes
-const PLANE: u32 = 0u;
-const CYLINDER_X: u32 = 1u;
-const CYLINDER_Y: u32 = 2u;
-const TORUS: u32 = 3u;
-const MOBIUS_X: u32 = 4u;
-const MOBIUS_Y: u32 = 5u;
-const KLEIN_X: u32 = 6u;
-const KLEIN_Y: u32 = 7u;
-const PROJECTIVE_PLANE: u32 = 8u;
-
-struct BoundaryConfig {
-    wrapX: bool,
-    wrapY: bool,
-    flipOnWrapX: bool,
-    flipOnWrapY: bool,
-    bounceX: bool,
-    bounceY: bool,
-}
-
-fn getBoundaryConfig() -> BoundaryConfig {
-    var cfg: BoundaryConfig;
-    switch (uniforms.boundaryMode) {
-        case PLANE: {
-            cfg.wrapX = false; cfg.wrapY = false;
-            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
-            cfg.bounceX = true; cfg.bounceY = true;
-        }
-        case CYLINDER_X: {
-            cfg.wrapX = true; cfg.wrapY = false;
-            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
-            cfg.bounceX = false; cfg.bounceY = true;
-        }
-        case CYLINDER_Y: {
-            cfg.wrapX = false; cfg.wrapY = true;
-            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
-            cfg.bounceX = true; cfg.bounceY = false;
-        }
-        case TORUS: {
-            cfg.wrapX = true; cfg.wrapY = true;
-            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
-            cfg.bounceX = false; cfg.bounceY = false;
-        }
-        case MOBIUS_X: {
-            cfg.wrapX = true; cfg.wrapY = false;
-            cfg.flipOnWrapX = true; cfg.flipOnWrapY = false;
-            cfg.bounceX = false; cfg.bounceY = true;
-        }
-        case MOBIUS_Y: {
-            cfg.wrapX = false; cfg.wrapY = true;
-            cfg.flipOnWrapX = false; cfg.flipOnWrapY = true;
-            cfg.bounceX = true; cfg.bounceY = false;
-        }
-        case KLEIN_X: {
-            cfg.wrapX = true; cfg.wrapY = true;
-            cfg.flipOnWrapX = true; cfg.flipOnWrapY = false;
-            cfg.bounceX = false; cfg.bounceY = false;
-        }
-        case KLEIN_Y: {
-            cfg.wrapX = true; cfg.wrapY = true;
-            cfg.flipOnWrapX = false; cfg.flipOnWrapY = true;
-            cfg.bounceX = false; cfg.bounceY = false;
-        }
-        case PROJECTIVE_PLANE: {
-            cfg.wrapX = true; cfg.wrapY = true;
-            cfg.flipOnWrapX = true; cfg.flipOnWrapY = true;
-            cfg.bounceX = false; cfg.bounceY = false;
-        }
-        default: {
-            cfg.wrapX = false; cfg.wrapY = false;
-            cfg.flipOnWrapX = false; cfg.flipOnWrapY = false;
-            cfg.bounceX = true; cfg.bounceY = true;
-        }
-    }
-    return cfg;
-}
 
 // Bind group 0: Spatial hash and position data (read-only)
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -296,7 +177,8 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 let weight = smoothKernel(dist, perception);
                 
                 if (weight > 0.0) {
-                    centerOfMass += otherPos * weight;
+                    // Use myPos + delta instead of otherPos to handle boundary wrapping correctly
+                    centerOfMass += (myPos + delta) * weight;
                     avgVelocity += velocities[otherIdx] * weight;
                     totalWeight += weight;
                     neighborCount++;
