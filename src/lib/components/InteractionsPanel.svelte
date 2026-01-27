@@ -22,30 +22,38 @@
 	import Shield from '@lucide/svelte/icons/shield';
 	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 	import Swords from '@lucide/svelte/icons/swords';
+	import Settings from '@lucide/svelte/icons/settings';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 
 	let currentParams = $derived($params);
 	let activeSpecies = $derived(getActiveSpecies(currentParams));
 	let allSpecies = $derived(currentParams.species);
 	let otherSpecies = $derived(allSpecies.filter((s) => s.id !== activeSpecies?.id));
 
-	// Dropdown state for target selection only
+	// Dropdown and expanded states
 	let openTargetDropdown = $state<number | null>(null);
+	let openBehaviorDropdown = $state<number | null>(null);
+	let expandedSettings = $state<Set<number>>(new Set());
 
-	// Behavior options with Lucide icons - 10 behaviors in 2 rows of 5
+	// Behavior options with Lucide icons
 	const behaviorOptions = [
-		// Row 1
 		{ value: InteractionBehavior.Ignore, label: 'Ignore', Icon: CircleOff },
 		{ value: InteractionBehavior.Flee, label: 'Flee', Icon: MoveUpLeft },
 		{ value: InteractionBehavior.Chase, label: 'Chase', Icon: Crosshair },
 		{ value: InteractionBehavior.Cohere, label: 'Cohere', Icon: GitMerge },
 		{ value: InteractionBehavior.Align, label: 'Align', Icon: ChevronsRight },
-		// Row 2
 		{ value: InteractionBehavior.Orbit, label: 'Orbit', Icon: Orbit },
 		{ value: InteractionBehavior.Follow, label: 'Follow', Icon: Footprints },
 		{ value: InteractionBehavior.Guard, label: 'Guard', Icon: Shield },
 		{ value: InteractionBehavior.Disperse, label: 'Scatter', Icon: Maximize2 },
 		{ value: InteractionBehavior.Mob, label: 'Mob', Icon: Swords }
 	];
+
+	// Get behavior option by value
+	function getBehaviorOption(value: InteractionBehavior) {
+		return behaviorOptions.find((b) => b.value === value) ?? behaviorOptions[0];
+	}
 
 	// Get species by ID
 	function getSpeciesById(id: number): Species | undefined {
@@ -64,6 +72,7 @@
 	function handleBehaviorChange(ruleIndex: number, behavior: InteractionBehavior) {
 		if (!activeSpecies) return;
 		updateInteractionRule(activeSpecies.id, ruleIndex, { behavior });
+		openBehaviorDropdown = null;
 	}
 
 	// Handle strength change
@@ -85,16 +94,34 @@
 		openTargetDropdown = null;
 	}
 
-	// Toggle target dropdown
+	// Toggle dropdowns
 	function toggleTargetDropdown(ruleIndex: number) {
+		openBehaviorDropdown = null;
 		openTargetDropdown = openTargetDropdown === ruleIndex ? null : ruleIndex;
 	}
 
-	// Close dropdown on click outside
+	function toggleBehaviorDropdown(ruleIndex: number) {
+		openTargetDropdown = null;
+		openBehaviorDropdown = openBehaviorDropdown === ruleIndex ? null : ruleIndex;
+	}
+
+	// Toggle settings expansion
+	function toggleSettings(ruleIndex: number) {
+		const newSet = new Set(expandedSettings);
+		if (newSet.has(ruleIndex)) {
+			newSet.delete(ruleIndex);
+		} else {
+			newSet.add(ruleIndex);
+		}
+		expandedSettings = newSet;
+	}
+
+	// Close dropdowns on click outside
 	function handleClickOutside(event: MouseEvent) {
 		const target = event.target as HTMLElement;
 		if (!target.closest('.dropdown-wrapper')) {
 			openTargetDropdown = null;
+			openBehaviorDropdown = null;
 		}
 	}
 
@@ -135,146 +162,127 @@
 	{:else}
 		<div class="rules-list">
 			{#each activeSpecies.interactions as rule, ruleIndex (ruleIndex)}
-				<div class="rule-card" transition:slide={{ duration: 150, easing: cubicOut }}>
-					<!-- Header row: Source → Target + Delete -->
-					<div class="rule-header">
-						<div class="rule-flow">
-							<!-- Source species icon -->
-							<svg class="species-icon" viewBox="0 0 20 20">
-								<path
-									d={getIconPath(activeSpecies.headShape, 20)}
-									fill={hslColor(
-										activeSpecies.hue,
-										activeSpecies.saturation,
-										activeSpecies.lightness
-									)}
-								/>
-							</svg>
-							<svg class="arrow-icon" viewBox="0 0 16 16" fill="currentColor">
-								<path
-									d="M4 8a.5.5 0 0 1 .5-.5h5.793L8.146 5.354a.5.5 0 1 1 .708-.708l3 3a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708-.708L10.293 8.5H4.5A.5.5 0 0 1 4 8z"
-								/>
-							</svg>
-							<!-- Target dropdown -->
-							<div class="dropdown-wrapper">
-								<button
-									class="dropdown-btn compact"
-									onclick={() => toggleTargetDropdown(ruleIndex)}
-									title={rule.targetSpecies === -1
-										? 'Others'
-										: getSpeciesById(rule.targetSpecies)?.name}
-								>
-									{#if rule.targetSpecies === -1}
-										<svg
-											class="all-icon"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="rgba(255,255,255,0.8)"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-										>
+				{@const behaviorOpt = getBehaviorOption(rule.behavior)}
+				{@const isExpanded = expandedSettings.has(ruleIndex)}
+				<div class="rule-row" transition:slide={{ duration: 150, easing: cubicOut }}>
+					<!-- Main row: Source → Target → Behavior → Settings -->
+					<div class="rule-main">
+						<!-- Source species icon -->
+						<svg class="species-icon" viewBox="0 0 20 20">
+							<path
+								d={getIconPath(activeSpecies.headShape, 20)}
+								fill={hslColor(activeSpecies.hue, activeSpecies.saturation, activeSpecies.lightness)}
+							/>
+						</svg>
+
+						<span class="arrow">→</span>
+
+						<!-- Target dropdown (icons only) -->
+						<div class="dropdown-wrapper">
+							<button
+								class="target-btn"
+								onclick={() => toggleTargetDropdown(ruleIndex)}
+								title={rule.targetSpecies === -1 ? 'All Others' : getSpeciesById(rule.targetSpecies)?.name}
+							>
+								{#if rule.targetSpecies === -1}
+									<span class="all-text">All</span>
+								{:else}
+									{@const target = getSpeciesById(rule.targetSpecies)}
+									{#if target}
+										<svg class="species-icon-sm" viewBox="0 0 20 20">
 											<path
-												d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
+												d={getIconPath(target.headShape, 20)}
+												fill={hslColor(target.hue, target.saturation, target.lightness)}
 											/>
-											<rect x="3" y="14" width="7" height="7" rx="1" />
-											<circle cx="17.5" cy="17.5" r="3.5" />
 										</svg>
-										<span class="target-label">Others</span>
-									{:else}
-										{@const target = getSpeciesById(rule.targetSpecies)}
-										{#if target}
-											<svg class="species-icon-sm" viewBox="0 0 20 20">
-												<path
-													d={getIconPath(target.headShape, 20)}
-													fill={hslColor(target.hue, target.saturation, target.lightness)}
-												/>
-											</svg>
-											<span class="target-label">{target.name}</span>
-										{/if}
 									{/if}
-								</button>
-								{#if openTargetDropdown === ruleIndex}
-									<div
-										class="dropdown-menu target-list"
-										transition:slide={{ duration: 120, easing: cubicOut }}
-									>
-										<button
-											class="target-item"
-											class:active={rule.targetSpecies === -1}
-											onclick={() => handleTargetChange(ruleIndex, -1)}
-										>
-											<svg
-												class="all-icon"
-												viewBox="0 0 24 24"
-												fill="none"
-												stroke="rgba(255,255,255,0.8)"
-												stroke-width="2"
-												stroke-linecap="round"
-												stroke-linejoin="round"
-											>
-												<path
-													d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
-												/>
-												<rect x="3" y="14" width="7" height="7" rx="1" />
-												<circle cx="17.5" cy="17.5" r="3.5" />
-											</svg>
-											<span class="target-item-label">All Others</span>
-										</button>
-										{#each otherSpecies as other (other.id)}
-											<button
-												class="target-item"
-												class:active={rule.targetSpecies === other.id}
-												onclick={() => handleTargetChange(ruleIndex, other.id)}
-											>
-												<svg class="species-icon-sm" viewBox="0 0 20 20">
-													<path
-														d={getIconPath(other.headShape, 20)}
-														fill={hslColor(other.hue, other.saturation, other.lightness)}
-													/>
-												</svg>
-												<span class="target-item-label">{other.name}</span>
-											</button>
-										{/each}
-									</div>
 								{/if}
-							</div>
+								<ChevronDown size={10} strokeWidth={2} />
+							</button>
+							{#if openTargetDropdown === ruleIndex}
+								<div class="dropdown-menu compact">
+									<button
+										class="dropdown-item"
+										class:active={rule.targetSpecies === -1}
+										onclick={() => handleTargetChange(ruleIndex, -1)}
+									>
+										<span class="all-text">All</span>
+									</button>
+								{#each otherSpecies as other (other.id)}
+									<button
+										class="dropdown-item"
+										class:active={rule.targetSpecies === other.id}
+										onclick={() => handleTargetChange(ruleIndex, other.id)}
+										title={other.name}
+									>
+										<svg class="species-icon-sm" viewBox="0 0 20 20">
+											<path
+												d={getIconPath(other.headShape, 20)}
+												fill={hslColor(other.hue, other.saturation, other.lightness)}
+											/>
+										</svg>
+									</button>
+								{/each}
+								</div>
+							{/if}
 						</div>
+
+						<!-- Behavior dropdown -->
+						<div class="dropdown-wrapper behavior-dropdown">
+							<button
+								class="behavior-btn"
+								onclick={() => toggleBehaviorDropdown(ruleIndex)}
+							>
+								<behaviorOpt.Icon size={14} strokeWidth={2} />
+								<span class="behavior-label">{behaviorOpt.label}</span>
+								<ChevronDown size={10} strokeWidth={2} />
+							</button>
+							{#if openBehaviorDropdown === ruleIndex}
+								<div class="dropdown-menu behavior-grid-menu">
+									{#each behaviorOptions as opt (opt.value)}
+										<button
+											class="behavior-grid-item"
+											class:active={rule.behavior === opt.value}
+											onclick={() => handleBehaviorChange(ruleIndex, opt.value)}
+											title={opt.label}
+										>
+											<opt.Icon size={14} strokeWidth={2} />
+											<span>{opt.label}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
+						<!-- Settings toggle (only show if not Ignore) -->
+						{#if rule.behavior !== InteractionBehavior.Ignore}
+							<button
+								class="settings-btn"
+								class:active={isExpanded}
+								onclick={() => toggleSettings(ruleIndex)}
+								title="Settings"
+							>
+								<Settings size={14} strokeWidth={2} />
+							</button>
+						{/if}
+
+						<!-- Delete button -->
 						{#if activeSpecies.interactions.length > 1}
-							<button class="remove-btn" onclick={() => handleRemoveRule(ruleIndex)} title="Remove">
-								<svg viewBox="0 0 16 16" fill="currentColor">
-									<path
-										d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"
-									/>
-									<path
-										fill-rule="evenodd"
-										d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"
-									/>
-								</svg>
+							<button
+								class="delete-btn"
+								onclick={() => handleRemoveRule(ruleIndex)}
+								title="Remove rule"
+							>
+								<Trash2 size={12} strokeWidth={2} />
 							</button>
 						{/if}
 					</div>
 
-					<!-- Behavior button grid (2 rows x 5 columns) -->
-					<div class="behavior-grid">
-						{#each behaviorOptions as opt (opt.value)}
-							<button
-								class="behavior-btn"
-								class:active={rule.behavior === opt.value}
-								onclick={() => handleBehaviorChange(ruleIndex, opt.value)}
-								title={opt.label}
-							>
-								<opt.Icon size={16} strokeWidth={2} />
-								<span class="behavior-label">{opt.label}</span>
-							</button>
-						{/each}
-					</div>
-
-					<!-- Strength and Range sliders -->
-					{#if rule.behavior !== InteractionBehavior.Ignore}
-						<div class="sliders-section">
-							<div class="row">
-								<span class="label">Strength</span>
+					<!-- Expanded settings (Strength/Range sliders) -->
+					{#if isExpanded && rule.behavior !== InteractionBehavior.Ignore}
+						<div class="settings-panel" transition:slide={{ duration: 120, easing: cubicOut }}>
+							<div class="slider-row">
+								<span class="slider-label">Str</span>
 								<input
 									type="range"
 									class="slider"
@@ -284,11 +292,10 @@
 									value={rule.strength}
 									oninput={(e) => handleStrengthChange(ruleIndex, parseFloat(e.currentTarget.value))}
 								/>
-								<span class="value">{(rule.strength * 100).toFixed(0)}%</span>
+								<span class="slider-value">{(rule.strength * 100).toFixed(0)}%</span>
 							</div>
-
-							<div class="row">
-								<span class="label">Range</span>
+							<div class="slider-row">
+								<span class="slider-label">Rng</span>
 								<input
 									type="range"
 									class="slider"
@@ -298,7 +305,7 @@
 									value={rule.range}
 									oninput={(e) => handleRangeChange(ruleIndex, parseFloat(e.currentTarget.value))}
 								/>
-								<span class="value">{rule.range === 0 ? 'Auto' : rule.range}</span>
+								<span class="slider-value">{rule.range === 0 ? 'Auto' : rule.range}</span>
 							</div>
 						</div>
 					{/if}
@@ -308,9 +315,7 @@
 
 		<button class="add-rule-btn" onclick={handleAddRule}>
 			<svg viewBox="0 0 16 16" fill="currentColor">
-				<path
-					d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"
-				/>
+				<path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
 			</svg>
 			<span>Add Rule</span>
 		</button>
@@ -321,59 +326,9 @@
 	.interactions-panel {
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
-	}
-
-	.row {
-		display: flex;
-		align-items: center;
 		gap: 4px;
-		padding: 4px 0;
-	}
-
-	.label {
-		width: 52px;
-		flex-shrink: 0;
-		font-size: 10px;
-		color: rgb(161 161 170);
-	}
-
-	.value {
-		width: 36px;
-		flex-shrink: 0;
-		text-align: right;
-		font-family: ui-monospace, monospace;
-		font-size: 9px;
-		color: rgb(113 113 122);
-	}
-
-	.slider {
-		flex: 1;
-		min-width: 0;
-		height: 4px;
-		cursor: pointer;
-		appearance: none;
-		border-radius: 2px;
-		background: linear-gradient(to right, rgba(161, 161, 170, 0.25), rgba(113, 113, 122, 0.15));
-	}
-
-	.slider::-webkit-slider-thumb {
-		width: 14px;
-		height: 14px;
-		cursor: pointer;
-		appearance: none;
-		border-radius: 50%;
-		background: rgb(8 8 12);
-		border: 1px solid rgba(212, 212, 216, 0.8);
-		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-		transition:
-			transform 0.1s,
-			border-color 0.1s;
-	}
-
-	.slider::-webkit-slider-thumb:hover {
-		transform: scale(1.1);
-		border-color: rgba(255, 255, 255, 0.9);
+		overflow: visible;
+		position: relative;
 	}
 
 	.empty-state {
@@ -396,36 +351,31 @@
 	.rules-list {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 4px;
+		overflow: visible;
 	}
 
-	.rule-card {
+	.rule-row {
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px solid rgba(255, 255, 255, 0.06);
-		border-radius: 8px;
-		padding: 8px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
+		border-radius: 6px;
+		position: relative;
+		overflow: visible;
 	}
 
-	.rule-header {
+	.rule-main {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-	}
-
-	.rule-flow {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		flex: 1;
-		min-width: 0;
+		gap: 6px;
+		padding: 6px 8px;
+		position: relative;
+		overflow: visible;
 	}
 
 	.species-icon {
 		width: 18px;
 		height: 18px;
+		flex-shrink: 0;
 	}
 
 	.species-icon-sm {
@@ -433,202 +383,273 @@
 		height: 14px;
 	}
 
-	.all-icon {
-		width: 16px;
-		height: 16px;
-	}
-
-	.arrow-icon {
-		width: 14px;
-		height: 14px;
+	.arrow {
+		font-size: 10px;
 		color: rgba(255, 255, 255, 0.3);
+		flex-shrink: 0;
 	}
 
+	/* Target dropdown */
 	.dropdown-wrapper {
 		position: relative;
 	}
 
-	.dropdown-btn {
+	.target-btn {
 		display: flex;
 		align-items: center;
-		gap: 4px;
-		padding: 4px 6px;
+		gap: 3px;
+		padding: 3px 5px;
 		background: rgba(255, 255, 255, 0.05);
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 4px;
 		cursor: pointer;
 		transition: all 0.15s;
+		color: rgba(255, 255, 255, 0.6);
 	}
 
-	.dropdown-btn:hover {
+	.target-btn:hover {
 		background: rgba(255, 255, 255, 0.08);
 		border-color: rgba(255, 255, 255, 0.15);
 	}
 
-	.dropdown-btn.compact {
-		padding: 3px 6px;
-	}
-
-	.target-label {
-		font-size: 10px;
+	.all-text {
+		font-size: 9px;
+		font-weight: 500;
 		color: rgba(255, 255, 255, 0.7);
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
 	}
 
-	.dropdown-menu {
-		position: absolute;
-		top: 100%;
-		left: 0;
-		min-width: 100%;
-		margin-top: 4px;
-		background: rgba(20, 20, 25, 0.98);
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		border-radius: 6px;
-		overflow: hidden;
-		z-index: 50;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-	}
-
-	.dropdown-menu.target-list {
-		min-width: 120px;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		padding: 4px;
-	}
-
-	.target-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 8px;
-		background: rgba(255, 255, 255, 0.02);
-		border: none;
-		border-radius: 4px;
-		cursor: pointer;
-		transition: background 0.1s;
-	}
-
-	.target-item:hover {
-		background: rgba(255, 255, 255, 0.1);
-	}
-
-	.target-item.active {
-		background: rgba(99, 102, 241, 0.25);
-	}
-
-	.target-item .all-icon {
-		width: 16px;
-		height: 16px;
-		flex-shrink: 0;
-	}
-
-	.target-item .species-icon-sm {
-		width: 16px;
-		height: 16px;
-		flex-shrink: 0;
-	}
-
-	.target-item-label {
-		font-size: 11px;
-		color: rgba(255, 255, 255, 0.8);
-		white-space: nowrap;
-	}
-
-	.target-item:hover .target-item-label {
-		color: rgba(255, 255, 255, 1);
-	}
-
-	.target-item.active .target-item-label {
-		color: rgba(165, 180, 252, 1);
-	}
-
-	/* Behavior button grid - 2 rows x 5 columns */
-	.behavior-grid {
-		display: grid;
-		grid-template-columns: repeat(5, 1fr);
-		gap: 4px;
+	/* Behavior dropdown */
+	.behavior-dropdown {
+		flex: 1;
+		min-width: 0;
 	}
 
 	.behavior-btn {
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		justify-content: center;
-		gap: 2px;
-		padding: 6px 2px;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid transparent;
-		border-radius: 6px;
+		gap: 4px;
+		width: 100%;
+		padding: 3px 6px;
+		background: rgba(255, 255, 255, 0.05);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 4px;
 		cursor: pointer;
 		transition: all 0.15s;
-		color: rgba(255, 255, 255, 0.5);
+		color: rgba(255, 255, 255, 0.7);
 	}
 
 	.behavior-btn:hover {
 		background: rgba(255, 255, 255, 0.08);
-		color: rgba(255, 255, 255, 0.8);
+		border-color: rgba(255, 255, 255, 0.15);
 	}
 
-	.behavior-btn.active {
-		background: rgba(99, 102, 241, 0.2);
+	.behavior-label {
+		flex: 1;
+		font-size: 10px;
+		text-align: left;
+	}
+
+	/* Dropdown menus */
+	.dropdown-menu {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 2px;
+		background: rgba(20, 20, 25, 0.98);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 6px;
+		z-index: 9999;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+	}
+
+	.dropdown-menu.compact {
+		display: flex;
+		flex-direction: row;
+		gap: 2px;
+		padding: 4px;
+	}
+
+	.dropdown-menu.behavior-grid-menu {
+		display: grid;
+		grid-template-columns: repeat(4, 36px);
+		gap: 3px;
+		padding: 6px;
+		right: 0;
+		left: auto;
+	}
+
+	.behavior-grid-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2px;
+		width: 36px;
+		height: 36px;
+		padding: 2px;
+		background: rgba(255, 255, 255, 0.03);
+		border: 1px solid transparent;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.12s;
+		color: rgba(255, 255, 255, 0.5);
+		overflow: hidden;
+	}
+
+	.behavior-grid-item:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: rgba(255, 255, 255, 0.85);
+	}
+
+	.behavior-grid-item.active {
+		background: rgba(99, 102, 241, 0.25);
 		border-color: rgba(99, 102, 241, 0.5);
 		color: rgba(129, 140, 248, 1);
 	}
 
-	.behavior-btn .behavior-label {
-		font-size: 7px;
+	.behavior-grid-item span {
+		font-size: 6px;
 		text-transform: uppercase;
-		letter-spacing: 0.2px;
+		letter-spacing: 0.1px;
 		white-space: nowrap;
 		opacity: 0.7;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
 	}
 
-	.behavior-btn:hover .behavior-label {
+	.behavior-grid-item:hover span {
 		opacity: 1;
 	}
 
-	.behavior-btn.active .behavior-label {
+	.behavior-grid-item.active span {
 		color: rgba(165, 180, 252, 0.9);
 		opacity: 1;
 	}
 
-	.sliders-section {
-		padding-top: 4px;
-		border-top: 1px solid rgba(255, 255, 255, 0.05);
-	}
-
-	.remove-btn {
-		width: 20px;
-		height: 20px;
-		padding: 0;
-		margin-left: 8px;
+	.dropdown-item {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		padding: 4px 6px;
 		background: none;
 		border: none;
+		border-radius: 3px;
 		cursor: pointer;
-		opacity: 0.4;
-		transition: opacity 0.15s;
+		transition: background 0.1s;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.dropdown-item:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.dropdown-item.active {
+		background: rgba(99, 102, 241, 0.25);
+		color: rgba(165, 180, 252, 1);
+	}
+
+
+	/* Settings and delete buttons */
+	.settings-btn,
+	.delete-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		background: none;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		color: rgba(255, 255, 255, 0.4);
+		transition: all 0.15s;
 		flex-shrink: 0;
 	}
 
-	.remove-btn:hover {
-		opacity: 0.8;
+	.settings-btn:hover {
+		background: rgba(255, 255, 255, 0.08);
+		color: rgba(255, 255, 255, 0.7);
 	}
 
-	.remove-btn svg {
-		width: 14px;
-		height: 14px;
-		color: rgba(239, 68, 68, 0.8);
+	.settings-btn.active {
+		background: rgba(99, 102, 241, 0.2);
+		color: rgba(129, 140, 248, 1);
 	}
 
+	.delete-btn:hover {
+		background: rgba(239, 68, 68, 0.15);
+		color: rgba(239, 68, 68, 0.9);
+	}
+
+	/* Settings panel with sliders */
+	.settings-panel {
+		padding: 6px 8px 8px;
+		border-top: 1px solid rgba(255, 255, 255, 0.05);
+		background: rgba(0, 0, 0, 0.15);
+	}
+
+	.slider-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 0;
+	}
+
+	.slider-label {
+		width: 24px;
+		flex-shrink: 0;
+		font-size: 9px;
+		color: rgba(255, 255, 255, 0.5);
+		text-transform: uppercase;
+	}
+
+	.slider {
+		flex: 1;
+		min-width: 0;
+		height: 4px;
+		cursor: pointer;
+		appearance: none;
+		border-radius: 2px;
+		background: linear-gradient(to right, rgba(161, 161, 170, 0.25), rgba(113, 113, 122, 0.15));
+	}
+
+	.slider::-webkit-slider-thumb {
+		width: 12px;
+		height: 12px;
+		cursor: pointer;
+		appearance: none;
+		border-radius: 50%;
+		background: rgb(8 8 12);
+		border: 1px solid rgba(212, 212, 216, 0.8);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+		transition: transform 0.1s, border-color 0.1s;
+	}
+
+	.slider::-webkit-slider-thumb:hover {
+		transform: scale(1.1);
+		border-color: rgba(255, 255, 255, 0.9);
+	}
+
+	.slider-value {
+		width: 32px;
+		flex-shrink: 0;
+		text-align: right;
+		font-family: ui-monospace, monospace;
+		font-size: 9px;
+		color: rgba(255, 255, 255, 0.5);
+	}
+
+	/* Add rule button */
 	.add-rule-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
-		padding: 8px;
+		padding: 6px;
 		margin-top: 4px;
 		background: rgba(255, 255, 255, 0.02);
 		border: 1px dashed rgba(255, 255, 255, 0.12);
@@ -643,13 +664,13 @@
 	}
 
 	.add-rule-btn svg {
-		width: 14px;
-		height: 14px;
+		width: 12px;
+		height: 12px;
 		color: rgba(255, 255, 255, 0.4);
 	}
 
 	.add-rule-btn span {
-		font-size: 10px;
+		font-size: 9px;
 		color: rgba(255, 255, 255, 0.4);
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
