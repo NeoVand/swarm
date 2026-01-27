@@ -6,6 +6,7 @@ import {
 	type CursorState,
 	type Species,
 	type InteractionRule,
+	type CurvePoint,
 	DEFAULT_PARAMS,
 	BoundaryMode,
 	ColorMode,
@@ -676,6 +677,173 @@ export function setRecording(value: boolean): void {
 	isRecording.set(value);
 }
 
+// ============================================================================
+// CURVE EDITOR UTILITIES
+// ============================================================================
+
+// Number of samples per curve for GPU lookup
+export const CURVE_SAMPLES = 64;
+
+/**
+ * Monotonic cubic Hermite interpolation (Fritsch-Carlson method).
+ * Produces smooth curves that don't overshoot between control points.
+ */
+export function monotonicCubicInterpolation(points: CurvePoint[], xVal: number): number {
+	const n = points.length;
+	if (n === 0) return 0;
+	if (n === 1) return points[0].y;
+
+	// Sort points by x
+	const sorted = [...points].sort((a, b) => a.x - b.x);
+
+	// Handle out-of-range queries
+	if (xVal <= sorted[0].x) return sorted[0].y;
+	if (xVal >= sorted[n - 1].x) return sorted[n - 1].y;
+
+	// Find the segment containing xVal
+	let i = 0;
+	while (i < n - 1 && sorted[i + 1].x < xVal) i++;
+
+	// Calculate deltas (segment lengths) and slopes
+	const deltas: number[] = [];
+	const slopes: number[] = [];
+	for (let j = 0; j < n - 1; j++) {
+		const dx = sorted[j + 1].x - sorted[j].x;
+		deltas.push(dx);
+		slopes.push(dx === 0 ? 0 : (sorted[j + 1].y - sorted[j].y) / dx);
+	}
+
+	// Calculate tangents at each point (Fritsch-Carlson method)
+	const tangents: number[] = [];
+	for (let j = 0; j < n; j++) {
+		if (j === 0) {
+			tangents.push(slopes[0]);
+		} else if (j === n - 1) {
+			tangents.push(slopes[n - 2]);
+		} else {
+			const m0 = slopes[j - 1];
+			const m1 = slopes[j];
+
+			// If slopes have different signs, tangent is 0 (local extremum)
+			if (m0 * m1 <= 0) {
+				tangents.push(0);
+			} else {
+				// Weighted harmonic mean of slopes
+				const w0 = 2 * deltas[j] + deltas[j - 1];
+				const w1 = deltas[j] + 2 * deltas[j - 1];
+				tangents.push((w0 + w1) / (w0 / m0 + w1 / m1));
+			}
+		}
+	}
+
+	// Ensure monotonicity: limit tangent magnitudes
+	for (let j = 0; j < n - 1; j++) {
+		const m = slopes[j];
+		if (m === 0) {
+			tangents[j] = 0;
+			tangents[j + 1] = 0;
+		} else {
+			const alpha = tangents[j] / m;
+			const beta = tangents[j + 1] / m;
+			const tau = alpha * alpha + beta * beta;
+
+			if (tau > 9) {
+				const s = 3 / Math.sqrt(tau);
+				tangents[j] = s * alpha * m;
+				tangents[j + 1] = s * beta * m;
+			}
+		}
+	}
+
+	// Hermite interpolation within the segment
+	const x0 = sorted[i].x;
+	const x1 = sorted[i + 1].x;
+	const y0 = sorted[i].y;
+	const y1 = sorted[i + 1].y;
+	const h = x1 - x0;
+	const t = (xVal - x0) / h;
+	const t2 = t * t;
+	const t3 = t2 * t;
+
+	// Hermite basis functions
+	const h00 = 2 * t3 - 3 * t2 + 1;
+	const h10 = t3 - 2 * t2 + t;
+	const h01 = -2 * t3 + 3 * t2;
+	const h11 = t3 - t2;
+
+	return h00 * y0 + h10 * h * tangents[i] + h01 * y1 + h11 * h * tangents[i + 1];
+}
+
+/**
+ * Sample a curve at CURVE_SAMPLES evenly spaced points.
+ * Returns a Float32Array ready for GPU upload.
+ */
+export function sampleCurve(points: CurvePoint[]): Float32Array {
+	const samples = new Float32Array(CURVE_SAMPLES);
+
+	if (!points || points.length < 2) {
+		// Default to linear if invalid
+		for (let i = 0; i < CURVE_SAMPLES; i++) {
+			samples[i] = i / (CURVE_SAMPLES - 1);
+		}
+		return samples;
+	}
+
+	for (let i = 0; i < CURVE_SAMPLES; i++) {
+		const x = i / (CURVE_SAMPLES - 1);
+		const y = monotonicCubicInterpolation(points, x);
+		samples[i] = Math.max(0, Math.min(1, y)); // Clamp to 0-1
+	}
+
+	return samples;
+}
+
+/**
+ * Sample all three curves and return a combined Float32Array for GPU.
+ * Layout: [hue_0..hue_63, sat_0..sat_63, bright_0..bright_63]
+ */
+export function sampleAllCurves(p: SimulationParams): Float32Array {
+	const allSamples = new Float32Array(CURVE_SAMPLES * 3);
+
+	const hueSamples = sampleCurve(p.hueCurvePoints);
+	const satSamples = sampleCurve(p.saturationCurvePoints);
+	const brightSamples = sampleCurve(p.brightnessCurvePoints);
+
+	allSamples.set(hueSamples, 0);
+	allSamples.set(satSamples, CURVE_SAMPLES);
+	allSamples.set(brightSamples, CURVE_SAMPLES * 2);
+
+	return allSamples;
+}
+
+// Curve update functions
+export function setHueCurveEnabled(value: boolean): void {
+	params.update((p) => ({ ...p, hueCurveEnabled: value }));
+}
+
+export function setHueCurvePoints(points: CurvePoint[]): void {
+	params.update((p) => ({ ...p, hueCurvePoints: points }));
+}
+
+export function setSaturationCurveEnabled(value: boolean): void {
+	params.update((p) => ({ ...p, saturationCurveEnabled: value }));
+}
+
+export function setSaturationCurvePoints(points: CurvePoint[]): void {
+	params.update((p) => ({ ...p, saturationCurvePoints: points }));
+}
+
+export function setBrightnessCurveEnabled(value: boolean): void {
+	params.update((p) => ({ ...p, brightnessCurveEnabled: value }));
+}
+
+export function setBrightnessCurvePoints(points: CurvePoint[]): void {
+	params.update((p) => ({ ...p, brightnessCurvePoints: points }));
+}
+
+// Flag to trigger curve buffer update
+export const curvesDirty = writable(false);
+
 // Export enums for use in components
 export {
 	BoundaryMode,
@@ -697,4 +865,4 @@ export {
 };
 
 // Export types
-export type { Species, InteractionRule };
+export type { Species, InteractionRule, CurvePoint };

@@ -41,6 +41,11 @@ struct Uniforms {
     // Locally perfect hashing
     reducedWidth: u32,
     totalSlots: u32,
+    globalCollision: f32,   // Cross-species collision strength
+    // Curve enabled flags
+    hueCurveEnabled: u32,
+    saturationCurveEnabled: u32,
+    brightnessCurveEnabled: u32,
 }
 
 // Color modes
@@ -119,6 +124,22 @@ struct VertexOutput {
 @group(0) @binding(5) var<storage, read> speciesIds: array<u32>;
 @group(0) @binding(6) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s
 @group(0) @binding(7) var<storage, read> metrics: array<vec4<f32>>;  // per-boid metrics [density, anisotropy, 0, 0]
+@group(0) @binding(8) var<storage, read> curveSamples: array<f32>;  // 3 curves × 64 samples
+
+// Curve indices for lookupCurve
+const CURVE_HUE: u32 = 0u;
+const CURVE_SAT: u32 = 1u;
+const CURVE_BRIGHT: u32 = 2u;
+
+// Linear interpolation lookup into curve samples buffer
+fn lookupCurve(curveId: u32, t: f32) -> f32 {
+    let base = curveId * 64u;
+    let pos = clamp(t, 0.0, 1.0) * 63.0;
+    let idx0 = u32(floor(pos));
+    let idx1 = min(idx0 + 1u, 63u);
+    let frac = pos - f32(idx0);
+    return mix(curveSamples[base + idx0], curveSamples[base + idx1], frac);
+}
 
 fn hsv2rgb(hsv: vec3<f32>) -> vec3<f32> {
     let h = hsv.x;
@@ -562,12 +583,11 @@ fn vs_main(
             colorValue = getSpeciesHue(speciesId);
         }
         case COLOR_LOCAL_DENSITY: {
-            // Computed same-species neighbor density with balanced scaling
+            // Raw neighbor density (sum of kernel weights)
+            // Linear normalization - curve handles all non-linear mapping
             let m = metrics[boidIndex];
-            // Balanced scaling: sqrt(density) / 4.0 reaches max at ~16 neighbors
             let density = m.x;
-            let scaled = sqrt(density) / 5.0;
-            colorValue = clamp(scaled, 0.0, 1.0);
+            colorValue = clamp(density / 20.0, 0.0, 1.0);
         }
         case COLOR_ANISOTROPY: {
             // Structure - direct value
@@ -636,7 +656,7 @@ fn vs_main(
             }
             case COLOR_LOCAL_DENSITY: {
                 let m = metrics[boidIndex];
-                satValue = clamp(sqrt(m.x) / 5.0, 0.0, 1.0);
+                satValue = clamp(m.x / 20.0, 0.0, 1.0);
             }
             case COLOR_ANISOTROPY: {
                 let m = metrics[boidIndex];
@@ -676,7 +696,8 @@ fn vs_main(
             }
             default: { satValue = 1.0; }
         }
-        saturation = 0.2 + satValue * 0.8;
+        // Apply curve to transform saturation value
+        saturation = lookupCurve(CURVE_SAT, satValue);
     }
     
     // === BRIGHTNESS CALCULATION ===
@@ -686,6 +707,7 @@ fn vs_main(
     } else if (uniforms.brightnessSource == COLOR_SPECIES) {
         brightness = getSpeciesLightness(speciesId);
     } else {
+        // Compute raw metric value (0-1 range)
         var brightValue = 0.5;
         switch (uniforms.brightnessSource) {
             case COLOR_SPEED: { brightValue = clamp(speed / uniforms.maxSpeed, 0.0, 1.0); }
@@ -701,8 +723,7 @@ fn vs_main(
             }
             case COLOR_LOCAL_DENSITY: {
                 let m = metrics[boidIndex];
-                // Extended range for local density: 0.1 to 0.95 for better structure visibility
-                brightness = 0.1 + clamp(sqrt(m.x) / 5.0, 0.0, 1.0) * 0.85;
+                brightValue = clamp(m.x / 20.0, 0.0, 1.0);
             }
             case COLOR_ANISOTROPY: {
                 let m = metrics[boidIndex];
@@ -734,29 +755,24 @@ fn vs_main(
             }
             case COLOR_FLOW_DIVERGENCE: {
                 let m = metrics[boidIndex];
-                // Extended range for flow divergence: 0.1 to 0.95
-                // Apply slight curve to spread out mid-range values
-                let raw = fract(m.w);
-                brightness = 0.1 + pow(raw, 0.8) * 0.85;
+                brightValue = fract(m.w);
             }
             case COLOR_TRUE_TURNING: {
                 let m = metrics[boidIndex];
-                // Extended range: 0.15 to 1.0 for maximum contrast (high turn = white)
-                brightness = 0.15 + m.z * 0.85;
+                brightValue = m.z;
             }
             default: { brightValue = 0.5; }
         }
-        // Apply standard brightness mapping for modes that don't have custom ranges
-        if (uniforms.brightnessSource != COLOR_TRUE_TURNING && uniforms.brightnessSource != COLOR_LOCAL_DENSITY && uniforms.brightnessSource != COLOR_FLOW_DIVERGENCE) {
-            brightness = 0.25 + brightValue * 0.5;
-        }
+        // Apply curve to transform brightValue, then map to output range
+        brightness = lookupCurve(CURVE_BRIGHT, brightValue);
     }
     
     // === COLOR CALCULATION (HSL with dynamic S and L) ===
     var baseColor: vec3<f32>;
     var hue = colorValue;
     if (uniforms.colorMode != COLOR_NONE && uniforms.colorMode != COLOR_SPECIES) {
-        hue = pow(colorValue, 1.0 / uniforms.sensitivity);
+        // Apply curve to transform color value to hue
+        hue = lookupCurve(CURVE_HUE, colorValue);
     }
     
     if (uniforms.colorMode == COLOR_NONE) {
@@ -764,9 +780,17 @@ fn vs_main(
     } else if (uniforms.colorMode == COLOR_SPECIES) {
         baseColor = hslToRgb(hue, saturation, brightness);
     } else {
+        // Get color from spectrum
         let spectrumColor = getColorFromSpectrum(hue, uniforms.colorSpectrum);
-        let h = rgbToHue(spectrumColor);
-        baseColor = hslToRgb(h, saturation, brightness);
+        
+        // Apply saturation and brightness directly to spectrum color
+        // Calculate luminance of base color
+        let lum = dot(spectrumColor, vec3<f32>(0.299, 0.587, 0.114));
+        // Desaturate towards gray based on saturation
+        let desaturated = mix(vec3<f32>(lum), spectrumColor, saturation);
+        // Apply brightness (scale towards black or white)
+        let brightnessAdjusted = desaturated * (brightness * 2.0);
+        baseColor = clamp(brightnessAdjusted, vec3<f32>(0.0), vec3<f32>(1.0));
     }
     
     // Fade to dark as trail ages (no alpha blending for better performance)

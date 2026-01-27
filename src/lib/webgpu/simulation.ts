@@ -13,6 +13,7 @@ import {
 	createWallTexture,
 	updateSpeciesParams,
 	updateInteractionMatrix,
+	updateCurveSamples,
 	MAX_TRAIL_LENGTH,
 	type BufferConfig
 } from './buffers';
@@ -34,6 +35,8 @@ import {
 	getWallTextureDimensions,
 	initWallData,
 	wallsDirty,
+	curvesDirty,
+	sampleAllCurves,
 	params as paramsStore
 } from '$lib/stores/simulation';
 import { get } from 'svelte/store';
@@ -90,6 +93,9 @@ export function createSimulation(
 	updateSpeciesParams(device, buffers.speciesParams, params.species);
 	updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
 
+	// Initialize curve samples buffer
+	updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
+
 	// Initialize wall data
 	initWallData(canvasWidth, canvasHeight);
 
@@ -124,6 +130,12 @@ export function createSimulation(
 			onFpsUpdate(Math.round(fpsFrames / fpsTime));
 			fpsFrames = 0;
 			fpsTime = 0;
+		}
+
+		// Check for curve updates
+		if (get(curvesDirty)) {
+			updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
+			curvesDirty.set(false);
 		}
 
 		// Update grid dimensions if perception changed
@@ -318,6 +330,9 @@ export function createSimulation(
 		// Initialize species buffers
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
+
+		// Initialize curve samples buffer (critical - curves are always active)
+		updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
 
 		// Restore wall data to new texture (walls are preserved in memory)
 		const existingWallData = getWallData();

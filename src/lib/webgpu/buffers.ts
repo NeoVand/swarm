@@ -166,6 +166,12 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
+	// Curve samples buffer for HSL color mapping (3 curves × 64 samples × 4 bytes)
+	const curveSamples = device.createBuffer({
+		size: 3 * 64 * 4, // 768 bytes total
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+	});
+
 	return {
 		positionA,
 		positionB,
@@ -189,7 +195,8 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		diffuseA,
 		diffuseB,
 		rankA,
-		rankB
+		rankB,
+		curveSamples
 	};
 }
 
@@ -216,6 +223,7 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.diffuseB.destroy();
 	buffers.rankA.destroy();
 	buffers.rankB.destroy();
+	buffers.curveSamples.destroy();
 }
 
 export function initializeBoids(
@@ -392,8 +400,24 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	u32View[offset++] = data.totalSlots;
 	// Dynamics
 	f32View[offset++] = data.params.globalCollision;
+	// Curve enabled flags
+	u32View[offset++] = data.params.hueCurveEnabled ? 1 : 0;
+	u32View[offset++] = data.params.saturationCurveEnabled ? 1 : 0;
+	u32View[offset++] = data.params.brightnessCurveEnabled ? 1 : 0;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
+}
+
+/**
+ * Update the curve samples buffer with the current curve data.
+ * Called when curves change or at initialization.
+ */
+export function updateCurveSamples(
+	device: GPUDevice,
+	buffer: GPUBuffer,
+	samples: Float32Array
+): void {
+	device.queue.writeBuffer(buffer, 0, samples);
 }
 
 // Minimum perception for buffer pre-allocation (matches UI min)

@@ -86,6 +86,20 @@ export enum SpectralMode {
 }
 
 // ============================================================================
+// CURVE EDITOR TYPES
+// ============================================================================
+
+/**
+ * A point on a curve editor graph.
+ * x: input value (0-1)
+ * y: output value (0-1)
+ */
+export interface CurvePoint {
+	x: number;
+	y: number;
+}
+
+// ============================================================================
 // MULTI-SPECIES SYSTEM
 // ============================================================================
 
@@ -266,6 +280,13 @@ export interface SimulationParams {
 	// HSL control sources
 	saturationSource: ColorMode; // What controls saturation (Species uses per-species value)
 	brightnessSource: ColorMode; // What controls brightness/lightness (Species uses per-species value)
+	// Curve editors for HSL mapping (when enabled, replaces hardcoded mappings)
+	hueCurveEnabled: boolean;
+	hueCurvePoints: CurvePoint[];
+	saturationCurveEnabled: boolean;
+	saturationCurvePoints: CurvePoint[];
+	brightnessCurveEnabled: boolean;
+	brightnessCurvePoints: CurvePoint[];
 }
 
 export interface CursorState {
@@ -309,6 +330,8 @@ export interface SimulationBuffers {
 	diffuseB: GPUBuffer; // f32 per boid - diffusion feature value (write)
 	rankA: GPUBuffer; // f32 per boid - PageRank influence value (read)
 	rankB: GPUBuffer; // f32 per boid - PageRank influence value (write)
+	// Curve samples for color mapping (3 curves × 64 samples)
+	curveSamples: GPUBuffer;
 }
 
 export interface ComputePipelines {
@@ -434,7 +457,14 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	spectralMode: SpectralMode.FlowDivergence,
 	// HSL control defaults
 	saturationSource: ColorMode.None, // None = full saturation (100%)
-	brightnessSource: ColorMode.LocalDensity  // Local density shows cluster structure nicely
+	brightnessSource: ColorMode.LocalDensity, // Local density shows cluster structure nicely
+	// Curve editors - DISABLED by default to preserve existing behavior
+	hueCurveEnabled: false,
+	hueCurvePoints: [{ x: 0, y: 0 }, { x: 1, y: 1 }], // Linear (identity)
+	saturationCurveEnabled: false,
+	saturationCurvePoints: [{ x: 0, y: 0.2 }, { x: 1, y: 1 }], // Matches 0.2 + satValue * 0.8
+	brightnessCurveEnabled: false,
+	brightnessCurvePoints: [{ x: 0, y: 0.25 }, { x: 0.4, y: 0.45 }, { x: 0.75, y: 0.7 }, { x: 1, y: 0.9 }] // Sub-linear curve for contrast with glow
 };
 
 /**

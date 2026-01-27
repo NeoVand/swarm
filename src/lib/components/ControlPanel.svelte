@@ -10,6 +10,7 @@
 	import SpeciesSelector from './SpeciesSelector.svelte';
 	import InteractionsPanel from './InteractionsPanel.svelte';
 	import ForceAnimation from './ForceAnimation.svelte';
+	import CurveEditor from './CurveEditor.svelte';
 	import { TOPOLOGY_NAMES } from '$lib/utils/topologyMeshes';
 	import { HeadShape } from '$lib/webgpu/types';
 	import {
@@ -59,6 +60,10 @@
 		cycleSpeciesCursorVortex,
 		setSpeciesAlphaMode,
 		setActiveSpecies,
+		setHueCurvePoints,
+		setSaturationCurvePoints,
+		setBrightnessCurvePoints,
+		curvesDirty,
 		CursorResponse,
 		VortexDirection,
 		BoundaryMode,
@@ -70,7 +75,8 @@
 		WallTool,
 		WallBrushShape,
 		SpectralMode,
-		DEFAULT_PARAMS
+		DEFAULT_PARAMS,
+		type CurvePoint
 	} from '$lib/stores/simulation';
 
 	let currentParams = $derived($params);
@@ -177,8 +183,10 @@
 	let saturationDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let brightnessDropdownOpen = $state(false);
 	let brightnessDropdownRef = $state<HTMLDivElement | undefined>(undefined);
-	let colorPickerOpen = $state(false);
-	let colorPickerRef = $state<HTMLDivElement | undefined>(undefined);
+	// Curve editor visibility state
+	let showHueCurve = $state(false);
+	let showSaturationCurve = $state(false);
+	let showBrightnessCurve = $state(false);
 	let alphaDropdownOpen = $state(false);
 	let alphaDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 
@@ -622,6 +630,21 @@
 		brightnessDropdownOpen = false;
 	}
 
+	// Curve editor handlers
+	function handleHueCurvePointsChange(points: CurvePoint[]) {
+		setHueCurvePoints(points);
+		curvesDirty.set(true);
+	}
+
+	function handleSaturationCurvePointsChange(points: CurvePoint[]) {
+		setSaturationCurvePoints(points);
+		curvesDirty.set(true);
+	}
+
+	function handleBrightnessCurvePointsChange(points: CurvePoint[]) {
+		setBrightnessCurvePoints(points);
+		curvesDirty.set(true);
+	}
 
 	function handleClickOutside(event: MouseEvent) {
 		if (
@@ -652,9 +675,6 @@
 		) {
 			brightnessDropdownOpen = false;
 		}
-		if (colorPickerOpen && colorPickerRef && !colorPickerRef.contains(event.target as Node)) {
-			colorPickerOpen = false;
-		}
 		if (alphaDropdownOpen && alphaDropdownRef && !alphaDropdownRef.contains(event.target as Node)) {
 			alphaDropdownOpen = false;
 		}
@@ -666,7 +686,6 @@
 			colorizeDropdownOpen ||
 			saturationDropdownOpen ||
 			brightnessDropdownOpen ||
-			colorPickerOpen ||
 			alphaDropdownOpen
 		) {
 			document.addEventListener('click', handleClickOutside);
@@ -2773,7 +2792,133 @@
 									</div>
 								{/if}
 							</div>
+							<!-- Palette/Color button -->
+							<div class="relative" bind:this={paletteDropdownRef}>
+								<button
+									class="palette-toggle"
+									onclick={() => (paletteDropdownOpen = !paletteDropdownOpen)}
+									title={currentParams.colorMode === ColorMode.Species ? 'Species color' : 'Color palette'}
+								>
+									{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
+										<div
+											class="color-swatch"
+											style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
+										></div>
+									{:else}
+										<PaletteIcon spectrum={currentParams.colorSpectrum} size={20} />
+									{/if}
+								</button>
+								{#if paletteDropdownOpen}
+									<div
+										class="palette-dropdown"
+										transition:slide={{ duration: 150, easing: cubicOut }}
+									>
+										{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
+											<!-- Species color picker -->
+											<div class="species-color-picker">
+												<div
+													class="sl-picker-mini"
+													role="slider"
+													aria-label="Saturation and Lightness"
+													aria-valuenow={activeSpecies.saturation}
+													tabindex={0}
+													style="background: linear-gradient(to bottom, white, hsl({activeSpecies.hue}, 100%, 50%), black)"
+													onmousedown={(e) => {
+														const rect = e.currentTarget.getBoundingClientRect();
+														const updateSL = (clientX: number, clientY: number) => {
+															const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+															const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+															const saturation = Math.round(x * 100);
+															const lightness = Math.round((1 - y) * 100);
+															setSpeciesColor(activeSpecies.id, activeSpecies.hue, saturation, lightness);
+														};
+														updateSL(e.clientX, e.clientY);
+														const moveHandler = (me: MouseEvent) => updateSL(me.clientX, me.clientY);
+														const upHandler = () => {
+															window.removeEventListener('mousemove', moveHandler);
+															window.removeEventListener('mouseup', upHandler);
+														};
+														window.addEventListener('mousemove', moveHandler);
+														window.addEventListener('mouseup', upHandler);
+													}}
+												>
+													<div
+														class="sl-handle"
+														style="left: {activeSpecies.saturation}%; top: {100 - activeSpecies.lightness}%"
+													></div>
+												</div>
+												<input
+													type="range"
+													class="hue-slider-mini"
+													min="0"
+													max="360"
+													step="1"
+													value={activeSpecies.hue}
+													oninput={(e) => setSpeciesHue(activeSpecies.id, parseInt(e.currentTarget.value))}
+													style="background: linear-gradient(to right, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))"
+												/>
+											</div>
+										{:else}
+											<!-- Palette gradient options as horizontal bars -->
+											<div class="palette-options-grid">
+												<button
+													class="palette-bar-option"
+													class:active={currentParams.colorSpectrum === ColorSpectrum.Rainbow}
+													onclick={() => selectPalette(ColorSpectrum.Rainbow)}
+													title="Rainbow"
+													style="background: linear-gradient(to right, hsl(0,85%,60%), hsl(60,85%,60%), hsl(120,85%,50%), hsl(180,85%,55%), hsl(240,85%,60%), hsl(300,85%,60%))"
+												></button>
+												<button
+													class="palette-bar-option"
+													class:active={currentParams.colorSpectrum === ColorSpectrum.Bands}
+													onclick={() => selectPalette(ColorSpectrum.Bands)}
+													title="Bands"
+													style="background: linear-gradient(to right, rgb(230,51,77) 0%, rgb(230,51,77) 16%, rgb(242,153,26) 16%, rgb(242,153,26) 33%, rgb(242,230,51) 33%, rgb(242,230,51) 50%, rgb(51,204,102) 50%, rgb(51,204,102) 66%, rgb(51,153,230) 66%, rgb(51,153,230) 83%, rgb(153,77,204) 83%, rgb(153,77,204) 100%)"
+												></button>
+												<button
+													class="palette-bar-option"
+													class:active={currentParams.colorSpectrum === ColorSpectrum.Ocean}
+													onclick={() => selectPalette(ColorSpectrum.Ocean)}
+													title="Ocean"
+													style="background: linear-gradient(to right, rgb(64,89,166), rgb(51,140,153), rgb(77,166,128), rgb(217,179,77), rgb(204,115,102), rgb(140,89,140))"
+												></button>
+												<button
+													class="palette-bar-option"
+													class:active={currentParams.colorSpectrum === ColorSpectrum.Chrome}
+													onclick={() => selectPalette(ColorSpectrum.Chrome)}
+													title="Chrome"
+													style="background: linear-gradient(to right, rgb(51,102,230), rgb(77,204,230), rgb(242,242,230), rgb(242,153,51), rgb(230,51,51))"
+												></button>
+												<button
+													class="palette-bar-option"
+													class:active={currentParams.colorSpectrum === ColorSpectrum.Mono}
+													onclick={() => selectPalette(ColorSpectrum.Mono)}
+													title="Mono"
+													style="background: linear-gradient(to right, rgb(102,97,92), rgb(179,170,161), rgb(255,242,230))"
+												></button>
+											</div>
+										{/if}
+									</div>
+								{/if}
+							</div>
+							<button
+								class="curve-toggle"
+								class:active={showHueCurve}
+								onclick={() => (showHueCurve = !showHueCurve)}
+								title="Edit hue curve"
+							>
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
+								</svg>
+							</button>
 						</div>
+						{#if showHueCurve}
+							<CurveEditor
+								label="Hue"
+								points={currentParams.hueCurvePoints}
+								onPointsChange={handleHueCurvePointsChange}
+							/>
+						{/if}
 						<!-- Saturation source row -->
 						<div class="row">
 							<span class="label">Saturation</span>
@@ -2861,11 +3006,28 @@
 												{/if}
 												<span>{opt.label}</span>
 											</button>
-										{/each}
+											{/each}
 									</div>
 								{/if}
 							</div>
+							<button
+								class="curve-toggle"
+								class:active={showSaturationCurve}
+								onclick={() => (showSaturationCurve = !showSaturationCurve)}
+								title="Edit saturation curve"
+							>
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
+								</svg>
+							</button>
 						</div>
+						{#if showSaturationCurve}
+							<CurveEditor
+								label="Saturation"
+								points={currentParams.saturationCurvePoints}
+								onPointsChange={handleSaturationCurvePointsChange}
+							/>
+						{/if}
 						<!-- Brightness source row -->
 						<div class="row">
 							<span class="label">Brightness</span>
@@ -2953,132 +3115,28 @@
 												{/if}
 												<span>{opt.label}</span>
 											</button>
-										{/each}
+											{/each}
 									</div>
 								{/if}
 							</div>
+							<button
+								class="curve-toggle"
+								class:active={showBrightnessCurve}
+								onclick={() => (showBrightnessCurve = !showBrightnessCurve)}
+								title="Edit brightness curve"
+							>
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
+								</svg>
+							</button>
 						</div>
-						<!-- Color/Palette row -->
-						<div class="row">
-							{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
-								<!-- Color swatch that opens picker -->
-								<span class="label">Color</span>
-								<div class="relative flex items-center" bind:this={colorPickerRef}>
-									<button
-										class="color-swatch-btn"
-										style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
-										onclick={() => (colorPickerOpen = !colorPickerOpen)}
-										aria-label="Species Color"
-									></button>
-									{#if colorPickerOpen}
-										<div
-											class="color-picker-panel"
-											transition:slide={{ duration: 150, easing: cubicOut }}
-										>
-											<!-- 2D Saturation/Lightness picker -->
-											<div
-												class="sl-picker"
-												role="slider"
-												aria-label="Saturation and Lightness"
-												aria-valuenow={activeSpecies.saturation}
-												tabindex={0}
-												style="background: linear-gradient(to bottom, white, hsl({activeSpecies.hue}, 100%, 50%), black)"
-												onmousedown={(e) => {
-													const rect = e.currentTarget.getBoundingClientRect();
-													const updateSL = (clientX: number, clientY: number) => {
-														const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-														const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
-														const saturation = Math.round(x * 100);
-														const lightness = Math.round((1 - y) * 100);
-														setSpeciesColor(
-															activeSpecies.id,
-															activeSpecies.hue,
-															saturation,
-															lightness
-														);
-													};
-													updateSL(e.clientX, e.clientY);
-													const onMove = (ev: MouseEvent) => updateSL(ev.clientX, ev.clientY);
-													const onUp = () => {
-														window.removeEventListener('mousemove', onMove);
-														window.removeEventListener('mouseup', onUp);
-													};
-													window.addEventListener('mousemove', onMove);
-													window.addEventListener('mouseup', onUp);
-												}}
-											>
-												<div class="sl-saturation-overlay"></div>
-												<div
-													class="sl-indicator"
-													style="left: {activeSpecies.saturation}%; top: {100 -
-														activeSpecies.lightness}%"
-												></div>
-											</div>
-											<!-- Hue strip -->
-											<div class="hue-strip-container">
-												<input
-													type="range"
-													class="hue-strip"
-													min="0"
-													max="360"
-													step="1"
-													value={activeSpecies.hue}
-													oninput={(e) =>
-														setSpeciesHue(activeSpecies.id, parseInt(e.currentTarget.value))}
-													aria-label="Hue"
-												/>
-											</div>
-										</div>
-									{/if}
-								</div>
-							{:else}
-								<!-- Palette dropdown -->
-								<span class="label">Palette</span>
-								<div class="relative flex-1" bind:this={paletteDropdownRef}>
-									<button
-										class="sel flex w-full items-center gap-2 text-left"
-										onclick={() => (paletteDropdownOpen = !paletteDropdownOpen)}
-										aria-label="Palette"
-										aria-expanded={paletteDropdownOpen}
-									>
-										<PaletteIcon spectrum={currentParams.colorSpectrum} size={18} />
-										<span class="flex-1 truncate"
-											>{spectrumOptions.find((o) => o.value === currentParams.colorSpectrum)
-												?.label}</span
-										>
-										<svg
-											class="h-3 w-3 opacity-50 transition-transform"
-											class:rotate-180={paletteDropdownOpen}
-											viewBox="0 0 20 20"
-											fill="currentColor"
-										>
-											<path
-												fill-rule="evenodd"
-												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-												clip-rule="evenodd"
-											/>
-										</svg>
-									</button>
-									{#if paletteDropdownOpen}
-										<div
-											class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 overflow-y-auto rounded-md"
-											transition:slide={{ duration: 150, easing: cubicOut }}
-										>
-											{#each spectrumOptions as opt (opt.value)}
-												<button
-													class="dropdown-item flex w-full items-center gap-2 px-3 py-2 text-left text-[10px]"
-													class:active={currentParams.colorSpectrum === opt.value}
-													onclick={() => selectPalette(opt.value)}
-												>
-													<PaletteIcon spectrum={opt.value} size={18} />
-													<span>{opt.label}</span>
-												</button>
-											{/each}
-										</div>
-									{/if}
-								</div>
-							{/if}
-						</div>
+						{#if showBrightnessCurve}
+							<CurveEditor
+								label="Brightness"
+								points={currentParams.brightnessCurvePoints}
+								onPointsChange={handleBrightnessCurvePointsChange}
+							/>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -4505,108 +4563,155 @@
 		color: rgb(161 161 170);
 	}
 
-	.color-swatch-btn {
+	.curve-toggle {
 		width: 24px;
 		height: 24px;
+		padding: 4px;
+		background: rgba(255, 255, 255, 0.05);
+		border: none;
 		border-radius: 4px;
-		border: 1px solid rgba(255, 255, 255, 0.2);
 		cursor: pointer;
-		transition: all 0.15s ease;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		flex-shrink: 0;
+		margin-left: 4px;
 	}
 
-	.color-swatch-btn:hover {
-		border-color: rgba(255, 255, 255, 0.4);
-		transform: scale(1.05);
+	.curve-toggle svg {
+		width: 14px;
+		height: 14px;
+		stroke: rgb(161 161 170);
 	}
 
-	.color-picker-panel {
+	.curve-toggle:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.curve-toggle.active {
+		background: rgba(68, 170, 255, 0.2);
+	}
+
+	.curve-toggle.active svg {
+		stroke: rgb(68, 170, 255);
+	}
+
+	.palette-toggle {
+		width: 28px;
+		height: 28px;
+		padding: 3px;
+		background: rgba(255, 255, 255, 0.05);
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		margin-left: 4px;
+	}
+
+	.palette-toggle:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.palette-toggle .color-swatch {
+		width: 20px;
+		height: 20px;
+		border-radius: 3px;
+	}
+
+	.palette-dropdown {
 		position: absolute;
 		top: 100%;
-		left: 0;
+		right: 0;
 		margin-top: 4px;
-		padding: 10px;
-		background: rgba(15, 15, 20, 0.98);
-		border: 1px solid rgba(255, 255, 255, 0.12);
-		border-radius: 8px;
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-		z-index: 60;
-		width: 160px;
+		background: #1a1a1a;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 6px;
+		padding: 6px;
+		z-index: 100;
 	}
 
-	.sl-picker {
+	.palette-options-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		width: 120px;
+	}
+
+	.palette-bar-option {
+		width: 100%;
+		height: 18px;
+		border: 2px solid transparent;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: border-color 0.15s, transform 0.1s;
+	}
+
+	.palette-bar-option:hover {
+		border-color: rgba(255, 255, 255, 0.4);
+		transform: scale(1.02);
+	}
+
+	.palette-bar-option.active {
+		border-color: rgb(68, 170, 255);
+	}
+
+	.species-color-picker {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		width: 120px;
+	}
+
+	.sl-picker-mini {
 		position: relative;
 		width: 100%;
-		height: 100px;
-		border-radius: 6px;
+		height: 80px;
+		border-radius: 4px;
 		cursor: crosshair;
-		overflow: hidden;
 	}
 
-	.sl-saturation-overlay {
+	.sl-picker-mini .sl-handle {
 		position: absolute;
-		inset: 0;
-		background: linear-gradient(to right, rgba(128, 128, 128, 1), rgba(128, 128, 128, 0));
-		mix-blend-mode: saturation;
-		pointer-events: none;
-	}
-
-	.sl-indicator {
-		position: absolute;
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
+		width: 10px;
+		height: 10px;
 		border: 2px solid white;
-		box-shadow:
-			0 0 0 1px rgba(0, 0, 0, 0.3),
-			0 2px 4px rgba(0, 0, 0, 0.3);
+		border-radius: 50%;
 		transform: translate(-50%, -50%);
+		box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
 		pointer-events: none;
 	}
 
-	.hue-strip-container {
-		margin-top: 8px;
-	}
-
-	.hue-strip {
+	.hue-slider-mini {
 		width: 100%;
 		height: 12px;
 		-webkit-appearance: none;
 		appearance: none;
-		background: linear-gradient(
-			to right,
-			hsl(0, 100%, 50%),
-			hsl(60, 100%, 50%),
-			hsl(120, 100%, 50%),
-			hsl(180, 100%, 50%),
-			hsl(240, 100%, 50%),
-			hsl(300, 100%, 50%),
-			hsl(360, 100%, 50%)
-		);
 		border-radius: 6px;
 		cursor: pointer;
 	}
 
-	.hue-strip::-webkit-slider-thumb {
+	.hue-slider-mini::-webkit-slider-thumb {
 		-webkit-appearance: none;
-		width: 14px;
-		height: 14px;
+		width: 12px;
+		height: 12px;
 		border-radius: 50%;
 		background: white;
-		border: 2px solid rgba(0, 0, 0, 0.2);
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-		cursor: pointer;
+		border: 2px solid rgba(0, 0, 0, 0.3);
+		cursor: grab;
 	}
 
-	.hue-strip::-moz-range-thumb {
-		width: 14px;
-		height: 14px;
+	.hue-slider-mini::-moz-range-thumb {
+		width: 12px;
+		height: 12px;
 		border-radius: 50%;
 		background: white;
-		border: 2px solid rgba(0, 0, 0, 0.2);
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-		cursor: pointer;
+		border: 2px solid rgba(0, 0, 0, 0.3);
+		cursor: grab;
 	}
+
 
 	/* Premium Cursor Toggle */
 	.cursor-toggle {
