@@ -1,13 +1,46 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
+/* CSS Custom Properties for consistent theming */
+:root {
+	/* Background colors */
+	--bg-base: #0a0b0d;
+	--bg-panel: rgba(8, 8, 12, 0.92);
+	--bg-elevated: rgba(20, 20, 25, 0.98);
+	--bg-subtle: rgba(255, 255, 255, 0.02);
+	--bg-muted: rgba(255, 255, 255, 0.05);
+	--bg-hover: rgba(255, 255, 255, 0.08);
+
+	/* Border colors */
+	--border-subtle: rgba(255, 255, 255, 0.06);
+	--border-muted: rgba(255, 255, 255, 0.1);
+	--border-default: rgba(255, 255, 255, 0.12);
+
+	/* Text colors */
+	--text-primary: #f4f4f5;
+	--text-secondary: #e4e4e7;
+	--text-muted: #a1a1aa;
+	--text-subtle: #71717a;
+
+	/* Accent colors */
+	--accent-indigo: rgb(99, 102, 241);
+	--accent-indigo-muted: rgba(99, 102, 241, 0.2);
+	--accent-cyan: #22d3ee;
+	--accent-cyan-muted: rgba(34, 211, 238, 0.2);
+
+	/* Transitions */
+	--transition-fast: 0.1s ease;
+	--transition-normal: 0.15s ease;
+	--transition-slow: 0.2s ease;
+}
+
 /* Base styles */
 html,
 body {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
-	background-color: #0a0b0d;
+	background-color: var(--bg-base);
 	font-family:
 		'Inter',
 		-apple-system,
@@ -59,17 +92,17 @@ body {
 /* Driver.js Tour Styling */
 .driver-popover {
 	background: #18181b !important;
-	border: 1px solid rgba(255, 255, 255, 0.1) !important;
-	color: #e4e4e7 !important;
+	border: 1px solid var(--border-muted) !important;
+	color: var(--text-secondary) !important;
 }
 
 .driver-popover-title {
-	color: #f4f4f5 !important;
+	color: var(--text-primary) !important;
 	font-weight: 600 !important;
 }
 
 .driver-popover-description {
-	color: #a1a1aa !important;
+	color: var(--text-muted) !important;
 }
 
 .driver-popover-footer {
@@ -77,14 +110,14 @@ body {
 }
 
 .driver-popover-progress-text {
-	color: #71717a !important;
+	color: var(--text-subtle) !important;
 }
 
 /* Fix button styling - remove shadow/duplicate text */
 .driver-popover-prev-btn,
 .driver-popover-next-btn {
-	background: rgba(255, 255, 255, 0.1) !important;
-	color: #e4e4e7 !important;
+	background: var(--border-muted) !important;
+	color: var(--text-secondary) !important;
 	border: none !important;
 	border-radius: 6px !important;
 	padding: 8px 16px !important;
@@ -92,7 +125,7 @@ body {
 	font-weight: 500 !important;
 	text-shadow: none !important;
 	box-shadow: none !important;
-	transition: background 0.2s !important;
+	transition: background var(--transition-slow) !important;
 }
 
 .driver-popover-prev-btn:hover,
@@ -101,8 +134,8 @@ body {
 }
 
 .driver-popover-next-btn {
-	background: rgba(34, 211, 238, 0.2) !important;
-	color: #22d3ee !important;
+	background: var(--accent-cyan-muted) !important;
+	color: var(--accent-cyan) !important;
 }
 
 .driver-popover-next-btn:hover {
@@ -110,9 +143,9 @@ body {
 }
 
 .driver-popover-close-btn {
-	color: #71717a !important;
+	color: var(--text-subtle) !important;
 }
 
 .driver-popover-close-btn:hover {
-	color: #a1a1aa !important;
+	color: var(--text-muted) !important;
 }
