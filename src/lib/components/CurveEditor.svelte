@@ -118,24 +118,16 @@
 		return path;
 	}
 
-	// Point dragging
-	function handlePointMouseDown(index: number, e: MouseEvent) {
-		e.preventDefault();
-		e.stopPropagation();
-		draggingIndex = index;
-		window.addEventListener('mousemove', handleMouseMove);
-		window.addEventListener('mouseup', handleMouseUp);
-	}
-
-	function handleMouseMove(e: MouseEvent) {
+	// Shared drag logic for both mouse and touch
+	function updateDragPosition(clientX: number, clientY: number) {
 		if (draggingIndex === null || !svgElement) return;
 
 		const rect = svgElement.getBoundingClientRect();
 		const scaleX = width / rect.width;
 		const scaleY = height / rect.height;
 
-		const svgX = (e.clientX - rect.left) * scaleX;
-		const svgY = (e.clientY - rect.top) * scaleY;
+		const svgX = (clientX - rect.left) * scaleX;
+		const svgY = (clientY - rect.top) * scaleY;
 
 		let newX = fromSvgX(svgX);
 		const newY = fromSvgY(svgY);
@@ -166,22 +158,60 @@
 		onPointsChange(newPoints);
 	}
 
+	// Mouse event handlers
+	function handlePointMouseDown(index: number, e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		draggingIndex = index;
+		window.addEventListener('mousemove', handleMouseMove);
+		window.addEventListener('mouseup', handleMouseUp);
+	}
+
+	function handleMouseMove(e: MouseEvent) {
+		updateDragPosition(e.clientX, e.clientY);
+	}
+
 	function handleMouseUp() {
 		draggingIndex = null;
 		window.removeEventListener('mousemove', handleMouseMove);
 		window.removeEventListener('mouseup', handleMouseUp);
 	}
 
-	// Click on SVG - add point and start dragging
-	function handleSvgMouseDown(e: MouseEvent) {
-		if (!svgElement) return;
+	// Touch event handlers
+	function handlePointTouchStart(index: number, e: TouchEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (e.touches.length !== 1) return;
+		draggingIndex = index;
+		window.addEventListener('touchmove', handleTouchMove, { passive: false });
+		window.addEventListener('touchend', handleTouchEnd);
+		window.addEventListener('touchcancel', handleTouchEnd);
+	}
+
+	function handleTouchMove(e: TouchEvent) {
+		e.preventDefault(); // Prevent scrolling while dragging
+		if (e.touches.length !== 1) return;
+		const touch = e.touches[0];
+		updateDragPosition(touch.clientX, touch.clientY);
+	}
+
+	function handleTouchEnd() {
+		draggingIndex = null;
+		window.removeEventListener('touchmove', handleTouchMove);
+		window.removeEventListener('touchend', handleTouchEnd);
+		window.removeEventListener('touchcancel', handleTouchEnd);
+	}
+
+	// Shared logic for adding/selecting point on SVG
+	function handleSvgInteraction(clientX: number, clientY: number, isTouch: boolean) {
+		if (!svgElement) return false;
 
 		const rect = svgElement.getBoundingClientRect();
 		const scaleX = width / rect.width;
 		const scaleY = height / rect.height;
 
-		const svgX = (e.clientX - rect.left) * scaleX;
-		const svgY = (e.clientY - rect.top) * scaleY;
+		const svgX = (clientX - rect.left) * scaleX;
+		const svgY = (clientY - rect.top) * scaleY;
 
 		// Check if click is in plot area
 		if (
@@ -190,18 +220,25 @@
 			svgY < padding.top ||
 			svgY > height - padding.bottom
 		) {
-			return;
+			return false;
 		}
 
 		const newX = fromSvgX(svgX);
 		const newY = fromSvgY(svgY);
 
-		// Don't add if too close to existing point
-		const closePointIndex = points.findIndex((p) => Math.abs(p.x - newX) < 0.04);
+		// Don't add if too close to existing point - start dragging instead
+		const closePointIndex = points.findIndex((p) => Math.abs(p.x - newX) < 0.08);
 		if (closePointIndex !== -1) {
-			// Start dragging the close point instead
-			handlePointMouseDown(closePointIndex, e);
-			return;
+			draggingIndex = closePointIndex;
+			if (isTouch) {
+				window.addEventListener('touchmove', handleTouchMove, { passive: false });
+				window.addEventListener('touchend', handleTouchEnd);
+				window.addEventListener('touchcancel', handleTouchEnd);
+			} else {
+				window.addEventListener('mousemove', handleMouseMove);
+				window.addEventListener('mouseup', handleMouseUp);
+			}
+			return true;
 		}
 
 		// Add new point, sort, and find its new index
@@ -212,8 +249,28 @@
 		
 		// Start dragging the new point
 		draggingIndex = newIndex;
-		window.addEventListener('mousemove', handleMouseMove);
-		window.addEventListener('mouseup', handleMouseUp);
+		if (isTouch) {
+			window.addEventListener('touchmove', handleTouchMove, { passive: false });
+			window.addEventListener('touchend', handleTouchEnd);
+			window.addEventListener('touchcancel', handleTouchEnd);
+		} else {
+			window.addEventListener('mousemove', handleMouseMove);
+			window.addEventListener('mouseup', handleMouseUp);
+		}
+		return true;
+	}
+
+	// Click on SVG - add point and start dragging
+	function handleSvgMouseDown(e: MouseEvent) {
+		handleSvgInteraction(e.clientX, e.clientY, false);
+	}
+
+	// Touch on SVG - add point and start dragging
+	function handleSvgTouchStart(e: TouchEvent) {
+		if (e.touches.length !== 1) return;
+		e.preventDefault();
+		const touch = e.touches[0];
+		handleSvgInteraction(touch.clientX, touch.clientY, true);
 	}
 
 	// Delete point on double click
@@ -479,6 +536,7 @@
 		tabindex="0"
 		aria-label="Curve editor - click to add points, drag to adjust"
 		onmousedown={handleSvgMouseDown}
+		ontouchstart={handleSvgTouchStart}
 	>
 		<defs>
 			<!-- Fill gradient based on type - vertical (y-axis is output) -->
@@ -586,6 +644,7 @@
 				tabindex="0"
 				aria-label="Control point {index + 1}"
 				onmousedown={(e) => handlePointMouseDown(index, e)}
+				ontouchstart={(e) => handlePointTouchStart(index, e)}
 				ondblclick={(e) => handlePointDoubleClick(index, e)}
 				onmouseenter={() => hoverIndex = index}
 				onmouseleave={() => hoverIndex = null}
@@ -693,14 +752,26 @@
 		width: 100%;
 		height: auto;
 		cursor: crosshair;
+		touch-action: none; /* Prevent default touch behaviors like scrolling */
+		-webkit-user-select: none;
+		user-select: none;
 	}
 
 	.control-point {
 		cursor: grab;
+		/* Larger touch target for mobile */
+		pointer-events: all;
 	}
 
 	.control-point.active {
 		cursor: grabbing;
+	}
+
+	/* Increase hit area on touch devices */
+	@media (pointer: coarse) {
+		.control-point {
+			stroke-width: 3px;
+		}
 	}
 
 	.hint {
