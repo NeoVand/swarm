@@ -1,6 +1,6 @@
 // Svelte stores for simulation parameters
 
-import { writable, derived } from 'svelte/store';
+import { writable } from 'svelte/store';
 import {
 	type SimulationParams,
 	type CursorState,
@@ -15,7 +15,6 @@ import {
 	CursorShape,
 	CursorResponse,
 	VortexDirection,
-	AlphaMode,
 	WallTool,
 	WallBrushShape,
 	HeadShape,
@@ -60,19 +59,6 @@ export const canvasElement = writable<HTMLCanvasElement | null>(null);
 
 // FPS counter
 export const fps = writable(0);
-
-// Derived store for grid dimensions based on perception radius
-export const gridDimensions = derived([dimensions, params], ([$dimensions, $params]) => {
-	const cellSize = $params.perception;
-	const gridWidth = Math.ceil($dimensions.width / cellSize);
-	const gridHeight = Math.ceil($dimensions.height / cellSize);
-	return {
-		cellSize,
-		gridWidth,
-		gridHeight,
-		totalCells: gridWidth * gridHeight
-	};
-});
 
 // Flag to trigger buffer reallocation
 export const needsBufferReallocation = writable(false);
@@ -214,59 +200,6 @@ export function endStrokeWithHollow(thickness: number): void {
 	}
 
 	strokeSnapshot = null;
-	wallsDirty.set(true);
-}
-
-// Hollow out walls by eroding the interior (morphological erosion) - for all walls
-export function hollowWalls(thickness: number): void {
-	if (!wallDataArray) return;
-
-	const erosionRadius = Math.ceil(thickness / WALL_TEXTURE_SCALE);
-	const erosionRadiusSq = erosionRadius * erosionRadius;
-
-	// Create a copy to read from while we modify the original
-	const original = new Uint8Array(wallDataArray);
-
-	// For each pixel, check if it's an interior pixel (all neighbors within radius are walls)
-	for (let y = 0; y < wallTextureHeight; y++) {
-		for (let x = 0; x < wallTextureWidth; x++) {
-			const idx = y * wallTextureWidth + x;
-
-			// Only process wall pixels
-			if (original[idx] === 0) continue;
-
-			// Check if this is an interior pixel
-			let isInterior = true;
-
-			// Sample in a circle pattern for efficiency
-			outer: for (let dy = -erosionRadius; dy <= erosionRadius && isInterior; dy++) {
-				for (let dx = -erosionRadius; dx <= erosionRadius; dx++) {
-					const distSq = dx * dx + dy * dy;
-					if (distSq > erosionRadiusSq) continue;
-
-					const nx = x + dx;
-					const ny = y + dy;
-
-					// If we hit a boundary or empty pixel, this is not interior
-					if (nx < 0 || nx >= wallTextureWidth || ny < 0 || ny >= wallTextureHeight) {
-						isInterior = false;
-						break outer;
-					}
-
-					if (original[ny * wallTextureWidth + nx] === 0) {
-						isInterior = false;
-						break outer;
-					}
-				}
-			}
-
-			// Erase interior pixels
-			if (isInterior) {
-				wallDataArray[idx] = 0;
-			}
-		}
-	}
-
 	wallsDirty.set(true);
 }
 
@@ -658,11 +591,6 @@ export function cycleSpeciesCursorVortex(id: number): void {
 	speciesDirty.set(true);
 }
 
-// Set species alpha mode
-export function setSpeciesAlphaMode(id: number, alphaMode: AlphaMode): void {
-	updateSpecies(id, { alphaMode });
-}
-
 // Play/pause toggle
 export function togglePlayPause(): void {
 	isRunning.update((running) => !running);
@@ -853,7 +781,6 @@ export {
 	CursorShape,
 	CursorResponse,
 	VortexDirection,
-	AlphaMode,
 	WallTool,
 	WallBrushShape,
 	HeadShape,

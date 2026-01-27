@@ -34,8 +34,6 @@
 		setColorMode,
 		setColorSpectrum,
 		setPopulation,
-		setEnableInfluence,
-		setInfluenceIterations,
 		setSpectralMode,
 		setSaturationSource,
 		setBrightnessSource,
@@ -58,7 +56,6 @@
 		setSpeciesCursorResponse,
 		setSpeciesCursorVortex,
 		cycleSpeciesCursorVortex,
-		setSpeciesAlphaMode,
 		setActiveSpecies,
 		setHueCurvePoints,
 		setSaturationCurvePoints,
@@ -71,7 +68,6 @@
 		ColorSpectrum,
 		CursorMode,
 		CursorShape,
-		AlphaMode,
 		WallTool,
 		WallBrushShape,
 		SpectralMode,
@@ -187,6 +183,12 @@
 	let showHueCurve = $state(false);
 	let showSaturationCurve = $state(false);
 	let showBrightnessCurve = $state(false);
+	
+	// Curve disabled states - curves have no effect for Species/None modes
+	const hueCurveDisabled = $derived(currentParams.colorMode === ColorMode.None || currentParams.colorMode === ColorMode.Species);
+	const satCurveDisabled = $derived(currentParams.saturationSource === ColorMode.None || currentParams.saturationSource === ColorMode.Species);
+	const brightCurveDisabled = $derived(currentParams.brightnessSource === ColorMode.None || currentParams.brightnessSource === ColorMode.Species);
+	
 	let alphaDropdownOpen = $state(false);
 	let alphaDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 
@@ -498,7 +500,7 @@
 		e.stopPropagation();
 		if (activeSpecies) {
 			setSpeciesSize(activeSpecies.id, 1.5);
-			setSpeciesTrailLength(activeSpecies.id, 30);
+			setSpeciesTrailLength(activeSpecies.id, 20);
 			setSpeciesRebels(activeSpecies.id, 0.02);
 		}
 	}
@@ -509,6 +511,11 @@
 		setColorSpectrum(DEFAULT_PARAMS.colorSpectrum);
 		setSaturationSource(DEFAULT_PARAMS.saturationSource);
 		setBrightnessSource(DEFAULT_PARAMS.brightnessSource);
+		// Reset curve points to defaults
+		setHueCurvePoints([...DEFAULT_PARAMS.hueCurvePoints]);
+		setSaturationCurvePoints([...DEFAULT_PARAMS.saturationCurvePoints]);
+		setBrightnessCurvePoints([...DEFAULT_PARAMS.brightnessCurvePoints]);
+		curvesDirty.set(true);
 	}
 
 	function resetWorldSection(e: Event): void {
@@ -524,11 +531,11 @@
 		e.stopPropagation();
 		setCursorShape(DEFAULT_PARAMS.cursorShape);
 		setCursorRadius(DEFAULT_PARAMS.cursorRadius);
-		// Reset per-species cursor settings
-		if (activeSpecies) {
-			setSpeciesCursorForce(activeSpecies.id, 0.5);
-			setSpeciesCursorResponse(activeSpecies.id, CursorResponse.Repel);
-			setSpeciesCursorVortex(activeSpecies.id, VortexDirection.Off);
+		// Reset per-species cursor settings for all species
+		for (const species of currentParams.species) {
+			setSpeciesCursorForce(species.id, 0.5);
+			setSpeciesCursorResponse(species.id, CursorResponse.Repel);
+			setSpeciesCursorVortex(species.id, VortexDirection.Off);
 		}
 	}
 
@@ -963,7 +970,7 @@
 			case ']':
 				event.preventDefault();
 				if (activeSpecies) {
-					const newTrail = Math.min((activeSpecies.trailLength ?? 30) + 10, 50);
+					const newTrail = Math.min((activeSpecies.trailLength ?? 20) + 10, 50);
 					setSpeciesTrailLength(activeSpecies.id, newTrail);
 				}
 				break;
@@ -971,7 +978,7 @@
 			case '[':
 				event.preventDefault();
 				if (activeSpecies) {
-					const newTrail = Math.max((activeSpecies.trailLength ?? 30) - 10, 0);
+					const newTrail = Math.max((activeSpecies.trailLength ?? 20) - 10, 0);
 					setSpeciesTrailLength(activeSpecies.id, newTrail);
 				}
 				break;
@@ -1684,7 +1691,7 @@
 					tourAnimationIds = [];
 
 					// Step 4: Interaction - inject animated canvas icons
-					if (state.activeIndex === 3) {
+					if (state.activeIndex === 4) {
 						setTimeout(() => {
 							const configs = [
 								{ id: 'tour-icon-attract', type: 'attract', color: '#22d3ee' },
@@ -1929,28 +1936,6 @@
 		{ value: ColorMode.FlowAngular, label: 'Flow Angular' },
 		{ value: ColorMode.FlowRadial, label: 'Flow Radial' },
 		{ value: ColorMode.FlowDivergence, label: 'Flow Divergence' }
-	];
-
-
-	const spectrumOptions = [
-		{ value: ColorSpectrum.Chrome, label: 'Chrome' },
-		{ value: ColorSpectrum.Ocean, label: 'Ocean' },
-		{ value: ColorSpectrum.Bands, label: 'Bands' },
-		{ value: ColorSpectrum.Rainbow, label: 'Rainbow' },
-		{ value: ColorSpectrum.Mono, label: 'Mono' }
-	];
-
-
-	const alphaModeOptions = [
-		{ value: AlphaMode.Solid, label: 'Solid' },
-		{ value: AlphaMode.Direction, label: 'Direction' },
-		{ value: AlphaMode.Speed, label: 'Speed' },
-		{ value: AlphaMode.Turning, label: 'Turning' },
-		{ value: AlphaMode.Acceleration, label: 'Acceleration' },
-		{ value: AlphaMode.Density, label: 'Density' },
-		{ value: AlphaMode.Anisotropy, label: 'Anisotropy' },
-		{ value: AlphaMode.Diffusion, label: 'Diffusion' },
-		{ value: AlphaMode.Influence, label: 'Spectral' }
 	];
 
 	// Cursor toggle indicator position - based on per-species cursorResponse
@@ -2304,16 +2289,16 @@
 							<input
 								type="range"
 								min="0"
-								max="50"
-								step="1"
-								value={activeSpecies?.trailLength ?? 30}
-								oninput={(e) =>
-									activeSpecies &&
+							max="50"
+							step="1"
+							value={activeSpecies?.trailLength ?? 20}
+							oninput={(e) =>
+								activeSpecies &&
 									setSpeciesTrailLength(activeSpecies.id, parseInt(e.currentTarget.value))}
 								class="slider"
-								aria-label="Trail"
-							/>
-							<span class="value">{activeSpecies?.trailLength ?? 30}</span>
+							aria-label="Trail"
+						/>
+						<span class="value">{activeSpecies?.trailLength ?? 20}</span>
 						</div>
 						<div class="row">
 							<span class="label">Rebels</span>
@@ -2903,18 +2888,23 @@
 							</div>
 							<button
 								class="curve-toggle"
-								class:active={showHueCurve}
-								onclick={() => (showHueCurve = !showHueCurve)}
-								title="Edit hue curve"
+								class:active={showHueCurve && !hueCurveDisabled}
+								onclick={() => !hueCurveDisabled && (showHueCurve = !showHueCurve)}
+								disabled={hueCurveDisabled}
+								title={hueCurveDisabled ? "Curve not available for this mode" : "Edit hue curve"}
 							>
 								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
 								</svg>
 							</button>
 						</div>
-						{#if showHueCurve}
+						{#if showHueCurve && !hueCurveDisabled}
 							<CurveEditor
 								label="Hue"
+								type="hue"
+								spectrum={currentParams.colorSpectrum}
+								colorMode={currentParams.colorMode}
+								speciesHue={activeSpecies?.hue ?? 0}
 								points={currentParams.hueCurvePoints}
 								onPointsChange={handleHueCurvePointsChange}
 							/>
@@ -3012,18 +3002,20 @@
 							</div>
 							<button
 								class="curve-toggle"
-								class:active={showSaturationCurve}
-								onclick={() => (showSaturationCurve = !showSaturationCurve)}
-								title="Edit saturation curve"
+								class:active={showSaturationCurve && !satCurveDisabled}
+								onclick={() => !satCurveDisabled && (showSaturationCurve = !showSaturationCurve)}
+								disabled={satCurveDisabled}
+								title={satCurveDisabled ? "Curve not available for this mode" : "Edit saturation curve"}
 							>
 								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
 								</svg>
 							</button>
 						</div>
-						{#if showSaturationCurve}
+						{#if showSaturationCurve && !satCurveDisabled}
 							<CurveEditor
 								label="Saturation"
+								type="saturation"
 								points={currentParams.saturationCurvePoints}
 								onPointsChange={handleSaturationCurvePointsChange}
 							/>
@@ -3121,18 +3113,20 @@
 							</div>
 							<button
 								class="curve-toggle"
-								class:active={showBrightnessCurve}
-								onclick={() => (showBrightnessCurve = !showBrightnessCurve)}
-								title="Edit brightness curve"
+								class:active={showBrightnessCurve && !brightCurveDisabled}
+								onclick={() => !brightCurveDisabled && (showBrightnessCurve = !showBrightnessCurve)}
+								disabled={brightCurveDisabled}
+								title={brightCurveDisabled ? "Curve not available for this mode" : "Edit brightness curve"}
 							>
 								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
 								</svg>
 							</button>
 						</div>
-						{#if showBrightnessCurve}
+						{#if showBrightnessCurve && !brightCurveDisabled}
 							<CurveEditor
 								label="Brightness"
+								type="brightness"
 								points={currentParams.brightnessCurvePoints}
 								onPointsChange={handleBrightnessCurvePointsChange}
 							/>
@@ -4594,6 +4588,15 @@
 
 	.curve-toggle.active svg {
 		stroke: rgb(68, 170, 255);
+	}
+
+	.curve-toggle:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+
+	.curve-toggle:disabled:hover {
+		background: rgba(255, 255, 255, 0.05);
 	}
 
 	.palette-toggle {

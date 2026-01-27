@@ -465,7 +465,6 @@
 	{#if currentCursor?.isActive && hasCursorInteraction}
 		{@const radius = currentParams?.cursorRadius ?? 50}
 		{@const isAttract = speciesCursorResponse === CursorResponse.Attract}
-		{@const isRepel = speciesCursorResponse === CursorResponse.Repel}
 		{@const isVortexOnly = speciesCursorResponse === CursorResponse.Ignore && hasVortexActive}
 		{@const shape = currentParams?.cursorShape ?? CursorShape.Disk}
 		{@const hasVortex = hasVortexActive}

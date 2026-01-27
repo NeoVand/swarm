@@ -59,7 +59,7 @@ const COLOR_DENSITY: u32 = 6u;
 const COLOR_SPECIES: u32 = 7u;
 const COLOR_LOCAL_DENSITY: u32 = 8u;
 const COLOR_ANISOTROPY: u32 = 9u;
-const COLOR_DIFFUSION: u32 = 10u;
+// 10u was COLOR_DIFFUSION - removed
 const COLOR_INFLUENCE: u32 = 11u;
 const COLOR_SPECTRAL_RADIAL: u32 = 12u;
 const COLOR_SPECTRAL_ASYMMETRY: u32 = 13u;
@@ -149,23 +149,12 @@ const SHAPE_ARROW: u32 = 4u;
 // Max triangles per shape (hexagon needs 6)
 const MAX_SHAPE_TRIANGLES: u32 = 6u;
 
-// Alpha modes for per-species transparency
-const ALPHA_SOLID: u32 = 0u;
-const ALPHA_DIRECTION: u32 = 1u;
-const ALPHA_SPEED: u32 = 2u;
-const ALPHA_TURNING: u32 = 3u;
-const ALPHA_ACCELERATION: u32 = 4u;
-const ALPHA_DENSITY: u32 = 5u;
-const ALPHA_ANISOTROPY: u32 = 6u;
-const ALPHA_DIFFUSION: u32 = 7u;
-const ALPHA_INFLUENCE: u32 = 8u;
-
-// Get species parameter by index (0-19)
+// Get species parameter by index (0-15)
 // vec4[0]: [alignment, cohesion, separation, perception]
 // vec4[1]: [maxSpeed, maxForce, hue, headShape]
 // vec4[2]: [saturation, lightness, size, trailLength]
 // vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortexDir] (-1=CCW, 0=off, 1=CW)
-// vec4[4]: [alphaMode, unused, unused, unused]
+// vec4[4]: [unused, unused, unused, unused]
 fn getSpeciesParam(speciesId: u32, paramIdx: u32) -> f32 {
     let vec4Idx = speciesId * 5u + paramIdx / 4u;
     let componentIdx = paramIdx % 4u;
@@ -213,10 +202,6 @@ fn getSpeciesCursorForce(speciesId: u32) -> f32 {
 
 fn getSpeciesCursorResponse(speciesId: u32) -> u32 {
     return u32(speciesParams[speciesId * 5u + 3u].z);  // vec4[3].z = cursorResponse
-}
-
-fn getSpeciesAlphaMode(speciesId: u32) -> u32 {
-    return u32(speciesParams[speciesId * 5u + 4u].x);  // vec4[4].x = alphaMode
 }
 
 // Generate vertex position for different shapes
@@ -665,11 +650,6 @@ fn vs_main(
             let m = metrics[boidIndex];
             colorValue = m.y;
         }
-        case COLOR_DIFFUSION: {
-            // Pure diffusion value - no position mixing
-            let m = metrics[boidIndex];
-            colorValue = m.z;
-        }
         case COLOR_INFLUENCE: {
             // All spectral modes read from metrics.w (computed by rank.wgsl based on spectralMode)
             let m = metrics[boidIndex];
@@ -736,10 +716,6 @@ fn vs_main(
                 let m = metrics[boidIndex];
                 satValue = m.y;
             }
-            case COLOR_DIFFUSION: {
-                let m = metrics[boidIndex];
-                satValue = m.z;
-            }
             case COLOR_INFLUENCE: {
                 let m = metrics[boidIndex];
                 satValue = fract(m.w);
@@ -802,10 +778,6 @@ fn vs_main(
             case COLOR_ANISOTROPY: {
                 let m = metrics[boidIndex];
                 brightValue = m.y;
-            }
-            case COLOR_DIFFUSION: {
-                let m = metrics[boidIndex];
-                brightValue = m.z;
             }
             case COLOR_INFLUENCE: {
                 let m = metrics[boidIndex];

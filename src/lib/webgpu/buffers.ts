@@ -121,12 +121,12 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 	});
 
 	// Species parameters buffer: per-species flocking params (UNIFORM buffer)
-	// Layout: 2 vec4s per species (8 floats = 32 bytes per species)
+	// Layout: 5 vec4s per species (20 floats = 80 bytes per species)
 	// vec4[0]: [alignment, cohesion, separation, perception]
 	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
 	// vec4[2]: [saturation, lightness, size, trailLength]
 	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortexDir] (-1=CCW, 0=off, 1=CW)
-	// vec4[4]: [alphaMode, unused, unused, unused]
+	// vec4[4]: [unused, unused, unused, unused]
 	const speciesParams = device.createBuffer({
 		size: MAX_SPECIES * 5 * 16, // 7 species * 5 vec4s * 16 bytes per vec4
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
@@ -139,20 +139,10 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
-	// Metrics buffer: vec4<f32> per boid [density, anisotropy, diffusion, influence]
+	// Metrics buffer: vec4<f32> per boid [density, anisotropy, turning, influence]
 	// Used for species-specific structure visualization
 	const metrics = device.createBuffer({
 		size: boidCount * 4 * 4, // vec4<f32> per boid = 16 bytes
-		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-	});
-
-	// Diffusion feature ping-pong buffers (f32 per boid)
-	const diffuseA = device.createBuffer({
-		size: boidCount * 4, // f32 per boid
-		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
-	});
-	const diffuseB = device.createBuffer({
-		size: boidCount * 4,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
@@ -192,8 +182,6 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		speciesParams,
 		interactionMatrix,
 		metrics,
-		diffuseA,
-		diffuseB,
 		rankA,
 		rankB,
 		curveSamples
@@ -219,8 +207,6 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.speciesParams.destroy();
 	buffers.interactionMatrix.destroy();
 	buffers.metrics.destroy();
-	buffers.diffuseA.destroy();
-	buffers.diffuseB.destroy();
 	buffers.rankA.destroy();
 	buffers.rankB.destroy();
 	buffers.curveSamples.destroy();
@@ -496,7 +482,7 @@ export function updateSpeciesParams(
 	// vec4[1]: [maxSpeed, maxForce, hue, headShape]
 	// vec4[2]: [saturation, lightness, size, trailLength]
 	// vec4[3]: [rebels, cursorForce, cursorResponse, cursorVortexDir] (-1=CCW, 0=off, 1=CW)
-	// vec4[4]: [alphaMode, unused, unused, unused]
+	// vec4[4]: [unused, unused, unused, unused]
 	const data = new Float32Array(MAX_SPECIES * 5 * 4);
 
 	for (const s of species) {
@@ -516,7 +502,7 @@ export function updateSpeciesParams(
 		data[offset + 8] = (s.saturation ?? 70) / 100.0; // Normalize to [0, 1]
 		data[offset + 9] = (s.lightness ?? 55) / 100.0; // Normalize to [0, 1]
 		data[offset + 10] = s.size ?? 1.5;
-		data[offset + 11] = s.trailLength ?? 30;
+		data[offset + 11] = s.trailLength ?? 20;
 		// vec4[3]
 		data[offset + 12] = s.rebels ?? 0.02;
 		data[offset + 13] = s.cursorForce ?? 0.5;
@@ -528,11 +514,11 @@ export function updateSpeciesParams(
 				: s.cursorVortex === VortexDirection.Clockwise
 					? 1.0
 					: 0.0;
-		// vec4[4]
-		data[offset + 16] = s.alphaMode ?? 3; // 3 = Turning by default
-		data[offset + 17] = 0; // unused
-		data[offset + 18] = 0; // unused
-		data[offset + 19] = 0; // unused
+		// vec4[4] - unused padding
+		data[offset + 16] = 0;
+		data[offset + 17] = 0;
+		data[offset + 18] = 0;
+		data[offset + 19] = 0;
 	}
 
 	device.queue.writeBuffer(buffer, 0, data);

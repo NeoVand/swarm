@@ -23,7 +23,7 @@ export enum ColorMode {
 	Species = 7,
 	LocalDensity = 8, // Computed same-species neighbor density
 	Anisotropy = 9, // Computed local structure (edge vs blob)
-	Diffusion = 10, // [DEPRECATED - not used]
+	// 10 was Diffusion - removed (never worked)
 	Influence = 11, // Spectral Angular - direction from local center
 	SpectralRadial = 12, // Spectral Radial - distance from local center
 	SpectralAsymmetry = 13, // Spectral Asymmetry - boundary detection
@@ -39,19 +39,6 @@ export enum ColorSpectrum {
 	Bands = 2,
 	Rainbow = 3,
 	Mono = 4
-}
-
-// Alpha mode for per-species transparency variation
-export enum AlphaMode {
-	Solid = 0, // No alpha variation, fully opaque
-	Direction = 1, // Alpha based on movement direction
-	Speed = 2, // Alpha based on speed
-	Turning = 3, // Alpha based on turning rate
-	Acceleration = 4, // Alpha based on acceleration
-	Density = 5, // Alpha based on local same-species density
-	Anisotropy = 6, // Alpha based on local structure (edge vs interior)
-	Diffusion = 7, // Alpha based on smoothed feature value
-	Influence = 8 // Alpha based on PageRank-like influence
 }
 
 export enum CursorMode {
@@ -157,7 +144,6 @@ export interface Species {
 	hue: number; // Base hue for this species (0-360)
 	saturation: number; // Color saturation (0-100)
 	lightness: number; // Color lightness (0-100)
-	alphaMode: AlphaMode; // What determines alpha/transparency for this species
 	population: number; // Count of boids in this species
 
 	// Per-species visual/rendering parameters
@@ -213,7 +199,6 @@ export function createDefaultSpecies(id: number, population: number): Species {
 		hue,
 		saturation,
 		lightness,
-		alphaMode: AlphaMode.Turning, // Default: alpha based on turning
 		population,
 		// Per-species visual parameters
 		size: 1.5, // Default boid size
@@ -324,10 +309,8 @@ export interface SimulationBuffers {
 	speciesParams: GPUBuffer; // Per-species flocking parameters (alignment, cohesion, etc.)
 	interactionMatrix: GPUBuffer; // MAX_SPECIES × MAX_SPECIES interaction rules
 	// Metrics buffer for visualization
-	metrics: GPUBuffer; // vec4<f32> per boid [density, anisotropy, diffusion, influence]
+	metrics: GPUBuffer; // vec4<f32> per boid [density, anisotropy, turning, influence]
 	// Iterative algorithm ping-pong buffers
-	diffuseA: GPUBuffer; // f32 per boid - diffusion feature value (read)
-	diffuseB: GPUBuffer; // f32 per boid - diffusion feature value (write)
 	rankA: GPUBuffer; // f32 per boid - PageRank influence value (read)
 	rankB: GPUBuffer; // f32 per boid - PageRank influence value (write)
 	// Curve samples for color mapping (3 curves × 64 samples)

@@ -8,7 +8,6 @@ import countShader from '$lib/shaders/count.wgsl?raw';
 import prefixSumShader from '$lib/shaders/prefix_sum.wgsl?raw';
 import scatterShader from '$lib/shaders/scatter.wgsl?raw';
 import simulateShader from '$lib/shaders/simulate.wgsl?raw';
-import diffuseShader from '$lib/shaders/diffuse.wgsl?raw';
 import rankShader from '$lib/shaders/rank.wgsl?raw';
 import writeMetricsShader from '$lib/shaders/write_metrics.wgsl?raw';
 
@@ -22,11 +21,6 @@ export interface ComputeBindGroups {
 	simulate0B: GPUBindGroup; // Bind group 0: Read from B, write to A
 	simulate1: GPUBindGroup; // Bind group 1: Species data (shared)
 	// Iterative metrics bind groups
-	diffuse0A: GPUBindGroup; // Spatial hash data (read from posA)
-	diffuse0B: GPUBindGroup; // Spatial hash data (read from posB)
-	diffuse1: GPUBindGroup; // Species + metrics
-	diffuse2A: GPUBindGroup; // Features: read A, write B
-	diffuse2B: GPUBindGroup; // Features: read B, write A
 	rank0A: GPUBindGroup; // Spatial hash data (read from posA)
 	rank0B: GPUBindGroup; // Spatial hash data (read from posB)
 	rank1: GPUBindGroup; // Species + metrics
@@ -45,8 +39,6 @@ export interface ComputeResources {
 		scatter: GPUComputePipeline;
 		simulate: GPUComputePipeline;
 		// Iterative metrics pipelines
-		diffuseInit: GPUComputePipeline;
-		diffuseIter: GPUComputePipeline;
 		rankInit: GPUComputePipeline;
 		rankIter: GPUComputePipeline;
 		writeMetrics: GPUComputePipeline;
@@ -281,19 +273,8 @@ export function createComputePipelines(
 		]
 	});
 
-	// === Diffusion Pipeline ===
-	const diffuseModule = device.createShaderModule({ code: diffuseShader });
-
-	// Bind group 0: Spatial hash data (read-only) - for diffuse
-	const diffuseBindGroupLayout0 = device.createBindGroupLayout({
-		entries: [
-			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // uniforms
-			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // positions
-			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // prefixSums
-			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // cellCounts
-			{ binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } } // sortedIndices
-		]
-	});
+	// === Rank (Spectral) Pipeline ===
+	const rankModule = device.createShaderModule({ code: rankShader });
 
 	// Bind group 0 for rank: includes velocities for dynamic spectral modes
 	const rankBindGroupLayout0 = device.createBindGroupLayout({
@@ -307,87 +288,15 @@ export function createComputePipelines(
 		]
 	});
 
-	// Bind group 1: Species + metrics (read-only for diffuse)
-	const diffuseBindGroupLayout1 = device.createBindGroupLayout({
+	// Bind group 1: Species + metrics (read-only)
+	const rankBindGroupLayout1 = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // speciesIds
 			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } } // metrics
 		]
 	});
 
-	// Bind group 2: Feature ping-pong
-	const diffuseBindGroupLayout2 = device.createBindGroupLayout({
-		entries: [
-			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // featuresIn
-			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } } // featuresOut
-		]
-	});
-
-	const diffuseInitPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({
-			bindGroupLayouts: [diffuseBindGroupLayout0, diffuseBindGroupLayout1, diffuseBindGroupLayout2]
-		}),
-		compute: { module: diffuseModule, entryPoint: 'init_main' }
-	});
-
-	const diffuseIterPipeline = device.createComputePipeline({
-		layout: device.createPipelineLayout({
-			bindGroupLayouts: [diffuseBindGroupLayout0, diffuseBindGroupLayout1, diffuseBindGroupLayout2]
-		}),
-		compute: { module: diffuseModule, entryPoint: 'iter_main' }
-	});
-
-	// Diffuse bind groups
-	const diffuseBindGroup0A = device.createBindGroup({
-		layout: diffuseBindGroupLayout0,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.uniforms } },
-			{ binding: 1, resource: { buffer: buffers.positionA } },
-			{ binding: 2, resource: { buffer: buffers.prefixSums } },
-			{ binding: 3, resource: { buffer: buffers.cellCounts } },
-			{ binding: 4, resource: { buffer: buffers.sortedIndices } }
-		]
-	});
-
-	const diffuseBindGroup0B = device.createBindGroup({
-		layout: diffuseBindGroupLayout0,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.uniforms } },
-			{ binding: 1, resource: { buffer: buffers.positionB } },
-			{ binding: 2, resource: { buffer: buffers.prefixSums } },
-			{ binding: 3, resource: { buffer: buffers.cellCounts } },
-			{ binding: 4, resource: { buffer: buffers.sortedIndices } }
-		]
-	});
-
-	const diffuseBindGroup1 = device.createBindGroup({
-		layout: diffuseBindGroupLayout1,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.speciesIds } },
-			{ binding: 1, resource: { buffer: buffers.metrics } }
-		]
-	});
-
-	const diffuseBindGroup2A = device.createBindGroup({
-		layout: diffuseBindGroupLayout2,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.diffuseA } },
-			{ binding: 1, resource: { buffer: buffers.diffuseB } }
-		]
-	});
-
-	const diffuseBindGroup2B = device.createBindGroup({
-		layout: diffuseBindGroupLayout2,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.diffuseB } },
-			{ binding: 1, resource: { buffer: buffers.diffuseA } }
-		]
-	});
-
-	// === Rank (Spectral) Pipeline ===
-	const rankModule = device.createShaderModule({ code: rankShader });
-
-	// Rank uses its own layout for group 0 (includes velocities)
+	// Bind group 2: Rank ping-pong
 	const rankBindGroupLayout2 = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // ranksIn
@@ -397,14 +306,14 @@ export function createComputePipelines(
 
 	const rankInitPipeline = device.createComputePipeline({
 		layout: device.createPipelineLayout({
-			bindGroupLayouts: [rankBindGroupLayout0, diffuseBindGroupLayout1, rankBindGroupLayout2]
+			bindGroupLayouts: [rankBindGroupLayout0, rankBindGroupLayout1, rankBindGroupLayout2]
 		}),
 		compute: { module: rankModule, entryPoint: 'init_main' }
 	});
 
 	const rankIterPipeline = device.createComputePipeline({
 		layout: device.createPipelineLayout({
-			bindGroupLayouts: [rankBindGroupLayout0, diffuseBindGroupLayout1, rankBindGroupLayout2]
+			bindGroupLayouts: [rankBindGroupLayout0, rankBindGroupLayout1, rankBindGroupLayout2]
 		}),
 		compute: { module: rankModule, entryPoint: 'iter_main' }
 	});
@@ -434,6 +343,15 @@ export function createComputePipelines(
 		]
 	});
 
+	// Rank bind group 1: species + metrics
+	const rankBindGroup1 = device.createBindGroup({
+		layout: rankBindGroupLayout1,
+		entries: [
+			{ binding: 0, resource: { buffer: buffers.speciesIds } },
+			{ binding: 1, resource: { buffer: buffers.metrics } }
+		]
+	});
+
 	// Rank bind group 2: ping-pong buffers
 	const rankBindGroup2A = device.createBindGroup({
 		layout: rankBindGroupLayout2,
@@ -457,9 +375,8 @@ export function createComputePipelines(
 	const writeMetricsBindGroupLayout = device.createBindGroupLayout({
 		entries: [
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // uniforms
-			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // diffuseValues
-			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // rankValues
-			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } } // metrics
+			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // rankValues
+			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } } // metrics
 		]
 	});
 
@@ -472,9 +389,8 @@ export function createComputePipelines(
 		layout: writeMetricsBindGroupLayout,
 		entries: [
 			{ binding: 0, resource: { buffer: buffers.uniforms } },
-			{ binding: 1, resource: { buffer: buffers.diffuseA } },
-			{ binding: 2, resource: { buffer: buffers.rankA } },
-			{ binding: 3, resource: { buffer: buffers.metrics } }
+			{ binding: 1, resource: { buffer: buffers.rankA } },
+			{ binding: 2, resource: { buffer: buffers.metrics } }
 		]
 	});
 
@@ -487,8 +403,6 @@ export function createComputePipelines(
 			prefixSumAggregate: prefixSumAggregatePipeline,
 			scatter: scatterPipeline,
 			simulate: simulatePipeline,
-			diffuseInit: diffuseInitPipeline,
-			diffuseIter: diffuseIterPipeline,
 			rankInit: rankInitPipeline,
 			rankIter: rankIterPipeline,
 			writeMetrics: writeMetricsPipeline
@@ -502,14 +416,9 @@ export function createComputePipelines(
 			simulate0A: simulateBindGroup0A,
 			simulate0B: simulateBindGroup0B,
 			simulate1: simulateBindGroup1,
-			diffuse0A: diffuseBindGroup0A,
-			diffuse0B: diffuseBindGroup0B,
-			diffuse1: diffuseBindGroup1,
-			diffuse2A: diffuseBindGroup2A,
-			diffuse2B: diffuseBindGroup2B,
-			rank0A: rankBindGroup0A, // Separate bind groups with velocities
+			rank0A: rankBindGroup0A,
 			rank0B: rankBindGroup0B,
-			rank1: diffuseBindGroup1,
+			rank1: rankBindGroup1,
 			rank2A: rankBindGroup2A,
 			rank2B: rankBindGroup2B,
 			writeMetrics: writeMetricsBindGroup
