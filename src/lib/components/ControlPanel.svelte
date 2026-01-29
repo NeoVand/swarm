@@ -1435,7 +1435,7 @@
 									<span><strong>Ignore</strong> — No effect</span>
 								</div>
 								<div style="display: flex; align-items: center; gap: 5px;">
-									<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M5 19 19 5"/><path d="M5 5v14"/><path d="M5 19h14"/></svg>
+									<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M5 9V5h4"/><path d="M5 5l7 7"/></svg>
 									<span><strong>Flee</strong> — Escape (prey)</span>
 								</div>
 								<div style="display: flex; align-items: center; gap: 5px;">

@@ -12,12 +12,12 @@
 	import { InteractionBehavior, HeadShape } from '$lib/webgpu/types';
 	import { getShapePath } from '$lib/utils/shapes';
 	import { hslColor } from '$lib/utils/color';
-	import CircleOff from '@lucide/svelte/icons/circle-off';
+	import CircleSlash from '@lucide/svelte/icons/circle-slash';
 	import MoveUpLeft from '@lucide/svelte/icons/move-up-left';
-	import Crosshair from '@lucide/svelte/icons/crosshair';
+	import Target from '@lucide/svelte/icons/target';
 	import GitMerge from '@lucide/svelte/icons/git-merge';
 	import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
-	import Orbit from '@lucide/svelte/icons/orbit';
+	import Globe from '@lucide/svelte/icons/globe';
 	import Footprints from '@lucide/svelte/icons/footprints';
 	import Shield from '@lucide/svelte/icons/shield';
 	import Maximize2 from '@lucide/svelte/icons/maximize-2';
@@ -31,23 +31,64 @@
 	let allSpecies = $derived(currentParams.species);
 	let otherSpecies = $derived(allSpecies.filter((s) => s.id !== activeSpecies?.id));
 
+	// Compute which targets are already assigned (for filtering dropdowns)
+	let assignedTargets = $derived(
+		new Set(
+			activeSpecies?.interactions
+				.filter((r) => r.targetSpecies !== -1)
+				.map((r) => r.targetSpecies) ?? []
+		)
+	);
+
+	// Check if there's already an "All" rule
+	let hasAllRule = $derived(
+		activeSpecies?.interactions.some((r) => r.targetSpecies === -1) ?? false
+	);
+
+	// Available targets for a new rule (excludes already assigned, and "All" if it exists)
+	let canAddMoreRules = $derived(() => {
+		if (!activeSpecies) return false;
+		// Can add if there are unassigned specific targets
+		const unassignedCount = otherSpecies.filter((s) => !assignedTargets.has(s.id)).length;
+		// Can add if we don't have an "All" rule yet, or if there are unassigned specific targets
+		return unassignedCount > 0 || !hasAllRule;
+	});
+
+	// Get available targets for a specific rule (excluding already assigned, except current)
+	function getAvailableTargetsForRule(currentRuleIndex: number): Species[] {
+		if (!activeSpecies) return [];
+		const currentTarget = activeSpecies.interactions[currentRuleIndex]?.targetSpecies;
+		return otherSpecies.filter((s) => {
+			// Include if it's the current target or if it's not already assigned
+			return s.id === currentTarget || !assignedTargets.has(s.id);
+		});
+	}
+
+	// Check if "All" option should be available for a rule
+	function canSelectAll(currentRuleIndex: number): boolean {
+		if (!activeSpecies) return false;
+		const currentTarget = activeSpecies.interactions[currentRuleIndex]?.targetSpecies;
+		// Can select "All" if this rule is already "All", or if no other rule is "All"
+		return currentTarget === -1 || !hasAllRule;
+	}
+
 	// Dropdown and expanded states
 	let openTargetDropdown = $state<number | null>(null);
 	let openBehaviorDropdown = $state<number | null>(null);
 	let expandedSettings = $state<Set<number>>(new Set());
 
-	// Behavior options with Lucide icons
+	// Behavior options with Lucide icons and colors (matching tour card)
 	const behaviorOptions = [
-		{ value: InteractionBehavior.Ignore, label: 'Ignore', Icon: CircleOff },
-		{ value: InteractionBehavior.Flee, label: 'Flee', Icon: MoveUpLeft },
-		{ value: InteractionBehavior.Chase, label: 'Chase', Icon: Crosshair },
-		{ value: InteractionBehavior.Cohere, label: 'Cohere', Icon: GitMerge },
-		{ value: InteractionBehavior.Align, label: 'Align', Icon: ChevronsRight },
-		{ value: InteractionBehavior.Orbit, label: 'Orbit', Icon: Orbit },
-		{ value: InteractionBehavior.Follow, label: 'Follow', Icon: Footprints },
-		{ value: InteractionBehavior.Guard, label: 'Guard', Icon: Shield },
-		{ value: InteractionBehavior.Disperse, label: 'Scatter', Icon: Maximize2 },
-		{ value: InteractionBehavior.Mob, label: 'Mob', Icon: Swords }
+		{ value: InteractionBehavior.Ignore, label: 'Ignore', Icon: CircleSlash, color: '#71717a' },
+		{ value: InteractionBehavior.Flee, label: 'Flee', Icon: MoveUpLeft, color: '#f87171' },
+		{ value: InteractionBehavior.Chase, label: 'Chase', Icon: Target, color: '#fb923c' },
+		{ value: InteractionBehavior.Cohere, label: 'Cohere', Icon: GitMerge, color: '#22d3ee' },
+		{ value: InteractionBehavior.Align, label: 'Align', Icon: ChevronsRight, color: '#a78bfa' },
+		{ value: InteractionBehavior.Orbit, label: 'Orbit', Icon: Globe, color: '#f97316' },
+		{ value: InteractionBehavior.Follow, label: 'Follow', Icon: Footprints, color: '#34d399' },
+		{ value: InteractionBehavior.Guard, label: 'Guard', Icon: Shield, color: '#38bdf8' },
+		{ value: InteractionBehavior.Disperse, label: 'Scatter', Icon: Maximize2, color: '#fbbf24' },
+		{ value: InteractionBehavior.Mob, label: 'Mob', Icon: Swords, color: '#ef4444' }
 	];
 
 	// Get behavior option by value
@@ -128,14 +169,25 @@
 	// Add a new rule
 	function handleAddRule() {
 		if (!activeSpecies) return;
-		const existingTargets = new Set(
-			activeSpecies.interactions.filter((r) => r.targetSpecies !== -1).map((r) => r.targetSpecies)
-		);
-		const availableTarget = otherSpecies.find((s) => !existingTargets.has(s.id));
-		const targetSpecies = availableTarget?.id ?? -1;
+		
+		// Find an available target (not already assigned)
+		const availableTarget = otherSpecies.find((s) => !assignedTargets.has(s.id));
+		
+		// If all specific targets are assigned, add an "All" rule (if not already present)
+		if (!availableTarget) {
+			if (!hasAllRule) {
+				addInteractionRule(activeSpecies.id, {
+					targetSpecies: -1,
+					behavior: InteractionBehavior.Flee,
+					strength: 0.5,
+					range: 0
+				});
+			}
+			return;
+		}
 
 		addInteractionRule(activeSpecies.id, {
-			targetSpecies,
+			targetSpecies: availableTarget.id,
 			behavior: InteractionBehavior.Flee,
 			strength: 0.5,
 			range: 0
@@ -200,29 +252,34 @@
 								<ChevronDown size={10} strokeWidth={2} />
 							</button>
 							{#if openTargetDropdown === ruleIndex}
+								{@const availableTargets = getAvailableTargetsForRule(ruleIndex)}
+								{@const showAllOption = canSelectAll(ruleIndex)}
 								<div class="dropdown-menu compact">
-									<button
-										class="dropdown-item"
-										class:active={rule.targetSpecies === -1}
-										onclick={() => handleTargetChange(ruleIndex, -1)}
-									>
-										<span class="all-text">All</span>
-									</button>
-								{#each otherSpecies as other (other.id)}
-									<button
-										class="dropdown-item"
-										class:active={rule.targetSpecies === other.id}
-										onclick={() => handleTargetChange(ruleIndex, other.id)}
-										title={other.name}
-									>
-										<svg class="species-icon-sm" viewBox="0 0 20 20">
-											<path
-												d={getIconPath(other.headShape, 20)}
-												fill={hslColor(other.hue, other.saturation, other.lightness)}
-											/>
-										</svg>
-									</button>
-								{/each}
+									{#if showAllOption}
+										<button
+											class="dropdown-item"
+											class:active={rule.targetSpecies === -1}
+											onclick={() => handleTargetChange(ruleIndex, -1)}
+											title="All other species (fallback)"
+										>
+											<span class="all-text">All</span>
+										</button>
+									{/if}
+									{#each availableTargets as other (other.id)}
+										<button
+											class="dropdown-item"
+											class:active={rule.targetSpecies === other.id}
+											onclick={() => handleTargetChange(ruleIndex, other.id)}
+											title={other.name}
+										>
+											<svg class="species-icon-sm" viewBox="0 0 20 20">
+												<path
+													d={getIconPath(other.headShape, 20)}
+													fill={hslColor(other.hue, other.saturation, other.lightness)}
+												/>
+											</svg>
+										</button>
+									{/each}
 								</div>
 							{/if}
 						</div>
@@ -232,8 +289,9 @@
 							<button
 								class="behavior-btn"
 								onclick={() => toggleBehaviorDropdown(ruleIndex)}
+								style="--behavior-color: {behaviorOpt.color}"
 							>
-								<behaviorOpt.Icon size={14} strokeWidth={2} />
+								<behaviorOpt.Icon size={14} strokeWidth={2} color={behaviorOpt.color} />
 								<span class="behavior-label">{behaviorOpt.label}</span>
 								<ChevronDown size={10} strokeWidth={2} />
 							</button>
@@ -245,8 +303,9 @@
 											class:active={rule.behavior === opt.value}
 											onclick={() => handleBehaviorChange(ruleIndex, opt.value)}
 											title={opt.label}
+											style="--behavior-color: {opt.color}"
 										>
-											<opt.Icon size={14} strokeWidth={2} />
+											<opt.Icon size={14} strokeWidth={2} color={opt.color} />
 											<span>{opt.label}</span>
 										</button>
 									{/each}
@@ -313,12 +372,14 @@
 			{/each}
 		</div>
 
-		<button class="add-rule-btn" onclick={handleAddRule}>
-			<svg viewBox="0 0 16 16" fill="currentColor">
-				<path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
-			</svg>
-			<span>Add Rule</span>
-		</button>
+		{#if canAddMoreRules()}
+			<button class="add-rule-btn" onclick={handleAddRule}>
+				<svg viewBox="0 0 16 16" fill="currentColor">
+					<path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z" />
+				</svg>
+				<span>Add Rule</span>
+			</button>
+		{/if}
 	{/if}
 </div>
 
