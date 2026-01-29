@@ -61,6 +61,7 @@
 		setSaturationCurvePoints,
 		setBrightnessCurvePoints,
 		curvesDirty,
+		randomizeSimulation,
 		CursorResponse,
 		VortexDirection,
 		BoundaryMode,
@@ -285,6 +286,15 @@
 	// Toggle play/pause
 	function togglePlayPause() {
 		isRunning.update((v) => !v);
+	}
+
+	// Randomize simulation settings
+	function handleRandomize() {
+		// Get canvas dimensions (use window as fallback)
+		const canvas = $canvasElement;
+		const width = canvas?.clientWidth ?? window.innerWidth;
+		const height = canvas?.clientHeight ?? window.innerHeight;
+		randomizeSimulation(width, height);
 	}
 
 	// Check if we can use native share (mobile)
@@ -685,39 +695,11 @@
 			document.activeElement.blur();
 		}
 
-		// Get current values for cycling
-		const boundaryModes = [
-			BoundaryMode.Plane,
-			BoundaryMode.Torus,
-			BoundaryMode.CylinderX,
-			BoundaryMode.MobiusX,
-			BoundaryMode.KleinX,
-			BoundaryMode.ProjectivePlane
-		];
-		const colorModes = [
-			ColorMode.None,
-			ColorMode.Orientation,
-			ColorMode.Speed,
-			ColorMode.Neighbors,
-			ColorMode.Density,
-			ColorMode.Acceleration,
-			ColorMode.Turning,
-			ColorMode.TrueTurning,
-			ColorMode.Species,
-			ColorMode.LocalDensity,
-			ColorMode.Anisotropy,
-			ColorMode.Influence,
-			ColorMode.SpectralRadial,
-			ColorMode.SpectralAsymmetry
-		];
-		const colorSpectrums = [
-			ColorSpectrum.Rainbow,
-			ColorSpectrum.Ocean,
-			ColorSpectrum.Chrome,
-			ColorSpectrum.Bands,
-			ColorSpectrum.Mono
-		];
-		const cursorShapes = [CursorShape.Ring, CursorShape.Disk];
+		// Helper to cycle through array values
+		function cycleValue<T>(current: T, options: T[]): T {
+			const index = options.indexOf(current);
+			return options[(index + 1) % options.length];
+		}
 
 		switch (event.key.toLowerCase()) {
 			// Playback controls
@@ -741,6 +723,11 @@
 			case 'r':
 				event.preventDefault();
 				needsSimulationReset.set(true);
+				break;
+
+			case 'g':
+				event.preventDefault();
+				handleRandomize();
 				break;
 
 			// UI controls
@@ -812,45 +799,47 @@
 			// Cycle through options
 			case 'b': {
 				event.preventDefault();
-				const currentBoundary = currentParams?.boundaryMode ?? BoundaryMode.Plane;
-				const boundaryIndex = boundaryModes.indexOf(currentBoundary);
-				const nextBoundary = boundaryModes[(boundaryIndex + 1) % boundaryModes.length];
+				const nextBoundary = cycleValue(
+					currentParams?.boundaryMode ?? BoundaryMode.Plane,
+					boundaryOptions
+				);
 				setBoundaryMode(nextBoundary);
 				break;
 			}
 
 			case 'c': {
 				event.preventDefault();
-				const currentColor = currentParams?.colorMode ?? ColorMode.Orientation;
-				const colorIndex = colorModes.indexOf(currentColor);
-				const nextColor = colorModes[(colorIndex + 1) % colorModes.length];
+				// Use colorOptions values for cycling (same as dropdown)
+				const colorModeValues = colorOptions.map((opt) => opt.value);
+				const nextColor = cycleValue(
+					currentParams?.colorMode ?? ColorMode.Species,
+					colorModeValues
+				);
 				setColorMode(nextColor);
 				// Auto-set spectral mode when cycling to spectral colors
-				if (nextColor === ColorMode.Influence) {
-					setSpectralMode(SpectralMode.Angular);
-				} else if (nextColor === ColorMode.SpectralRadial) {
-					setSpectralMode(SpectralMode.Radial);
-				} else if (nextColor === ColorMode.SpectralAsymmetry) {
-					setSpectralMode(SpectralMode.Asymmetry);
+				const spectralMode = getSpectralModeFor(nextColor);
+				if (spectralMode !== null) {
+					setSpectralMode(spectralMode);
 				}
 				break;
 			}
 
-
 			case 'p': {
 				event.preventDefault();
-				const currentPalette = currentParams?.colorSpectrum ?? ColorSpectrum.Rainbow;
-				const paletteIndex = colorSpectrums.indexOf(currentPalette);
-				const nextPalette = colorSpectrums[(paletteIndex + 1) % colorSpectrums.length];
+				const nextPalette = cycleValue(
+					currentParams?.colorSpectrum ?? ColorSpectrum.Rainbow,
+					paletteOptions
+				);
 				setColorSpectrum(nextPalette);
 				break;
 			}
 
 			case 't': {
 				event.preventDefault();
-				const currentShape = currentParams?.cursorShape ?? CursorShape.Disk;
-				const shapeIndex = cursorShapes.indexOf(currentShape);
-				const nextShape = cursorShapes[(shapeIndex + 1) % cursorShapes.length];
+				const nextShape = cycleValue(
+					currentParams?.cursorShape ?? CursorShape.Disk,
+					cursorShapeOptions
+				);
 				setCursorShape(nextShape);
 				break;
 			}
@@ -1283,6 +1272,12 @@
 										<path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
 									</svg>
 									<span><strong>Play/Pause</strong> — Pause or resume${kbd('Space', isTouch)}</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 8px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; flex-shrink: 0;">
+										<rect width="12" height="12" x="2" y="10" rx="2" ry="2"/><path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6"/><path d="M6 18h.01"/><path d="M10 14h.01"/><path d="M15 6h.01"/><path d="M18 9h.01"/>
+									</svg>
+									<span><strong>Randomize</strong> — New species & rules${kbd('G', isTouch)}</span>
 								</div>
 								<div style="display: flex; align-items: center; gap: 8px;">
 									<svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; flex-shrink: 0;">
@@ -1847,6 +1842,30 @@
 		}, 250);
 	}
 
+	// Arrays for cycling through options (keyboard shortcuts use these)
+	const paletteOptions = [
+		ColorSpectrum.Rainbow,
+		ColorSpectrum.Bands,
+		ColorSpectrum.Ocean,
+		ColorSpectrum.Chrome,
+		ColorSpectrum.Mono
+	];
+
+	// All boundary modes in a logical order (matches TopologySelector grid layout)
+	const boundaryOptions = [
+		BoundaryMode.Plane,
+		BoundaryMode.CylinderX,
+		BoundaryMode.MobiusX,
+		BoundaryMode.CylinderY,
+		BoundaryMode.Torus,
+		BoundaryMode.KleinX,
+		BoundaryMode.MobiusY,
+		BoundaryMode.KleinY,
+		BoundaryMode.ProjectivePlane
+	];
+
+	const cursorShapeOptions = [CursorShape.Ring, CursorShape.Disk];
+
 	// Hue options (what controls color)
 	const colorOptions = [
 		{ value: ColorMode.Species, label: 'Species' },
@@ -2009,6 +2028,33 @@
 							/>
 						</svg>
 					{/if}
+				</button>
+
+				<!-- Randomize Button (Dice) -->
+				<button
+					onclick={handleRandomize}
+					class="header-btn btn-amber"
+					aria-label="Randomize Simulation"
+					title="Randomize species and interactions (G)"
+				>
+					<!-- Dice icon (Lucide: dices) -->
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="h-3.5 w-3.5"
+					>
+						<rect width="12" height="12" x="2" y="10" rx="2" ry="2" />
+						<path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6" />
+						<path d="M6 18h.01" />
+						<path d="M10 14h.01" />
+						<path d="M15 6h.01" />
+						<path d="M18 9h.01" />
+					</svg>
 				</button>
 
 				<!-- Reset Button -->
