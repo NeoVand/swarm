@@ -746,6 +746,11 @@
 				}
 				break;
 
+			case 'enter':
+				event.preventDefault();
+				togglePanel();
+				break;
+
 			case 'h':
 			case '?':
 				event.preventDefault();
