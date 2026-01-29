@@ -4062,14 +4062,14 @@
 	}
 
 	.panel {
-		background: rgba(8, 8, 12, 0.92);
-		backdrop-filter: blur(24px) saturate(1.1);
-		-webkit-backdrop-filter: blur(24px) saturate(1.1);
-		border: 1px solid rgba(255, 255, 255, 0.06);
+		background: rgba(8, 8, 12, 0.78);
+		backdrop-filter: blur(12px) saturate(1.1);
+		-webkit-backdrop-filter: blur(12px) saturate(1.1);
+		border: 1px solid rgba(255, 255, 255, 0.08);
 		box-shadow:
-			0 8px 32px rgba(0, 0, 0, 0.6),
-			0 2px 4px rgba(0, 0, 0, 0.3),
-			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+			0 8px 32px rgba(0, 0, 0, 0.5),
+			0 2px 4px rgba(0, 0, 0, 0.25),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
 	}
 
 	.panel.dragging {
@@ -4105,20 +4105,20 @@
 	}
 
 	.gear-btn {
-		background: rgba(8, 8, 12, 0.85);
-		backdrop-filter: blur(16px) saturate(1.1);
-		-webkit-backdrop-filter: blur(16px) saturate(1.1);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(8, 8, 12, 0.75);
+		backdrop-filter: blur(10px) saturate(1.1);
+		-webkit-backdrop-filter: blur(10px) saturate(1.1);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		box-shadow:
-			0 2px 12px rgba(0, 0, 0, 0.4),
-			inset 0 1px 0 rgba(255, 255, 255, 0.03);
+			0 2px 12px rgba(0, 0, 0, 0.35),
+			inset 0 1px 0 rgba(255, 255, 255, 0.04);
 		transition:
 			opacity 0.2s ease,
 			transform 0.2s ease;
 	}
 	.gear-btn:hover {
-		background: rgba(16, 16, 20, 0.9);
-		border-color: rgba(255, 255, 255, 0.12);
+		background: rgba(16, 16, 20, 0.82);
+		border-color: rgba(255, 255, 255, 0.15);
 	}
 	.gear-btn.gear-hidden {
 		opacity: 0;
@@ -4531,12 +4531,12 @@
 	}
 
 	.dropdown-menu {
-		background: rgba(10, 10, 14, 0.98);
-		backdrop-filter: blur(16px);
-		-webkit-backdrop-filter: blur(16px);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		background: rgba(10, 10, 14, 0.88);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
 		border-radius: 6px;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
 		padding: 2px;
 	}
 	.dropdown-menu::-webkit-scrollbar {
