@@ -839,6 +839,8 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 		for (let i = 0; i < populations.length; i++) {
 			populations[i] = Math.max(minPerSpecies, Math.round((populations[i] / totalPop) * targetTotal));
 		}
+		// Sort populations descending so Species 1 always has the highest population
+		populations.sort((a, b) => b - a);
 		
 		// Create species with randomized settings
 		const newSpecies: Species[] = [];
