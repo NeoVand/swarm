@@ -50,6 +50,8 @@ const BEHAVIOR_FOLLOW: u32 = 6u;    // Trail behind - leader-follower
 const BEHAVIOR_GUARD: u32 = 7u;     // Maintain optimal distance - protective
 const BEHAVIOR_DISPERSE: u32 = 8u;  // Explosive scatter - confusion effect
 const BEHAVIOR_MOB: u32 = 9u;       // Aggressive swarming - counter-attack
+const BEHAVIOR_MIRROR: u32 = 10u;   // Reflect target's velocity - crossing wave patterns
+const BEHAVIOR_SPIRAL: u32 = 11u;   // Approach while orbiting - vortex convergence
 
 // Get species parameter by index (0-15)
 // 4 vec4s per species: 
@@ -782,6 +784,11 @@ fn calculateInterSpeciesForce(
     var mobSum = vec2<f32>(0.0);
     var mobOrbitSum = vec2<f32>(0.0);
     var mobCount = 0u;
+    var mirrorSum = vec2<f32>(0.0);
+    var mirrorCount = 0u;
+    var spiralSum = vec2<f32>(0.0);
+    var spiralOrbitSum = vec2<f32>(0.0);
+    var spiralCount = 0u;
     
     // Search neighbors in 5x5 grid (needed for cellSize = perception/2)
     for (var dy = -2i; dy <= 2i; dy++) {
@@ -907,6 +914,34 @@ fn calculateInterSpeciesForce(
                         mobOrbitSum += perpDir * weight * strength * orbitDir;
                         mobCount++;
                     }
+                    case BEHAVIOR_MIRROR: {
+                        // Mirror/Reflect - move in reflected direction of target's velocity
+                        // Creates beautiful crossing wave patterns as species pass through each other
+                        let otherSpeed = length(otherVel);
+                        if (otherSpeed > 0.1) {
+                            // Reflect: move in opposite direction to target's velocity
+                            let reflectDir = -otherVel / otherSpeed;
+                            mirrorSum += reflectDir * weight * strength;
+                        } else {
+                            // If target is stationary, move away from it
+                            mirrorSum -= dir * weight * strength * 0.5;
+                        }
+                        mirrorCount++;
+                    }
+                    case BEHAVIOR_SPIRAL: {
+                        // Spiral - approach while orbiting, creating vortex convergence
+                        // Combines radial attraction with tangential orbit motion
+                        let radialStrength = 0.6;  // Attraction component
+                        let tangentStrength = 0.8; // Orbit component
+                        // Radial: move towards target
+                        spiralSum += dir * weight * strength * radialStrength;
+                        // Tangential: orbit around target
+                        let perpDir = vec2<f32>(-dir.y, dir.x);
+                        // Consistent orbit direction based on species pair for coherent spirals
+                        let spiralDir = select(-1.0, 1.0, (mySpecies + otherSpecies) % 2u == 0u);
+                        spiralOrbitSum += perpDir * weight * strength * tangentStrength * spiralDir;
+                        spiralCount++;
+                    }
                     default: {}
                 }
             }
@@ -967,6 +1002,17 @@ fn calculateInterSpeciesForce(
     if (mobCount > 0u) {
         interForce += limitMagnitude(mobSum / f32(mobCount), maxForce * 2.0);
         interForce += limitMagnitude(mobOrbitSum / f32(mobCount), maxForce * 1.5);
+    }
+    
+    // Mirror: reflected velocity (crossing wave patterns)
+    if (mirrorCount > 0u) {
+        interForce += limitMagnitude(mirrorSum / f32(mirrorCount), maxForce * 1.5);
+    }
+    
+    // Spiral: vortex convergence (approach + orbit combined)
+    if (spiralCount > 0u) {
+        interForce += limitMagnitude(spiralSum / f32(spiralCount), maxForce * 1.5);
+        interForce += limitMagnitude(spiralOrbitSum / f32(spiralCount), maxForce * 1.5);
     }
     
     return interForce;

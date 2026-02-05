@@ -1439,7 +1439,7 @@
 								<li><strong>Rules</strong> — Set behavior between species pairs</li>
 								<li><strong>"All Others"</strong> — Sets default rule; specific pairs override</li>
 							</ul>
-							<p style="font-size: 10px; color: #a1a1aa; margin-bottom: 6px;">10 interaction behaviors:</p>
+							<p style="font-size: 10px; color: #a1a1aa; margin-bottom: 6px;">12 interaction behaviors:</p>
 							<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px;">
 								<div style="display: flex; align-items: center; gap: 5px;">
 									<svg viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
@@ -1480,6 +1480,14 @@
 								<div style="display: flex; align-items: center; gap: 5px;">
 									<svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="M13 19l6-6"/><path d="M16 16l4 4"/><path d="M19 21l2-2"/><path d="m14.5 6.5 6-6H18l-4 4"/><path d="M5 14l6-6"/><path d="M7 17l-4 4"/><path d="M3 19l2 2"/></svg>
 									<span><strong>Mob</strong> — Swarm attack</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+									<span><strong>Mirror</strong> — Reflect velocity</span>
+								</div>
+								<div style="display: flex; align-items: center; gap: 5px;">
+									<svg viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; flex-shrink: 0;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+									<span><strong>Spiral</strong> — Vortex converge</span>
 								</div>
 							</div>`,
 						side: 'left',

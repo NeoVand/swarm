@@ -22,6 +22,8 @@
 	import Shield from '@lucide/svelte/icons/shield';
 	import Maximize2 from '@lucide/svelte/icons/maximize-2';
 	import Swords from '@lucide/svelte/icons/swords';
+	import FlipHorizontal2 from '@lucide/svelte/icons/flip-horizontal-2';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Settings from '@lucide/svelte/icons/settings';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
@@ -88,7 +90,9 @@
 		{ value: InteractionBehavior.Follow, label: 'Follow', Icon: Footprints, color: '#34d399' },
 		{ value: InteractionBehavior.Guard, label: 'Guard', Icon: Shield, color: '#38bdf8' },
 		{ value: InteractionBehavior.Disperse, label: 'Scatter', Icon: Maximize2, color: '#fbbf24' },
-		{ value: InteractionBehavior.Mob, label: 'Mob', Icon: Swords, color: '#ef4444' }
+		{ value: InteractionBehavior.Mob, label: 'Mob', Icon: Swords, color: '#ef4444' },
+		{ value: InteractionBehavior.Mirror, label: 'Mirror', Icon: FlipHorizontal2, color: '#c084fc' },
+		{ value: InteractionBehavior.Spiral, label: 'Spiral', Icon: LoaderCircle, color: '#2dd4bf' }
 	];
 
 	// Get behavior option by value
@@ -341,7 +345,7 @@
 					{#if isExpanded && rule.behavior !== InteractionBehavior.Ignore}
 						<div class="settings-panel" transition:slide={{ duration: 120, easing: cubicOut }}>
 							<div class="slider-row">
-								<span class="slider-label">Str</span>
+								<span class="slider-label">Strength</span>
 								<input
 									type="range"
 									class="slider"
@@ -354,7 +358,7 @@
 								<span class="slider-value">{(rule.strength * 100).toFixed(0)}%</span>
 							</div>
 							<div class="slider-row">
-								<span class="slider-label">Rng</span>
+								<span class="slider-label">Range</span>
 								<input
 									type="range"
 									class="slider"
@@ -648,7 +652,7 @@
 
 	/* Settings panel with sliders */
 	.settings-panel {
-		padding: 6px 8px 8px;
+		padding: 8px 10px 10px;
 		border-top: 1px solid rgba(255, 255, 255, 0.05);
 		background: rgba(0, 0, 0, 0.15);
 	}
@@ -656,16 +660,15 @@
 	.slider-row {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 2px 0;
+		gap: 8px;
+		padding: 3px 0;
 	}
 
 	.slider-label {
-		width: 24px;
+		width: 52px;
 		flex-shrink: 0;
-		font-size: 9px;
-		color: rgba(255, 255, 255, 0.5);
-		text-transform: uppercase;
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.6);
 	}
 
 	.slider {
@@ -696,12 +699,12 @@
 	}
 
 	.slider-value {
-		width: 32px;
+		width: 36px;
 		flex-shrink: 0;
 		text-align: right;
 		font-family: ui-monospace, monospace;
-		font-size: 9px;
-		color: rgba(255, 255, 255, 0.5);
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.6);
 	}
 
 	/* Add rule button */

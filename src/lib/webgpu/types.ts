@@ -112,7 +112,9 @@ export enum InteractionBehavior {
 	Follow = 6, // Trail behind - leader-follower dynamics
 	Guard = 7, // Maintain optimal distance - protective escort
 	Disperse = 8, // Explosive scatter - confusion effect
-	Mob = 9 // Aggressive swarming - counter-attack behavior
+	Mob = 9, // Aggressive swarming - counter-attack behavior
+	Mirror = 10, // Reflect target's velocity - creates crossing wave patterns
+	Spiral = 11 // Approach while orbiting - creates vortex convergence
 }
 
 // Per-species cursor response
