@@ -445,7 +445,7 @@
 
 	// Accordion - only one section open at a time
 	let openSection = $state<
-		'boids' | 'color' | 'world' | 'interaction' | 'species' | 'flocking' | 'dynamics'
+		'boids' | 'color' | 'world' | 'forces' | 'interactions' | 'flocking' | 'dynamics'
 	>('boids');
 
 	function toggleSection(section: typeof openSection) {
@@ -453,12 +453,12 @@
 	}
 
 	// Section tour step indices (for jumping to specific cards)
-	// Order: Welcome(0), Controls(1), Boids(2), Color(3), Interaction(4), Species(5), Flocking(6), World(7), Dynamics(8)
+	// Order: Welcome(0), Controls(1), Boids(2), Color(3), Forces(4), Interactions(5), Flocking(6), World(7), Dynamics(8)
 	const sectionTourSteps: Record<typeof openSection, number> = {
 		boids: 2,
 		color: 3,
-		interaction: 4,
-		species: 5,
+		forces: 4,
+		interactions: 5,
 		flocking: 6,
 		world: 7,
 		dynamics: 8
@@ -506,7 +506,7 @@
 		setWallBrushShape(DEFAULT_PARAMS.wallBrushShape);
 	}
 
-	function resetInteractionSection(e: Event): void {
+	function resetForcesSection(e: Event): void {
 		e.stopPropagation();
 		setCursorShape(DEFAULT_PARAMS.cursorShape);
 		setCursorRadius(DEFAULT_PARAMS.cursorRadius);
@@ -1367,9 +1367,9 @@
 						openSection = 'color';
 					}
 				},
-				// Step 4: Interaction (cursor only, walls moved to World)
+				// Step 4: Forces (cursor forces)
 				{
-					element: '#section-interaction',
+					element: '#section-forces',
 					popover: {
 						title: `<div style="display: flex; align-items: center; gap: 8px;">
 							<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
@@ -1377,7 +1377,7 @@
 								<path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/>
 								<path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/>
 							</svg>
-							<span>Interaction</span>
+							<span>Forces</span>
 						</div>`,
 						description: `<p><strong style="color: #e4e4e7;">Cursor Force</strong> — ${isTouch ? 'Touch' : 'Move cursor over'} canvas (per-species):</p>
 							<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
@@ -1407,12 +1407,12 @@
 						align: 'start'
 					},
 					onHighlightStarted: () => {
-						openSection = 'interaction';
+						openSection = 'forces';
 					}
 				},
-				// Step 5: Species
+				// Step 5: Interactions (species interactions)
 				{
-					element: '#section-species',
+					element: '#section-interactions',
 					popover: {
 						title: `<div style="display: flex; align-items: center; gap: 8px;">
 							<svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
@@ -1420,12 +1420,12 @@
 								<path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
 								<path d="m4.93 4.93 2.83 2.83m8.48 8.48 2.83 2.83m0-14.14-2.83 2.83m-8.48 8.48-2.83 2.83"/>
 							</svg>
-							<span>Species</span>
+							<span>Interactions</span>
 						</div>`,
 						description: `<p>Create multiple swarms with unique behaviors:${kbd('N', isTouch)}</p>
 							<ul style="margin-bottom: 8px;">
 								<li><strong>Add/Remove</strong> — Manage up to 7 species</li>
-								<li><strong>Interactions</strong> — Rules define how species react to each other</li>
+								<li><strong>Rules</strong> — Define how species react to each other</li>
 								<li><strong>"All Others"</strong> sets default; specific rules override</li>
 							</ul>
 							<p style="font-size: 10px; color: #a1a1aa; margin-bottom: 6px;">10 interaction behaviors:</p>
@@ -1475,7 +1475,7 @@
 						align: 'start'
 					},
 					onHighlightStarted: () => {
-						openSection = 'species';
+						openSection = 'interactions';
 					}
 				},
 				// Step 6: Flocking
@@ -1659,7 +1659,7 @@
 					tourAnimationIds.forEach((id) => cancelAnimationFrame(id));
 					tourAnimationIds = [];
 
-					// Step 4: Interaction - inject animated canvas icons
+					// Step 4: Forces - inject animated canvas icons
 					if (state.activeIndex === 4) {
 						setTimeout(() => {
 							const configs = [
@@ -3156,9 +3156,9 @@
 			</div>
 
 			<div class="section-divider"></div>
-			<!-- Interaction - Cursor Controls -->
-			<div id="section-interaction">
-				<button class="section-header" onclick={() => toggleSection('interaction')}>
+			<!-- Forces - Cursor Controls -->
+			<div id="section-forces">
+				<button class="section-header" onclick={() => toggleSection('forces')}>
 					<div class="section-title">
 						<svg
 							class="section-icon icon-red"
@@ -3180,19 +3180,19 @@
 							<path d="M3 21l9-9" />
 							<path d="M12.2 6.2L11 5" />
 						</svg>
-						<span class="section-label">Interaction</span>
+						<span class="section-label">Forces</span>
 					</div>
 					<div class="section-actions">
-						{#if openSection === 'interaction'}
+						{#if openSection === 'forces'}
 							<span
 								class="section-action-btn"
 								role="button"
 								tabindex="0"
 								onclick={(e) => {
 									e.stopPropagation();
-									startTourAtSection('interaction');
+									startTourAtSection('forces');
 								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('interaction'))}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('forces'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -3207,8 +3207,8 @@
 								class="section-action-btn"
 								role="button"
 								tabindex="0"
-								onclick={resetInteractionSection}
-								onkeydown={(e) => handleKeydown(e, resetInteractionSection)}
+								onclick={resetForcesSection}
+								onkeydown={(e) => handleKeydown(e, resetForcesSection)}
 								title="Reset"
 							>
 								<svg
@@ -3226,7 +3226,7 @@
 						{/if}
 						<svg
 							class="section-chevron"
-							class:open={openSection === 'interaction'}
+							class:open={openSection === 'forces'}
 							viewBox="0 0 20 20"
 							fill="currentColor"
 						>
@@ -3238,7 +3238,7 @@
 						</svg>
 					</div>
 				</button>
-				{#if openSection === 'interaction'}
+				{#if openSection === 'forces'}
 					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 						<div class="row">
 							<span class="label">Force</span>
@@ -3392,9 +3392,9 @@
 			</div>
 
 			<div class="section-divider"></div>
-			<!-- Species Interactions -->
-			<div id="section-species">
-				<button class="section-header" onclick={() => toggleSection('species')}>
+			<!-- Interactions - Species Rules -->
+			<div id="section-interactions">
+				<button class="section-header" onclick={() => toggleSection('interactions')}>
 					<div class="section-title">
 						<svg
 							class="section-icon icon-indigo"
@@ -3411,10 +3411,10 @@
 								d="m4.93 4.93 2.83 2.83m8.48 8.48 2.83 2.83m0-14.14-2.83 2.83m-8.48 8.48-2.83 2.83"
 							/>
 						</svg>
-						<span class="section-label">Species</span>
+						<span class="section-label">Interactions</span>
 					</div>
 					<!-- Quick species selector - only when collapsed and multiple species -->
-					{#if openSection !== 'species' && currentParams.species.length > 1}
+					{#if openSection !== 'interactions' && currentParams.species.length > 1}
 						<div class="quick-species-selector">
 							{#each currentParams.species as species (species.id)}
 								<span
@@ -3450,16 +3450,16 @@
 						</div>
 					{/if}
 					<div class="section-actions">
-						{#if openSection === 'species'}
+						{#if openSection === 'interactions'}
 							<span
 								class="section-action-btn"
 								role="button"
 								tabindex="0"
 								onclick={(e) => {
 									e.stopPropagation();
-									startTourAtSection('species');
+									startTourAtSection('interactions');
 								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('species'))}
+								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('interactions'))}
 								title="Help"
 							>
 								<svg viewBox="0 0 20 20" fill="currentColor"
@@ -3473,7 +3473,7 @@
 						{/if}
 						<svg
 							class="section-chevron"
-							class:open={openSection === 'species'}
+							class:open={openSection === 'interactions'}
 							viewBox="0 0 20 20"
 							fill="currentColor"
 						>
@@ -3485,7 +3485,7 @@
 						</svg>
 					</div>
 				</button>
-				{#if openSection === 'species'}
+				{#if openSection === 'interactions'}
 					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
 						<SpeciesSelector />
 						<InteractionsPanel />
