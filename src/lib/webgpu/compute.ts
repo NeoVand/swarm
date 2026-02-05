@@ -217,7 +217,9 @@ export function createComputePipelines(
 			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // speciesIds
 			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // speciesParams (uniform for small data)
 			{ binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // interactionMatrix (uniform for small data)
-			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } } // metrics output (density, anisotropy)
+			{ binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }, // metrics output (density, anisotropy)
+			{ binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // metricRules
+			{ binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } } // metricRuleCurves (packed as vec4)
 		]
 	});
 
@@ -271,7 +273,9 @@ export function createComputePipelines(
 			{ binding: 0, resource: { buffer: buffers.speciesIds } },
 			{ binding: 1, resource: { buffer: buffers.speciesParams } },
 			{ binding: 2, resource: { buffer: buffers.interactionMatrix } },
-			{ binding: 3, resource: { buffer: buffers.metrics } }
+			{ binding: 3, resource: { buffer: buffers.metrics } },
+			{ binding: 4, resource: { buffer: buffers.metricRules } },
+			{ binding: 5, resource: { buffer: buffers.metricRuleCurves } }
 		]
 	});
 

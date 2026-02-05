@@ -1,7 +1,18 @@
 // Buffer creation and management
 
-import type { SimulationBuffers, SimulationParams, CursorState, Species } from './types';
-import { WORKGROUP_SIZE, WALL_TEXTURE_SCALE, MAX_SPECIES, VortexDirection } from './types';
+import type { SimulationBuffers, SimulationParams, CursorState, Species, CurvePoint } from './types';
+import {
+	WORKGROUP_SIZE,
+	WALL_TEXTURE_SCALE,
+	MAX_SPECIES,
+	MAX_METRIC_RULES_PER_SPECIES,
+	VortexDirection,
+	MetricSource,
+	MetricRole
+} from './types';
+
+// Curve samples per metric rule
+const METRIC_CURVE_SAMPLES = 64;
 
 export interface BufferConfig {
 	boidCount: number;
@@ -139,6 +150,20 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
+	// Metric rules buffer: MAX_SPECIES × MAX_METRIC_RULES_PER_SPECIES × 2 vec4s per rule
+	// Layout per rule: vec4[0]: [source, role, behavior, strength]
+	//                  vec4[1]: [range, enabled, curveOffset, padding]
+	const metricRules = device.createBuffer({
+		size: MAX_SPECIES * MAX_METRIC_RULES_PER_SPECIES * 2 * 16, // 28 vec4s * 16 bytes = 448 bytes
+		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+	});
+
+	// Metric rule curves: MAX_SPECIES × MAX_METRIC_RULES_PER_SPECIES × 64 samples (packed as vec4)
+	const metricRuleCurves = device.createBuffer({
+		size: MAX_SPECIES * MAX_METRIC_RULES_PER_SPECIES * METRIC_CURVE_SAMPLES * 4, // 896 floats * 4 bytes = 3584 bytes
+		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+	});
+
 	// Metrics buffer: vec4<f32> per boid [density, anisotropy, turning, influence]
 	// Used for species-specific structure visualization
 	const metrics = device.createBuffer({
@@ -181,6 +206,8 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		speciesIds,
 		speciesParams,
 		interactionMatrix,
+		metricRules,
+		metricRuleCurves,
 		metrics,
 		rankA,
 		rankB,
@@ -206,6 +233,8 @@ export function destroyBuffers(buffers: SimulationBuffers): void {
 	buffers.speciesIds.destroy();
 	buffers.speciesParams.destroy();
 	buffers.interactionMatrix.destroy();
+	buffers.metricRules.destroy();
+	buffers.metricRuleCurves.destroy();
 	buffers.metrics.destroy();
 	buffers.rankA.destroy();
 	buffers.rankB.destroy();
@@ -579,6 +608,75 @@ export function updateInteractionMatrix(
 	}
 
 	device.queue.writeBuffer(buffer, 0, data);
+}
+
+// Update metric rules buffer and curves
+export function updateMetricRules(
+	device: GPUDevice,
+	metricRulesBuffer: GPUBuffer,
+	metricCurvesBuffer: GPUBuffer,
+	species: Species[],
+	sampleCurve: (points: CurvePoint[]) => Float32Array
+): void {
+	// Layout: MAX_SPECIES × MAX_METRIC_RULES_PER_SPECIES × 2 vec4s
+	// vec4[0]: [source, role, behavior, strength]
+	// vec4[1]: [range, enabled, curveOffset, padding]
+	const rulesData = new Float32Array(MAX_SPECIES * MAX_METRIC_RULES_PER_SPECIES * 2 * 4);
+	const curvesData = new Float32Array(MAX_SPECIES * MAX_METRIC_RULES_PER_SPECIES * METRIC_CURVE_SAMPLES);
+
+	// Default linear curve for rules without custom curves
+	const defaultCurve: CurvePoint[] = [
+		{ x: 0, y: 0 },
+		{ x: 1, y: 1 }
+	];
+
+	for (const s of species) {
+		if (s.id >= MAX_SPECIES) continue;
+
+		// Filter metric rules from this species' interactions
+		const metricRules = s.interactions.filter((r) => r.type === 'metric');
+
+		for (let ruleIdx = 0; ruleIdx < MAX_METRIC_RULES_PER_SPECIES; ruleIdx++) {
+			const rule = metricRules[ruleIdx];
+			const rulesOffset = (s.id * MAX_METRIC_RULES_PER_SPECIES + ruleIdx) * 8; // 2 vec4s = 8 floats
+			const curveOffset = (s.id * MAX_METRIC_RULES_PER_SPECIES + ruleIdx) * METRIC_CURVE_SAMPLES;
+
+			if (rule && rule.type === 'metric') {
+				// vec4[0]: [source, role, behavior, strength]
+				rulesData[rulesOffset + 0] = rule.metricSource ?? MetricSource.Density;
+				rulesData[rulesOffset + 1] = rule.metricRole ?? MetricRole.Neighbor;
+				rulesData[rulesOffset + 2] = rule.behavior;
+				rulesData[rulesOffset + 3] = rule.strength;
+				// vec4[1]: [range, enabled, curveOffset, padding]
+				rulesData[rulesOffset + 4] = rule.range;
+				rulesData[rulesOffset + 5] = 1.0; // enabled
+				rulesData[rulesOffset + 6] = s.id * MAX_METRIC_RULES_PER_SPECIES + ruleIdx; // curve index
+				rulesData[rulesOffset + 7] = 0; // padding
+
+				// Sample curve
+				const curvePoints = rule.curve && rule.curve.length >= 2 ? rule.curve : defaultCurve;
+				const samples = sampleCurve(curvePoints);
+				curvesData.set(samples, curveOffset);
+			} else {
+				// Disabled rule - set enabled = 0, behavior = Ignore
+				rulesData[rulesOffset + 0] = 0;
+				rulesData[rulesOffset + 1] = 0;
+				rulesData[rulesOffset + 2] = 0; // BEHAVIOR_IGNORE
+				rulesData[rulesOffset + 3] = 0;
+				rulesData[rulesOffset + 4] = 0;
+				rulesData[rulesOffset + 5] = 0; // disabled
+				rulesData[rulesOffset + 6] = s.id * MAX_METRIC_RULES_PER_SPECIES + ruleIdx;
+				rulesData[rulesOffset + 7] = 0;
+
+				// Default linear curve anyway
+				const samples = sampleCurve(defaultCurve);
+				curvesData.set(samples, curveOffset);
+			}
+		}
+	}
+
+	device.queue.writeBuffer(metricRulesBuffer, 0, rulesData);
+	device.queue.writeBuffer(metricCurvesBuffer, 0, curvesData);
 }
 
 // Update wall texture from CPU data

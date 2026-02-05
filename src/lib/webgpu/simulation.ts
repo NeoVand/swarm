@@ -13,6 +13,7 @@ import {
 	createWallTexture,
 	updateSpeciesParams,
 	updateInteractionMatrix,
+	updateMetricRules,
 	updateCurveSamples,
 	MAX_TRAIL_LENGTH,
 	type BufferConfig
@@ -36,7 +37,9 @@ import {
 	initWallData,
 	wallsDirty,
 	curvesDirty,
+	metricRulesDirty,
 	sampleAllCurves,
+	sampleCurve,
 	params as paramsStore
 } from '$lib/stores/simulation';
 import { get } from 'svelte/store';
@@ -92,6 +95,8 @@ export function createSimulation(
 	// Initialize species buffers
 	updateSpeciesParams(device, buffers.speciesParams, params.species);
 	updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
+	// Initialize metric-based interaction rules
+	updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
 
 	// Initialize curve samples buffer
 	updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
@@ -136,6 +141,12 @@ export function createSimulation(
 		if (get(curvesDirty)) {
 			updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
 			curvesDirty.set(false);
+		}
+
+		// Check for metric rules updates
+		if (get(metricRulesDirty)) {
+			updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
+			metricRulesDirty.set(false);
 		}
 
 		// Update grid dimensions if perception changed
@@ -330,6 +341,8 @@ export function createSimulation(
 		// Initialize species buffers
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
+		// Initialize metric-based interaction rules
+		updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
 
 		// Initialize curve samples buffer (critical - curves are always active)
 		updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
@@ -371,6 +384,8 @@ export function createSimulation(
 		// Update species buffers
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
+		// Update metric-based interaction rules
+		updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
 
 		// Reset state
 		readFromA = true;
@@ -396,6 +411,8 @@ export function createSimulation(
 		// Update species parameters and interaction matrix
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
+		// Update metric-based interaction rules
+		updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
 	}
 
 	return {

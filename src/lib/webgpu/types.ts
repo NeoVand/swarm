@@ -117,6 +117,30 @@ export enum InteractionBehavior {
 	Spiral = 11 // Approach while orbiting - creates vortex convergence
 }
 
+// Metric sources for metric-based interactions
+export enum MetricSource {
+	// Stored metrics (from metricsOut buffer)
+	LocalDensity = 0, // Local neighbor count (crowded vs sparse)
+	Anisotropy = 1, // Local structure shape (blob=0, elongated/edge=1)
+	Spectral = 2, // Spectral/flow metric (uses current spectral mode setting)
+	TurnRate = 3, // Angular velocity (how fast turning)
+	// Computed metrics (calculated on the fly from velocity)
+	Speed = 4, // Velocity magnitude
+	Orientation = 5, // Velocity direction (0-1 mapped from angle)
+	Neighbors = 6, // Raw neighbor count
+	Acceleration = 7 // Rate of velocity change
+}
+
+// Metric role - whose metric matters
+export enum MetricRole {
+	Neighbor = 0, // React to neighbors based on THEIR metric
+	Self = 1, // React when MY metric is high/low
+	Difference = 2 // React based on metric DIFFERENCE between us
+}
+
+// Maximum metric rules per species (GPU buffer constraint)
+export const MAX_METRIC_RULES_PER_SPECIES = 2;
+
 // Per-species cursor response
 export enum CursorResponse {
 	Attract = 0, // Species is attracted to cursor
@@ -130,9 +154,22 @@ export enum VortexDirection {
 	CounterClockwise = 2 // Counter-clockwise rotation
 }
 
-// Interaction rule for how one species interacts with another
+// Interaction rule type
+export type InteractionRuleType = 'species' | 'metric';
+
+// Interaction rule for how one species interacts with another (or based on metrics)
 export interface InteractionRule {
-	targetSpecies: number | -1; // -1 means "all others"
+	type?: InteractionRuleType; // 'species' (default) or 'metric'
+
+	// Species rules (type === 'species' or undefined)
+	targetSpecies?: number | -1; // -1 means "all others"
+
+	// Metric rules (type === 'metric')
+	metricSource?: MetricSource; // Which metric to use
+	metricRole?: MetricRole; // Whose metric matters (neighbor/self/difference)
+	curve?: CurvePoint[]; // Curve mapping metric (0-1) to activation strength (0-1)
+
+	// Common to both rule types
 	behavior: InteractionBehavior;
 	strength: number; // 0 to 1 (intensity of the interaction)
 	range: number; // Perception range for this interaction (0 = use default perception)
@@ -318,6 +355,9 @@ export interface SimulationBuffers {
 	speciesIds: GPUBuffer; // u32 per boid - which species each boid belongs to
 	speciesParams: GPUBuffer; // Per-species flocking parameters (alignment, cohesion, etc.)
 	interactionMatrix: GPUBuffer; // MAX_SPECIES × MAX_SPECIES interaction rules
+	// Metric-based interaction rules
+	metricRules: GPUBuffer; // MAX_SPECIES × MAX_METRIC_RULES_PER_SPECIES × 2 vec4s
+	metricRuleCurves: GPUBuffer; // Curve samples for metric rules (MAX_SPECIES × MAX_METRIC_RULES × 64)
 	// Metrics buffer for visualization
 	metrics: GPUBuffer; // vec4<f32> per boid [density, anisotropy, turning, influence]
 	// Iterative algorithm ping-pong buffers

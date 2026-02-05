@@ -6,6 +6,7 @@ import {
 	type CursorState,
 	type Species,
 	type InteractionRule,
+	type InteractionRuleType,
 	type CurvePoint,
 	DEFAULT_PARAMS,
 	SPECIES_COLORS,
@@ -22,7 +23,10 @@ import {
 	HeadShape,
 	InteractionBehavior,
 	SpectralMode,
+	MetricSource,
+	MetricRole,
 	MAX_SPECIES,
+	MAX_METRIC_RULES_PER_SPECIES,
 	WALL_TEXTURE_SCALE,
 	createDefaultSpecies
 } from '$lib/webgpu/types';
@@ -77,6 +81,9 @@ export const wallsDirty = writable(false);
 
 // Species dirty flag (triggers GPU buffer update)
 export const speciesDirty = writable(false);
+
+// Metric rules dirty flag (triggers GPU buffer update)
+export const metricRulesDirty = writable(false);
 
 // Wall texture data (CPU-side buffer)
 // Initialized lazily based on canvas dimensions
@@ -457,6 +464,10 @@ export function addInteractionRule(speciesId: number, rule: InteractionRule): vo
 		return { ...p, species: newSpecies };
 	});
 	speciesDirty.set(true);
+	// Also mark metric rules dirty if this is a metric rule
+	if (rule.type === 'metric') {
+		metricRulesDirty.set(true);
+	}
 }
 
 // Update an interaction rule
@@ -465,31 +476,46 @@ export function updateInteractionRule(
 	ruleIndex: number,
 	updates: Partial<InteractionRule>
 ): void {
+	let isMetricRule = false;
 	params.update((p) => {
 		const newSpecies = p.species.map((s) => {
 			if (s.id !== speciesId) return s;
 			const newInteractions = [...s.interactions];
 			if (ruleIndex >= 0 && ruleIndex < newInteractions.length) {
 				newInteractions[ruleIndex] = { ...newInteractions[ruleIndex], ...updates };
+				// Check if this is a metric rule
+				isMetricRule = newInteractions[ruleIndex].type === 'metric';
 			}
 			return { ...s, interactions: newInteractions };
 		});
 		return { ...p, species: newSpecies };
 	});
 	speciesDirty.set(true);
+	// Also mark metric rules dirty if this is a metric rule
+	if (isMetricRule || updates.type === 'metric') {
+		metricRulesDirty.set(true);
+	}
 }
 
 // Remove an interaction rule
 export function removeInteractionRule(speciesId: number, ruleIndex: number): void {
+	let wasMetricRule = false;
 	params.update((p) => {
 		const newSpecies = p.species.map((s) => {
 			if (s.id !== speciesId) return s;
+			// Check if removed rule was a metric rule
+			if (ruleIndex >= 0 && ruleIndex < s.interactions.length) {
+				wasMetricRule = s.interactions[ruleIndex].type === 'metric';
+			}
 			const newInteractions = s.interactions.filter((_, i) => i !== ruleIndex);
 			return { ...s, interactions: newInteractions };
 		});
 		return { ...p, species: newSpecies };
 	});
 	speciesDirty.set(true);
+	if (wasMetricRule) {
+		metricRulesDirty.set(true);
+	}
 }
 
 // Set species head shape
@@ -994,4 +1020,4 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 }
 
 // Export types
-export type { Species, InteractionRule, CurvePoint };
+export type { Species, InteractionRule, InteractionRuleType, CurvePoint };

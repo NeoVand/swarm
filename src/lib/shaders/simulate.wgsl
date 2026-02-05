@@ -28,7 +28,9 @@ const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
 @group(1) @binding(0) var<storage, read> speciesIds: array<u32>;
 @group(1) @binding(1) var<uniform> speciesParams: array<vec4<f32>, 35>;  // 7 species * 5 vec4s per species
 @group(1) @binding(2) var<uniform> interactionMatrix: array<vec4<f32>, 49>;  // 7*7 entries
-@group(1) @binding(3) var<storage, read_write> metricsOut: array<vec4<f32>>;  // per-boid metrics [density, anisotropy, 0, 0]
+@group(1) @binding(3) var<storage, read_write> metricsOut: array<vec4<f32>>;  // per-boid metrics [density, anisotropy, turning, influence]
+@group(1) @binding(4) var<uniform> metricRules: array<vec4<f32>, 28>;  // 7 species * 2 rules * 2 vec4s per rule
+@group(1) @binding(5) var<uniform> metricRuleCurves: array<vec4<f32>, 224>;  // 7 species * 2 rules * 64 samples (packed as vec4)
 
 // Species params layout: 2 vec4s per species (8 floats total)
 // vec4[0]: [alignment, cohesion, separation, perception]
@@ -52,6 +54,25 @@ const BEHAVIOR_DISPERSE: u32 = 8u;  // Explosive scatter - confusion effect
 const BEHAVIOR_MOB: u32 = 9u;       // Aggressive swarming - counter-attack
 const BEHAVIOR_MIRROR: u32 = 10u;   // Reflect target's velocity - crossing wave patterns
 const BEHAVIOR_SPIRAL: u32 = 11u;   // Approach while orbiting - vortex convergence
+
+// Metric sources for metric-based interactions (must match MetricSource enum in types.ts)
+const METRIC_LOCAL_DENSITY: u32 = 0u;   // Local neighbor count
+const METRIC_ANISOTROPY: u32 = 1u;      // Local structure shape
+const METRIC_SPECTRAL: u32 = 2u;        // Spectral/flow metric (current mode)
+const METRIC_TURN_RATE: u32 = 3u;       // Angular velocity
+const METRIC_SPEED: u32 = 4u;           // Velocity magnitude
+const METRIC_ORIENTATION: u32 = 5u;     // Velocity direction
+const METRIC_NEIGHBORS: u32 = 6u;       // Raw neighbor count
+const METRIC_ACCELERATION: u32 = 7u;    // Rate of velocity change
+
+// Metric roles - whose metric matters (must match MetricRole enum in types.ts)
+const METRIC_ROLE_NEIGHBOR: u32 = 0u;   // React based on neighbor's metric
+const METRIC_ROLE_SELF: u32 = 1u;       // React based on my own metric
+const METRIC_ROLE_DIFFERENCE: u32 = 2u; // React based on metric difference
+
+// Constants for metric rules buffer layout
+const MAX_METRIC_RULES_PER_SPECIES: u32 = 2u;
+const METRIC_CURVE_SAMPLES: u32 = 64u;
 
 // Get species parameter by index (0-15)
 // 4 vec4s per species: 
@@ -126,6 +147,90 @@ fn getInteraction(fromSpecies: u32, toSpecies: u32, entryIdx: u32) -> f32 {
         case 1u: { return v.y; }  // strength
         case 2u: { return v.z; }  // range
         default: { return v.w; }  // padding
+    }
+}
+
+// ============================================================================
+// METRIC RULES HELPER FUNCTIONS
+// ============================================================================
+
+// Metric rule layout: 2 vec4s per rule
+// vec4[0]: [source, role, behavior, strength]
+// vec4[1]: [range, enabled (1.0 or 0.0), curveOffset, padding]
+struct MetricRule {
+    source: u32,
+    role: u32,
+    behavior: u32,
+    strength: f32,
+    range: f32,
+    enabled: bool,
+    curveOffset: u32,
+}
+
+// Get metric rule for a species (ruleIndex: 0 or 1)
+fn getMetricRule(speciesId: u32, ruleIndex: u32) -> MetricRule {
+    let baseIdx = (speciesId * MAX_METRIC_RULES_PER_SPECIES + ruleIndex) * 2u;
+    let v0 = metricRules[baseIdx];
+    let v1 = metricRules[baseIdx + 1u];
+    
+    var rule: MetricRule;
+    rule.source = u32(v0.x);
+    rule.role = u32(v0.y);
+    rule.behavior = u32(v0.z);
+    rule.strength = v0.w;
+    rule.range = v1.x;
+    rule.enabled = v1.y > 0.5;
+    rule.curveOffset = u32(v1.z);
+    return rule;
+}
+
+// Sample metric rule curve (returns 0-1 activation strength)
+fn sampleMetricCurve(metricValue: f32, curveOffset: u32) -> f32 {
+    let t = clamp(metricValue, 0.0, 1.0);
+    let sampleIdx = u32(t * f32(METRIC_CURVE_SAMPLES - 1u));
+    let flatIdx = curveOffset * METRIC_CURVE_SAMPLES + sampleIdx;
+    // Unpack from vec4 array: each vec4 holds 4 consecutive samples
+    let vec4Idx = flatIdx / 4u;
+    let component = flatIdx % 4u;
+    let v = metricRuleCurves[vec4Idx];
+    // Select component (WGSL doesn't support dynamic indexing on vectors directly)
+    switch (component) {
+        case 0u: { return v.x; }
+        case 1u: { return v.y; }
+        case 2u: { return v.z; }
+        default: { return v.w; }
+    }
+}
+
+// Get a boid's metric value by source (reads from previous frame's metrics)
+fn getBoidMetric(boidIdx: u32, source: u32) -> f32 {
+    let m = metricsOut[boidIdx];
+    switch (source) {
+        case METRIC_LOCAL_DENSITY: { return clamp(m.x / 10.0, 0.0, 1.0); }  // Normalize density
+        case METRIC_ANISOTROPY: { return m.y; }  // Already 0-1
+        case METRIC_SPECTRAL: { return m.w; }    // Already 0-1 (current spectral mode)
+        case METRIC_TURN_RATE: { return m.z; }   // Already 0-1
+        case METRIC_SPEED: {
+            // Compute speed from velocity, normalized to 0-1 range
+            let vel = velocitiesIn[boidIdx];
+            let speed = length(vel);
+            return clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
+        }
+        case METRIC_ORIENTATION: {
+            // Compute orientation angle from velocity, mapped to 0-1
+            let vel = velocitiesIn[boidIdx];
+            let angle = atan2(vel.y, vel.x);  // -PI to PI
+            return (angle + 3.14159265) / 6.28318530;  // Map to 0-1
+        }
+        case METRIC_NEIGHBORS: {
+            // Raw neighbor count normalized (same as density but different scale)
+            return clamp(m.x / 20.0, 0.0, 1.0);
+        }
+        case METRIC_ACCELERATION: {
+            // Use turn rate as proxy for acceleration (direction change)
+            return m.z;
+        }
+        default: { return 0.0; }
     }
 }
 
@@ -1019,6 +1124,186 @@ fn calculateInterSpeciesForce(
 }
 
 // ============================================================================
+// METRIC-BASED FORCE CALCULATION
+// ============================================================================
+
+fn calculateMetricForce(
+    boidIndex: u32,
+    myPos: vec2<f32>,
+    myVel: vec2<f32>,
+    mySpecies: u32
+) -> vec2<f32> {
+    var metricForce = vec2<f32>(0.0);
+    let myCellX = i32(myPos.x / uniforms.cellSize);
+    let myCellY = i32(myPos.y / uniforms.cellSize);
+    let myMaxForce = getSpeciesMaxForce(mySpecies);
+    
+    // Get my metrics for self/difference roles
+    let myMetrics = metricsOut[boidIndex];
+    
+    // Process each metric rule for this species
+    for (var ruleIdx = 0u; ruleIdx < MAX_METRIC_RULES_PER_SPECIES; ruleIdx++) {
+        let rule = getMetricRule(mySpecies, ruleIdx);
+        if (!rule.enabled || rule.behavior == BEHAVIOR_IGNORE) { continue; }
+        
+        // Determine range (0 = use species perception)
+        var range = rule.range;
+        if (range < 1.0) { range = getSpeciesPerception(mySpecies); }
+        
+        // Get my metric value for self/difference roles
+        let myMetricValue = getBoidMetric(boidIndex, rule.source);
+        
+        // For SELF role, activation is based on my own metric
+        var selfActivation = 1.0;
+        if (rule.role == METRIC_ROLE_SELF) {
+            selfActivation = sampleMetricCurve(myMetricValue, rule.curveOffset);
+            if (selfActivation < 0.01) { continue; }  // Skip if my activation is too low
+        }
+        
+        // Accumulators for this rule (reuse behavior patterns from species interactions)
+        var forceSum = vec2<f32>(0.0);
+        var forceCount = 0u;
+        
+        // Search neighbors in 5x5 grid
+        for (var dy = -2i; dy <= 2i; dy++) {
+            for (var dx = -2i; dx <= 2i; dx++) {
+                let cx = myCellX + dx;
+                let cy = myCellY + dy;
+                
+                if (!shouldSearchCell(cx, cy)) { continue; }
+                
+                let cellIdx = getCellIndexWithFlip(cx, cy, myCellY);
+                let cellStart = prefixSums[cellIdx];
+                let cellCount = cellCounts[cellIdx];
+                
+                for (var i = 0u; i < cellCount && i < 32u; i++) {
+                    let otherIdx = sortedIndices[cellStart + i];
+                    if (otherIdx == boidIndex) { continue; }
+                    
+                    let otherPos = positionsIn[otherIdx];
+                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    let delta = getNeighborDelta(myPos, otherPos);
+                    let distSq = dot(delta, delta);
+                    let rangeSq = range * range;
+                    
+                    if (distSq > rangeSq || distSq < 0.1) { continue; }
+                    
+                    let dist = sqrt(distSq);
+                    let weight = smoothKernel(dist, range);
+                    if (weight < 0.001) { continue; }
+                    
+                    let dir = delta / dist;
+                    
+                    // Calculate activation based on role
+                    var activation = selfActivation;  // Already set for SELF role
+                    
+                    if (rule.role == METRIC_ROLE_NEIGHBOR) {
+                        // Activation based on neighbor's metric
+                        let neighborMetric = getBoidMetric(otherIdx, rule.source);
+                        activation = sampleMetricCurve(neighborMetric, rule.curveOffset);
+                    } else if (rule.role == METRIC_ROLE_DIFFERENCE) {
+                        // Activation based on metric difference
+                        let neighborMetric = getBoidMetric(otherIdx, rule.source);
+                        let diff = abs(myMetricValue - neighborMetric);
+                        activation = sampleMetricCurve(diff, rule.curveOffset);
+                    }
+                    
+                    if (activation < 0.01) { continue; }
+                    
+                    let effectiveStrength = rule.strength * activation * weight;
+                    
+                    // Apply behavior (simplified versions of the 12 behaviors)
+                    switch (rule.behavior) {
+                        case BEHAVIOR_FLEE: {
+                            forceSum -= dir * separationKernel(dist, range) * effectiveStrength * 4.0;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_CHASE: {
+                            let prediction = otherPos + otherVel * 0.5;
+                            let predictDelta = getNeighborDelta(myPos, prediction);
+                            forceSum += predictDelta * effectiveStrength;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_COHERE: {
+                            forceSum += delta * effectiveStrength;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_ALIGN: {
+                            forceSum += otherVel * effectiveStrength;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_ORBIT: {
+                            let perpDir = vec2<f32>(-dir.y, dir.x);
+                            forceSum += perpDir * effectiveStrength;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_FOLLOW: {
+                            let otherSpeed = length(otherVel);
+                            var followOffset = delta;
+                            if (otherSpeed > 0.1) {
+                                let otherDir = otherVel / otherSpeed;
+                                let targetPos = otherPos - otherDir * 30.0;
+                                followOffset = getNeighborDelta(myPos, targetPos);
+                            }
+                            forceSum += followOffset * effectiveStrength;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_GUARD: {
+                            let optimalDist = range * 0.5;
+                            let distError = dist - optimalDist;
+                            if (distError > 0.0) {
+                                forceSum += dir * smoothKernel(abs(distError), range * 0.5) * effectiveStrength;
+                            } else {
+                                forceSum -= dir * separationKernel(dist, optimalDist) * effectiveStrength;
+                            }
+                            forceCount++;
+                        }
+                        case BEHAVIOR_DISPERSE: {
+                            forceSum -= dir * separationKernel(dist, range) * effectiveStrength * 2.0;
+                            let randAngle = hash(boidIndex * 17u + otherIdx * 31u + uniforms.frameCount) * 6.283185;
+                            forceSum += vec2<f32>(cos(randAngle), sin(randAngle)) * effectiveStrength * 0.3;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_MOB: {
+                            forceSum += delta * effectiveStrength * 1.5;
+                            let perpDir = vec2<f32>(-dir.y, dir.x);
+                            let orbitDir = select(-1.0, 1.0, (boidIndex % 2u) == 0u);
+                            forceSum += perpDir * effectiveStrength * orbitDir;
+                            forceCount++;
+                        }
+                        case BEHAVIOR_MIRROR: {
+                            let otherSpeed = length(otherVel);
+                            if (otherSpeed > 0.1) {
+                                let reflectDir = -otherVel / otherSpeed;
+                                forceSum += reflectDir * effectiveStrength;
+                            } else {
+                                forceSum -= dir * effectiveStrength * 0.5;
+                            }
+                            forceCount++;
+                        }
+                        case BEHAVIOR_SPIRAL: {
+                            forceSum += dir * effectiveStrength * 0.6;
+                            let perpDir = vec2<f32>(-dir.y, dir.x);
+                            let spiralDir = select(-1.0, 1.0, (mySpecies + boidIndex) % 2u == 0u);
+                            forceSum += perpDir * effectiveStrength * 0.8 * spiralDir;
+                            forceCount++;
+                        }
+                        default: {}
+                    }
+                }
+            }
+        }
+        
+        // Apply accumulated force for this rule
+        if (forceCount > 0u) {
+            metricForce += limitMagnitude(forceSum / f32(forceCount), myMaxForce * 2.0);
+        }
+    }
+    
+    return metricForce;
+}
+
+// ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
 
@@ -1055,6 +1340,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     // Add inter-species forces
     acceleration += calculateInterSpeciesForce(boidIndex, myPos, myVel, mySpecies);
+    
+    // Add metric-based forces
+    acceleration += calculateMetricForce(boidIndex, myPos, myVel, mySpecies);
     
     // Cursor interaction - Shape determines radial force, Vortex adds rotation
     // Per-species cursor response: 0 = Attract, 1 = Repel, 2 = Ignore
