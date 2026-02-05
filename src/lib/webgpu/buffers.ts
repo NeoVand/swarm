@@ -403,7 +403,7 @@ export function updateCurveSamples(
 	buffer: GPUBuffer,
 	samples: Float32Array
 ): void {
-	device.queue.writeBuffer(buffer, 0, samples);
+	device.queue.writeBuffer(buffer, 0, samples.buffer, samples.byteOffset, samples.byteLength);
 }
 
 // Minimum perception for buffer pre-allocation (matches UI min)
@@ -421,7 +421,14 @@ export function calculateGridDimensions(
 	canvasWidth: number,
 	canvasHeight: number,
 	perception: number
-): { gridWidth: number; gridHeight: number; cellSize: number; reducedWidth: number; reducedHeight: number; totalSlots: number } {
+): {
+	gridWidth: number;
+	gridHeight: number;
+	cellSize: number;
+	reducedWidth: number;
+	reducedHeight: number;
+	totalSlots: number;
+} {
 	// Use half the perception radius for cell size to reduce boundary artifacts
 	// This requires searching more cells (5x5 instead of 3x3) but creates smoother behavior
 	const cellSize = perception / 2;
@@ -448,7 +455,12 @@ export function calculateMaxGridDimensions(
 	const maxReducedWidth = Math.ceil(maxGridWidth / 3);
 	const maxReducedHeight = Math.ceil(maxGridHeight / 3);
 	const maxTotalSlots = 9 * maxReducedWidth * maxReducedHeight;
-	return { maxGridWidth, maxGridHeight, maxTotalCells: maxGridWidth * maxGridHeight, maxTotalSlots };
+	return {
+		maxGridWidth,
+		maxGridHeight,
+		maxTotalCells: maxGridWidth * maxGridHeight,
+		maxTotalSlots
+	};
 }
 
 // Calculate number of workgroups needed

@@ -174,24 +174,32 @@ export const SPECIES_COLORS: [number, number, number][] = [
 	[210, 90, 50], // Blue - vibrant, slightly dark
 	[25, 95, 58], // Orange - rich, warm
 	[145, 75, 40], // Green - toned down (green appears brighter perceptually)
-	[275, 85, 68], // Purple - boosted (purple appears darker perceptually)
+	[310, 90, 60], // Pink/Magenta - bright, vivid
 	[50, 90, 55], // Gold/Yellow - rich, warm
 	[185, 85, 50], // Teal/Cyan - saturated, balanced
-	[340, 85, 60] // Pink/Magenta - vivid, lively
+	[340, 85, 60] // Red-Pink - vivid, lively
 ];
 
 // Legacy exports for backwards compatibility
 export const SPECIES_HUES = SPECIES_COLORS.map(([h]) => h);
 
 // Default species names (simple numbered names)
-export const SPECIES_NAMES = ['Species 1', 'Species 2', 'Species 3', 'Species 4', 'Species 5', 'Species 6', 'Species 7'];
+export const SPECIES_NAMES = [
+	'Species 1',
+	'Species 2',
+	'Species 3',
+	'Species 4',
+	'Species 5',
+	'Species 6',
+	'Species 7'
+];
 
 // Create a default species
 export function createDefaultSpecies(id: number, population: number): Species {
 	// Cycle through available shapes (0-4: Triangle, Square, Pentagon, Hexagon, Arrow)
 	const numShapes = 5;
 	const colorIndex = id % SPECIES_COLORS.length;
-	const [hue, saturation, lightness] = SPECIES_COLORS[colorIndex] || [((id * 51) % 360), 85, 55];
+	const [hue, saturation, lightness] = SPECIES_COLORS[colorIndex] || [(id * 51) % 360, 85, 55];
 	return {
 		id,
 		name: SPECIES_NAMES[id] || `Species ${id + 1}`,
@@ -432,7 +440,12 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	wallBrushSize: 30, // Default brush size
 	wallBrushShape: WallBrushShape.Solid, // Default brush shape
 	// Multi-species defaults: Start with four species, all avoiding each other
-	species: [createDefaultSpecies1(3500), createDefaultSpecies2(1000), createDefaultSpecies3(750), createDefaultSpecies4(750)],
+	species: [
+		createDefaultSpecies1(3500),
+		createDefaultSpecies2(1000),
+		createDefaultSpecies3(750),
+		createDefaultSpecies4(750)
+	],
 	activeSpeciesId: 0,
 	// Spectral/Flow metrics defaults
 	enableInfluence: true,
@@ -443,11 +456,22 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	brightnessSource: ColorMode.LocalDensity, // Local density shows cluster structure nicely
 	// Curve editors - DISABLED by default to preserve existing behavior
 	hueCurveEnabled: false,
-	hueCurvePoints: [{ x: 0, y: 0 }, { x: 1, y: 1 }], // Linear (identity)
+	hueCurvePoints: [
+		{ x: 0, y: 0 },
+		{ x: 1, y: 1 }
+	], // Linear (identity)
 	saturationCurveEnabled: false,
-	saturationCurvePoints: [{ x: 0, y: 0.2 }, { x: 1, y: 1 }], // Matches 0.2 + satValue * 0.8
+	saturationCurvePoints: [
+		{ x: 0, y: 0.2 },
+		{ x: 1, y: 1 }
+	], // Matches 0.2 + satValue * 0.8
 	brightnessCurveEnabled: false,
-	brightnessCurvePoints: [{ x: 0, y: 0.25 }, { x: 0.4, y: 0.45 }, { x: 0.75, y: 0.7 }, { x: 1, y: 0.9 }] // Sub-linear curve for contrast with glow
+	brightnessCurvePoints: [
+		{ x: 0, y: 0.25 },
+		{ x: 0.4, y: 0.45 },
+		{ x: 0.75, y: 0.7 },
+		{ x: 1, y: 0.9 }
+	] // Sub-linear curve for contrast with glow
 };
 
 /**
