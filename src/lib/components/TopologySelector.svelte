@@ -63,16 +63,20 @@
 
 	// Shared lighting setup - create once, clone to each scene
 	function addLightsToScene(scene: THREE.Scene) {
-		const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+		const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
 		scene.add(ambientLight);
 
-		const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+		const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
 		keyLight.position.set(2, 3, 4);
 		scene.add(keyLight);
 
-		const fillLight = new THREE.DirectionalLight(0x88aaff, 0.3);
+		const fillLight = new THREE.DirectionalLight(0x99bbff, 0.5);
 		fillLight.position.set(-2, -1, 1.5);
 		scene.add(fillLight);
+
+		const rimLight = new THREE.DirectionalLight(0xffffff, 0.4);
+		rimLight.position.set(0, -2, -3);
+		scene.add(rimLight);
 	}
 
 	// Per-topology scale and rotation adjustments
@@ -131,8 +135,8 @@
 			metalness: 0.1,
 			roughness: 0.4,
 			clearcoat: 0.1,
-			emissive: new THREE.Color(0x1a1d30),
-			emissiveIntensity: 0.3,
+			emissive: new THREE.Color(0x101520),
+			emissiveIntensity: 0.2,
 			transparent: false,
 			side: THREE.DoubleSide,
 			polygonOffset: true,
@@ -316,7 +320,7 @@
 		const cellWidth = Math.floor(canvasWidth / 3);
 		const cellHeight = Math.floor(canvasHeight / 3);
 
-		rotationY += 0.008;
+		rotationY += 0.012;
 		const elapsed = (performance.now() - startTime) * 0.001;
 		const rotationX = 0.25 + Math.sin(elapsed * 0.4) * 0.15;
 
@@ -341,24 +345,28 @@
 
 			// Update material brightness based on selection
 			const mat = cell.mesh.material as THREE.MeshPhysicalMaterial;
-			const targetEmissive = isSelected ? 0.45 : 0.15;
+			const targetEmissive = isSelected ? 0.35 : 0.15;
 			mat.emissiveIntensity = THREE.MathUtils.lerp(mat.emissiveIntensity, targetEmissive, 0.1);
 
 			// Adjust color saturation for selected vs unselected
+			const baseColor = new THREE.Color(getTopologyColor(cell.mode));
 			if (isSelected) {
-				mat.color.setHex(getTopologyColor(cell.mode));
+				mat.color.copy(baseColor);
 			} else {
-				const baseColor = new THREE.Color(getTopologyColor(cell.mode));
-				const gray = new THREE.Color(0x555566);
-				mat.color.lerpColors(gray, baseColor, 0.5);
+				// Keep more of the original color - only slightly desaturate
+				const desaturated = baseColor.clone();
+				const hsl = { h: 0, s: 0, l: 0 };
+				desaturated.getHSL(hsl);
+				desaturated.setHSL(hsl.h, hsl.s * 0.75, hsl.l * 0.9);
+				mat.color.copy(desaturated);
 			}
 
 			// Grid opacity
 			const gridMat = cell.gridLines.material as THREE.LineBasicMaterial;
-			gridMat.opacity = isSelected ? 0.22 : 0.08;
+			gridMat.opacity = isSelected ? 0.25 : 0.12;
 
 			// Edge opacity
-			cell.edgeMaterial.opacity = isSelected ? 1.0 : 0.4;
+			cell.edgeMaterial.opacity = isSelected ? 1.0 : 0.5;
 
 			// Rotate
 			cell.mesh.rotation.x = rotationX;

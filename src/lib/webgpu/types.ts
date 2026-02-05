@@ -348,10 +348,11 @@ export interface BindGroups {
 // Create default species with predefined interactions for interesting dynamics
 function createDefaultSpecies1(population: number): Species {
 	const base = createDefaultSpecies(0, population);
-	// Species 1: Main flock - attracted to cursor, flees from other species
+	// Species 1: Main flock - attracted to cursor with vortex, flees from other species
 	return {
 		...base,
 		cursorResponse: CursorResponse.Attract, // Attracted to cursor
+		cursorVortex: VortexDirection.Clockwise, // Vortex rotation enabled
 		interactions: [
 			{
 				targetSpecies: -1, // All others

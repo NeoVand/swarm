@@ -18,6 +18,36 @@ fn getSpeciesTrailLength(speciesId: u32) -> f32 {
     return speciesParams[speciesId * 5u + 2u].w;  // vec4[2].w = trailLength
 }
 
+fn getSpeciesHeadShape(speciesId: u32) -> u32 {
+    return u32(speciesParams[speciesId * 5u + 1u].w);  // vec4[1].w = headShape
+}
+
+// Get the back offset multiplier for each head shape
+// This is how far back from center the tail of each shape is
+fn getShapeBackOffset(shape: u32) -> f32 {
+    switch (shape) {
+        case 0u: { return 0.7; }   // Triangle: back at -0.7
+        case 1u: { return 0.7; }   // Square: back corner at -0.7
+        case 2u: { return 0.57; }  // Pentagon: back vertices at ~-0.57
+        case 3u: { return 0.7; }   // Hexagon: back vertex at -0.7
+        case 4u: { return 0.5; }   // Arrow: back corners at -0.5
+        default: { return 0.7; }
+    }
+}
+
+// Get the back width multiplier for each head shape
+// This is the half-width at the back of each shape for trail connection
+fn getShapeBackWidth(shape: u32) -> f32 {
+    switch (shape) {
+        case 0u: { return 0.4; }   // Triangle: back width ±0.5, use 0.4 for slight inset
+        case 1u: { return 0.35; }  // Square: narrow at corner
+        case 2u: { return 0.35; }  // Pentagon: varies
+        case 3u: { return 0.35; }  // Hexagon: narrow at vertex
+        case 4u: { return 0.5; }   // Arrow: back width ±0.6, use 0.5 for slight inset
+        default: { return 0.4; }
+    }
+}
+
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec3<f32>,
@@ -156,17 +186,18 @@ fn vs_main(
     var historicalVel: vec2<f32>;
     
     // For the newest segment (age == 0), connect to the current boid's base position
-    // The boid triangle has vertices at (1.0, 0.0), (-0.7, ±0.5) in local space
-    // The base center is at (-0.7, 0), which is 0.7 * scale behind the boid center
+    // Different head shapes have different back positions, so we use shape-aware offsets
     if (age == 0u) {
         let currentPos = positions[boidIndex];
         let vel = velocities[boidIndex];
         let speed = length(vel);
         if (speed > 0.001) {
             let dir = vel / speed;
-            // Offset exactly to the triangle's base: 0.7 * boidSize * 6.0
+            // Get shape-aware offset to connect exactly at the shape's back
             let boidSize = speciesParams[speciesId * 5u + 2u].z;  // vec4[2].z = size
-            let baseOffset = 0.7 * boidSize * 6.0;
+            let headShape = getSpeciesHeadShape(speciesId);
+            let backOffset = getShapeBackOffset(headShape);
+            let baseOffset = backOffset * boidSize * 6.0;
             p2 = currentPos - dir * baseOffset;
         } else {
             p2 = currentPos;
@@ -229,13 +260,15 @@ fn vs_main(
     }
     
     // Width tapers from head (thick) to tail (thin)
-    // Slightly narrower than triangle base to fit inside the dark edge shading
+    // Use shape-aware width for connection point
     let ageRatio = f32(age) / f32(speciesTrailLen - 1u);
     let speciesSize = speciesParams[speciesId * 5u + 2u].z;  // vec4[2].z = size
-    let baseWidth = speciesSize * 2.4;  // Narrower to fit within triangle's bright center
+    let headShape = getSpeciesHeadShape(speciesId);
+    let shapeBackWidth = getShapeBackWidth(headShape);
+    let baseWidth = speciesSize * 6.0 * shapeBackWidth;  // Match shape's back width
     let width1 = baseWidth * (1.0 - ageRatio * 0.95);
     
-    // For newest segment, width2 connects to triangle
+    // For newest segment, width2 connects to shape's back
     var width2: f32;
     if (age == 0u) {
         width2 = baseWidth;
