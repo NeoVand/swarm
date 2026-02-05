@@ -1,0 +1,18 @@
+---
+description: 
+alwaysApply: true
+---
+
+# Use codebase-reader for Deep Codebase Questions
+
+When the user (or the task) needs **deep codebase understanding**, **architecture overviews**, **"how does X work" in detail**, or **mapping of modules/data flow**, delegate to the **codebase-reader** subagent instead of reading the whole codebase yourself.
+
+**Delegate when the user:**
+- Asks how something works in the codebase in detail
+- Wants an architecture or module overview
+- Asks to map or trace data flow, types, or dependencies
+- Needs a thorough answer that would require reading many files
+
+**How to delegate:** Invoke the codebase-reader subagent with a clear question or scope (e.g. "Use the codebase-reader to explain how the WebGPU simulation pipeline works"). Use the subagent's summarized, cited answer as context. Only load specific files yourself if you need to edit them.
+
+This keeps your context free for implementation and follow-up work.
