@@ -1323,13 +1323,15 @@
 							</svg>
 							<span>Boids</span>
 						</div>`,
-						description: `<p>Control the swarm appearance (per-species):</p>
+						description: `<p>Manage species and control swarm appearance:${kbd('N', isTouch)}</p>
 							<ul>
+								<li><strong>Species</strong> — Add/remove up to 7 species, select active</li>
 								<li><strong>Population</strong> — Number of boids${kbd('+ -', isTouch)}</li>
 								<li><strong>Size</strong> — Scale of each boid${kbd('← →', isTouch)}</li>
 								<li><strong>Trail</strong> — Motion trail length${kbd('[ ]', isTouch)}</li>
 								<li><strong>Rebels</strong> — Boids that ignore flocking rules</li>
-							</ul>`,
+							</ul>
+							<p style="margin-top: 6px; font-size: 11px; color: #71717a;">Settings are per-species — select a species to customize it.</p>`,
 						side: 'left',
 						align: 'start'
 					},
@@ -1422,11 +1424,10 @@
 							</svg>
 							<span>Interactions</span>
 						</div>`,
-						description: `<p>Create multiple swarms with unique behaviors:${kbd('N', isTouch)}</p>
+						description: `<p>Define how species react to each other:</p>
 							<ul style="margin-bottom: 8px;">
-								<li><strong>Add/Remove</strong> — Manage up to 7 species</li>
-								<li><strong>Rules</strong> — Define how species react to each other</li>
-								<li><strong>"All Others"</strong> sets default; specific rules override</li>
+								<li><strong>Rules</strong> — Set behavior between species pairs</li>
+								<li><strong>"All Others"</strong> — Sets default rule; specific pairs override</li>
 							</ul>
 							<p style="font-size: 10px; color: #a1a1aa; margin-bottom: 6px;">10 interaction behaviors:</p>
 							<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 10px;">
@@ -2206,6 +2207,42 @@
 						</svg>
 						<span class="section-label">Boids</span>
 					</div>
+					<!-- Quick species selector - only when collapsed and multiple species -->
+					{#if openSection !== 'boids' && currentParams.species.length > 1}
+						<div class="quick-species-selector">
+							{#each currentParams.species as species (species.id)}
+								<span
+									class="quick-species-btn"
+									class:selected={species.id === currentParams.activeSpeciesId}
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										setActiveSpecies(species.id);
+									}}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.stopPropagation();
+											setActiveSpecies(species.id);
+										}
+									}}
+									title={species.name}
+									style="--species-color: hsl({species.hue}, {species.saturation ??
+										70}%, {species.lightness ?? 55}%)"
+								>
+									<svg viewBox="0 0 20 20" class="quick-species-icon">
+										<path
+											d={getShapePath(species.headShape, 10, 10, 6)}
+											fill="var(--species-color)"
+										/>
+									</svg>
+									{#if species.id === currentParams.activeSpeciesId}
+										<span class="quick-species-ring"></span>
+									{/if}
+								</span>
+							{/each}
+						</div>
+					{/if}
 					<div class="section-actions">
 						{#if openSection === 'boids'}
 							<span
@@ -2264,6 +2301,7 @@
 				</button>
 				{#if openSection === 'boids'}
 					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+						<SpeciesSelector />
 						<div class="row">
 							<span class="label">Population</span>
 							<input
@@ -3413,42 +3451,6 @@
 						</svg>
 						<span class="section-label">Interactions</span>
 					</div>
-					<!-- Quick species selector - only when collapsed and multiple species -->
-					{#if openSection !== 'interactions' && currentParams.species.length > 1}
-						<div class="quick-species-selector">
-							{#each currentParams.species as species (species.id)}
-								<span
-									class="quick-species-btn"
-									class:selected={species.id === currentParams.activeSpeciesId}
-									role="button"
-									tabindex="0"
-									onclick={(e) => {
-										e.stopPropagation();
-										setActiveSpecies(species.id);
-									}}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.stopPropagation();
-											setActiveSpecies(species.id);
-										}
-									}}
-									title={species.name}
-									style="--species-color: hsl({species.hue}, {species.saturation ??
-										70}%, {species.lightness ?? 55}%)"
-								>
-									<svg viewBox="0 0 20 20" class="quick-species-icon">
-										<path
-											d={getShapePath(species.headShape, 10, 10, 6)}
-											fill="var(--species-color)"
-										/>
-									</svg>
-									{#if species.id === currentParams.activeSpeciesId}
-										<span class="quick-species-ring"></span>
-									{/if}
-								</span>
-							{/each}
-						</div>
-					{/if}
 					<div class="section-actions">
 						{#if openSection === 'interactions'}
 							<span
@@ -3487,7 +3489,6 @@
 				</button>
 				{#if openSection === 'interactions'}
 					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<SpeciesSelector />
 						<InteractionsPanel />
 					</div>
 				{/if}
