@@ -1344,12 +1344,22 @@
 					element: '#section-color',
 					popover: {
 						title: `<div style="display: flex; align-items: center; gap: 8px;">
-							<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
-								<circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/>
-								<circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/>
-								<circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/>
-								<circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/>
-								<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/>
+							<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+								<defs>
+									<linearGradient id="tour-rainbow" x1="0%" y1="0%" x2="100%" y2="100%">
+										<stop offset="0%" stop-color="#f87171"/>
+										<stop offset="20%" stop-color="#fbbf24"/>
+										<stop offset="40%" stop-color="#4ade80"/>
+										<stop offset="60%" stop-color="#22d3ee"/>
+										<stop offset="80%" stop-color="#818cf8"/>
+										<stop offset="100%" stop-color="#e879f9"/>
+									</linearGradient>
+								</defs>
+								<circle cx="13.5" cy="6.5" r="1.5" fill="#f87171"/>
+								<circle cx="17.5" cy="10.5" r="1.5" fill="#fbbf24"/>
+								<circle cx="8.5" cy="7.5" r="1.5" fill="#4ade80"/>
+								<circle cx="6.5" cy="12.5" r="1.5" fill="#818cf8"/>
+								<path stroke="url(#tour-rainbow)" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/>
 							</svg>
 							<span>Color</span>
 						</div>`,
@@ -1374,7 +1384,7 @@
 					element: '#section-forces',
 					popover: {
 						title: `<div style="display: flex; align-items: center; gap: 8px;">
-							<svg viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
+							<svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px;">
 								<path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/>
 								<path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/>
 								<path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/>
@@ -2383,21 +2393,30 @@
 			<div id="section-color">
 				<button class="section-header" onclick={() => toggleSection('color')}>
 					<div class="section-title">
-						<!-- Lucide: palette -->
+						<!-- Lucide: palette with rainbow gradient -->
 						<svg
-							class="section-icon icon-orange"
+							class="section-icon"
 							viewBox="0 0 24 24"
 							fill="none"
-							stroke="currentColor"
 							stroke-width="2"
 							stroke-linecap="round"
 							stroke-linejoin="round"
 						>
-							<circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/>
-							<circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/>
-							<circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/>
-							<circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/>
-							<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/>
+							<defs>
+								<linearGradient id="rainbow-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
+									<stop offset="0%" stop-color="#f87171"/>
+									<stop offset="20%" stop-color="#fbbf24"/>
+									<stop offset="40%" stop-color="#4ade80"/>
+									<stop offset="60%" stop-color="#22d3ee"/>
+									<stop offset="80%" stop-color="#818cf8"/>
+									<stop offset="100%" stop-color="#e879f9"/>
+								</linearGradient>
+							</defs>
+							<circle cx="13.5" cy="6.5" r="1.5" fill="#f87171"/>
+							<circle cx="17.5" cy="10.5" r="1.5" fill="#fbbf24"/>
+							<circle cx="8.5" cy="7.5" r="1.5" fill="#4ade80"/>
+							<circle cx="6.5" cy="12.5" r="1.5" fill="#818cf8"/>
+							<path stroke="url(#rainbow-stroke)" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/>
 						</svg>
 						<span class="section-label">Color</span>
 					</div>
@@ -4322,7 +4341,7 @@
 		color: #38bdf8;
 	}
 	.section-icon.icon-red {
-		color: #f87171;
+		color: #ef4444;
 	}
 	.section-icon.icon-pink {
 		color: #f472b6;
