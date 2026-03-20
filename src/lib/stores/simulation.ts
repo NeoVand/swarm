@@ -797,6 +797,19 @@ export function setBrightnessCurvePoints(points: CurvePoint[]): void {
 	params.update((p) => ({ ...p, brightnessCurvePoints: points }));
 }
 
+// Strength setters for HSL mappings
+export function setHueStrength(value: number): void {
+	params.update((p) => ({ ...p, hueStrength: value }));
+}
+
+export function setSaturationStrength(value: number): void {
+	params.update((p) => ({ ...p, saturationStrength: value }));
+}
+
+export function setBrightnessStrength(value: number): void {
+	params.update((p) => ({ ...p, brightnessStrength: value }));
+}
+
 // Flag to trigger curve buffer update
 export const curvesDirty = writable(false);
 

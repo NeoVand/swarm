@@ -60,6 +60,9 @@
 		setHueCurvePoints,
 		setSaturationCurvePoints,
 		setBrightnessCurvePoints,
+		setHueStrength,
+		setSaturationStrength,
+		setBrightnessStrength,
 		curvesDirty,
 		randomizeSimulation,
 		CursorResponse,
@@ -490,10 +493,13 @@
 		setColorSpectrum(DEFAULT_PARAMS.colorSpectrum);
 		setSaturationSource(DEFAULT_PARAMS.saturationSource);
 		setBrightnessSource(DEFAULT_PARAMS.brightnessSource);
-		// Reset curve points to defaults
+		// Reset curve points and strength to defaults
 		setHueCurvePoints([...DEFAULT_PARAMS.hueCurvePoints]);
 		setSaturationCurvePoints([...DEFAULT_PARAMS.saturationCurvePoints]);
 		setBrightnessCurvePoints([...DEFAULT_PARAMS.brightnessCurvePoints]);
+		setHueStrength(DEFAULT_PARAMS.hueStrength);
+		setSaturationStrength(DEFAULT_PARAMS.saturationStrength);
+		setBrightnessStrength(DEFAULT_PARAMS.brightnessStrength);
 		curvesDirty.set(true);
 	}
 
@@ -2014,7 +2020,19 @@
 			role="button"
 			tabindex="-1"
 		>
-			<div class="flex items-center gap-2">
+			<div class="flex items-center gap-2" onclick={(e) => {
+				if (e.shiftKey) {
+					e.stopPropagation();
+					const json = JSON.stringify(currentParams, null, 2);
+					const blob = new Blob([json], { type: 'application/json' });
+					const url = URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = `swarm-settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+					a.click();
+					URL.revokeObjectURL(url);
+				}
+			}}>
 				<img src="{base}/favicon.svg" alt="Swarm" class="h-5 w-5" />
 				<span class="brand-title">Swarm</span>
 			</div>
@@ -2993,6 +3011,19 @@
 								points={currentParams.hueCurvePoints}
 								onPointsChange={handleHueCurvePointsChange}
 							/>
+							<div class="strength-row">
+								<span class="strength-label">Intensity</span>
+								<input
+									type="range"
+									class="slider strength-slider"
+									min="0.1"
+									max="3"
+									step="0.05"
+									value={currentParams.hueStrength}
+									oninput={(e) => setHueStrength(parseFloat(e.currentTarget.value))}
+								/>
+								<span class="strength-value">{currentParams.hueStrength.toFixed(1)}x</span>
+							</div>
 						{/if}
 						<!-- Saturation source row -->
 						<div class="row">
@@ -3104,6 +3135,19 @@
 								points={currentParams.saturationCurvePoints}
 								onPointsChange={handleSaturationCurvePointsChange}
 							/>
+							<div class="strength-row">
+								<span class="strength-label">Intensity</span>
+								<input
+									type="range"
+									class="slider strength-slider"
+									min="0.1"
+									max="3"
+									step="0.05"
+									value={currentParams.saturationStrength}
+									oninput={(e) => setSaturationStrength(parseFloat(e.currentTarget.value))}
+								/>
+								<span class="strength-value">{currentParams.saturationStrength.toFixed(1)}x</span>
+							</div>
 						{/if}
 						<!-- Brightness source row -->
 						<div class="row">
@@ -3215,6 +3259,19 @@
 								points={currentParams.brightnessCurvePoints}
 								onPointsChange={handleBrightnessCurvePointsChange}
 							/>
+							<div class="strength-row">
+								<span class="strength-label">Intensity</span>
+								<input
+									type="range"
+									class="slider strength-slider"
+									min="0.1"
+									max="3"
+									step="0.05"
+									value={currentParams.brightnessStrength}
+									oninput={(e) => setBrightnessStrength(parseFloat(e.currentTarget.value))}
+								/>
+								<span class="strength-value">{currentParams.brightnessStrength.toFixed(1)}x</span>
+							</div>
 						{/if}
 					</div>
 				{/if}
@@ -4645,6 +4702,54 @@
 
 	.curve-toggle:disabled:hover {
 		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.strength-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 6px 6px;
+	}
+
+	.strength-label {
+		font-size: 9px;
+		color: rgb(120 120 130);
+		min-width: 42px;
+		flex-shrink: 0;
+	}
+
+	.strength-slider {
+		flex: 1;
+		height: 3px;
+		-webkit-appearance: none;
+		appearance: none;
+		background: rgba(255, 255, 255, 0.1);
+		border-radius: 2px;
+		outline: none;
+		cursor: pointer;
+	}
+
+	.strength-slider::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: rgb(140 140 155);
+		cursor: pointer;
+		border: none;
+	}
+
+	.strength-slider::-webkit-slider-thumb:hover {
+		background: rgb(180 180 195);
+	}
+
+	.strength-value {
+		font-size: 9px;
+		color: rgb(120 120 130);
+		min-width: 24px;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.palette-toggle {

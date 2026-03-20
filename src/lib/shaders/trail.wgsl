@@ -459,10 +459,11 @@ fn vs_main(
             }
             default: { satValue = 1.0; }
         }
-        // Apply curve to transform saturation value
+        // Apply strength scaling and curve to transform saturation value
+        satValue = clamp(satValue * uniforms.saturationStrength, 0.0, 1.0);
         saturation = lookupCurve(CURVE_SAT, satValue);
     }
-    
+
     // === BRIGHTNESS CALCULATION ===
     var brightness = 0.5;
     if (uniforms.brightnessSource == COLOR_NONE) {
@@ -522,16 +523,18 @@ fn vs_main(
             }
             default: { brightValue = 0.5; }
         }
-        // Apply curve to transform brightValue, then map to output range
+        // Apply strength scaling and curve to transform brightValue
+        brightValue = clamp(brightValue * uniforms.brightnessStrength, 0.0, 1.0);
         brightness = lookupCurve(CURVE_BRIGHT, brightValue);
     }
-    
+
     // === COLOR CALCULATION (HSL with dynamic S and L) ===
     var baseColor: vec3<f32>;
     var hue = colorValue;
     if (uniforms.colorMode != COLOR_NONE && uniforms.colorMode != COLOR_SPECIES) {
-        // Apply curve to transform color value to hue
-        hue = lookupCurve(CURVE_HUE, colorValue);
+        // Apply strength scaling and curve to transform color value to hue
+        let scaledColorValue = clamp(colorValue * uniforms.hueStrength, 0.0, 1.0);
+        hue = lookupCurve(CURVE_HUE, scaledColorValue);
     }
     
     if (uniforms.colorMode == COLOR_NONE) {

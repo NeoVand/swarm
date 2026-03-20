@@ -326,7 +326,47 @@
 				{ x: 1, y: 1 }
 			]
 		},
-		{ id: 'inverted', name: 'Inverted', points: [{ x: 0, y: 1 }, { x: 1, y: 0 }] }
+		{ id: 'inverted', name: 'Inverted', points: [{ x: 0, y: 1 }, { x: 1, y: 0 }] },
+		{
+			id: 'exp-up',
+			name: 'Exp Rise',
+			points: [
+				{ x: 0, y: 0.1 },
+				{ x: 0.6, y: 0.15 },
+				{ x: 0.85, y: 0.55 },
+				{ x: 1, y: 0.9 }
+			]
+		},
+		{
+			id: 'exp-down',
+			name: 'Exp Decay',
+			points: [
+				{ x: 0, y: 0.9 },
+				{ x: 0.15, y: 0.55 },
+				{ x: 0.4, y: 0.15 },
+				{ x: 1, y: 0.1 }
+			]
+		},
+		{
+			id: 'bowl',
+			name: 'Bowl',
+			points: [
+				{ x: 0, y: 0.9 },
+				{ x: 0.3, y: 0.2 },
+				{ x: 0.7, y: 0.2 },
+				{ x: 1, y: 0.9 }
+			]
+		},
+		{
+			id: 'bell',
+			name: 'Bell',
+			points: [
+				{ x: 0, y: 0.1 },
+				{ x: 0.3, y: 0.8 },
+				{ x: 0.7, y: 0.8 },
+				{ x: 1, y: 0.1 }
+			]
+		}
 	];
 
 	function applyPreset(preset: (typeof presets)[0]) {

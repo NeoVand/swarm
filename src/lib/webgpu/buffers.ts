@@ -419,6 +419,10 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	u32View[offset++] = data.params.hueCurveEnabled ? 1 : 0;
 	u32View[offset++] = data.params.saturationCurveEnabled ? 1 : 0;
 	u32View[offset++] = data.params.brightnessCurveEnabled ? 1 : 0;
+	// Strength multipliers for HSL mappings
+	f32View[offset++] = data.params.hueStrength;
+	f32View[offset++] = data.params.saturationStrength;
+	f32View[offset++] = data.params.brightnessStrength;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
 }

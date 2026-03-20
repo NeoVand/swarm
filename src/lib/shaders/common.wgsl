@@ -45,6 +45,9 @@ struct Uniforms {
     hueCurveEnabled: u32,
     saturationCurveEnabled: u32,
     brightnessCurveEnabled: u32,
+    hueStrength: f32,
+    saturationStrength: f32,
+    brightnessStrength: f32,
 }
 
 // Boundary modes

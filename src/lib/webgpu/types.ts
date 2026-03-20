@@ -212,8 +212,8 @@ export interface Species {
 export const SPECIES_COLORS: [number, number, number][] = [
 	[210, 90, 50], // Blue - vibrant, slightly dark
 	[25, 95, 58], // Orange - rich, warm
-	[145, 75, 40], // Green - toned down (green appears brighter perceptually)
-	[310, 90, 60], // Pink/Magenta - bright, vivid
+	[117, 75, 40], // Green - shifted toward yellow-green
+	[0, 90, 50], // Red - bold, vivid
 	[50, 90, 55], // Gold/Yellow - rich, warm
 	[185, 85, 50], // Teal/Cyan - saturated, balanced
 	[340, 85, 60] // Red-Pink - vivid, lively
@@ -248,7 +248,7 @@ export function createDefaultSpecies(id: number, population: number): Species {
 		lightness,
 		population,
 		// Per-species visual parameters
-		size: 1.5, // Default boid size
+		size: 1.0, // Default boid size
 		trailLength: 20, // Default trail length
 		// Flocking parameters
 		alignment: 1.3,
@@ -319,6 +319,10 @@ export interface SimulationParams {
 	saturationCurvePoints: CurvePoint[];
 	brightnessCurveEnabled: boolean;
 	brightnessCurvePoints: CurvePoint[];
+	// Strength multipliers for HSL mappings (scales the input value before curve lookup)
+	hueStrength: number;
+	saturationStrength: number;
+	brightnessStrength: number;
 }
 
 export interface CursorState {
@@ -440,13 +444,22 @@ function createDefaultSpecies3(population: number): Species {
 
 function createDefaultSpecies4(population: number): Species {
 	const base = createDefaultSpecies(3, population);
-	// Species 4: Fourth group - chases all others (predator species)
+	// Species 4: Predator - chases all others, flees from Species 2
 	return {
 		...base,
+		size: 1.3,
+		rebels: 0,
 		interactions: [
 			{
 				targetSpecies: -1, // All others
 				behavior: InteractionBehavior.Chase,
+				strength: 0.5,
+				range: 0
+			},
+			{
+				type: 'species' as const,
+				targetSpecies: 0, // Flees from Species 1
+				behavior: InteractionBehavior.Flee,
 				strength: 0.5,
 				range: 0
 			}
@@ -474,7 +487,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	colorMode: ColorMode.Species,
 	colorSpectrum: ColorSpectrum.Rainbow,
 	sensitivity: 1.0,
-	population: 6000, // Default total (will be recalculated based on screen size)
+	population: 5000, // Default total (will be recalculated based on screen size)
 	// Simulation timing
 	timeScale: 1.0, // Normal speed
 	// Dynamics
@@ -484,10 +497,10 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	wallBrushShape: WallBrushShape.Solid, // Default brush shape
 	// Multi-species defaults: Start with four species, all avoiding each other
 	species: [
-		createDefaultSpecies1(3500),
+		createDefaultSpecies1(3200),
 		createDefaultSpecies2(1000),
-		createDefaultSpecies3(750),
-		createDefaultSpecies4(750)
+		createDefaultSpecies3(700),
+		createDefaultSpecies4(100)
 	],
 	activeSpeciesId: 0,
 	// Spectral/Flow metrics defaults
@@ -496,7 +509,7 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	spectralMode: SpectralMode.FlowDivergence,
 	// HSL control defaults
 	saturationSource: ColorMode.None, // None = full saturation (100%)
-	brightnessSource: ColorMode.LocalDensity, // Local density shows cluster structure nicely
+	brightnessSource: ColorMode.TrueTurning, // Turn rate shows dynamic motion nicely
 	// Curve editors - DISABLED by default to preserve existing behavior
 	hueCurveEnabled: false,
 	hueCurvePoints: [
@@ -510,11 +523,15 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	], // Matches 0.2 + satValue * 0.8
 	brightnessCurveEnabled: false,
 	brightnessCurvePoints: [
-		{ x: 0, y: 0.25 },
-		{ x: 0.4, y: 0.45 },
-		{ x: 0.75, y: 0.7 },
-		{ x: 1, y: 0.9 }
-	] // Sub-linear curve for contrast with glow
+		{ x: 0, y: 0.9 },
+		{ x: 0.15, y: 0.55 },
+		{ x: 0.3664, y: 0.294 },
+		{ x: 1, y: 0 }
+	], // Descending exponential - bright when still, dim when turning
+	// Strength multipliers (scales input before curve lookup)
+	hueStrength: 1.0,
+	saturationStrength: 1.0,
+	brightnessStrength: 2.15
 };
 
 /**
@@ -573,11 +590,11 @@ export function calculateOptimalSpeciesPopulations(
 
 	totalPopulation = Math.max(MIN_POPULATION, Math.min(MAX_POPULATION, totalPopulation));
 
-	// Split: Species 1 ~58%, Species 2 ~17%, Species 3 ~12.5%, Species 4 ~12.5%
-	// This creates good visual dynamics - main flock with three smaller groups
-	const species1Raw = Math.floor(totalPopulation * 0.58);
-	const species2Raw = Math.floor(totalPopulation * 0.17);
-	const species3Raw = Math.floor(totalPopulation * 0.125);
+	// Split: Species 1 ~64%, Species 2 ~20%, Species 3 ~14%, Species 4 ~2%
+	// Species 4 (predator) is a small minority for interesting dynamics
+	const species1Raw = Math.floor(totalPopulation * 0.64);
+	const species2Raw = Math.floor(totalPopulation * 0.20);
+	const species3Raw = Math.floor(totalPopulation * 0.14);
 	const species4Raw = totalPopulation - species1Raw - species2Raw - species3Raw;
 
 	// Round to nearest 100 for cleaner numbers (50 for mobile)
