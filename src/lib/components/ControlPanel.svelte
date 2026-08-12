@@ -4942,13 +4942,6 @@
 							</div>
 						</div>
 
-						{#if currentParams.embedded3D}
-							<div class="embed-hint">
-								Hover or drag on the surface to push · Drag off it to orbit · Right-drag to pan ·
-								Scroll to zoom
-							</div>
-						{/if}
-
 						<div class="row">
 							<span class="label">Walls</span>
 							<div class="cursor-toggle cursor-toggle-4">
@@ -6010,12 +6003,6 @@
 	}
 	.cursor-toggle.cursor-toggle-4 {
 		grid-template-columns: repeat(4, 36px);
-	}
-	.embed-hint {
-		padding: 2px 2px 6px;
-		font-size: 10px;
-		line-height: 1.5;
-		color: rgb(113 113 122);
 	}
 	.cursor-toggle-btn:disabled {
 		opacity: 0.3;

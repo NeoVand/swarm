@@ -13,6 +13,18 @@ export interface OrbitCamera {
 	distance: number; // Distance from the target
 	target: [number, number, number];
 	fov: number; // Vertical field of view in radians
+	/**
+	 * Pan as a shift of the projected image rather than of the orbit pivot,
+	 * expressed in NDC (2 units spans the viewport height).
+	 *
+	 * Moving the pivot is the usual CAD behaviour, but here there is a single
+	 * object at the origin: sliding the pivot off it makes orbiting swing the
+	 * shape around an empty point in space instead of spinning it in place,
+	 * which is very visible with auto-rotate on. Offsetting the projection
+	 * keeps the pivot on the shape and just slides the picture.
+	 */
+	panX: number;
+	panY: number;
 }
 
 // Half-extent of the flat domain in world units. Chosen to sit in the same size
@@ -79,7 +91,9 @@ export function createOrbitCamera(canvasWidth: number, canvasHeight: number): Or
 		elevation: 0,
 		distance: fitDistance(canvasWidth, canvasHeight, fov),
 		target: [0, 0, 0],
-		fov
+		fov,
+		panX: 0,
+		panY: 0
 	};
 }
 
@@ -109,38 +123,16 @@ export function zoom(camera: OrbitCamera, factor: number): void {
  * moves the surface the same amount under the pointer at any zoom level.
  */
 export function pan(camera: OrbitCamera, deltaX: number, deltaY: number): void {
-	const eye = cameraEye(camera);
+	// Deltas arrive as fractions of the viewport height; NDC spans 2 over that
+	// height. Screen y runs downward, so a downward drag lowers the image.
+	camera.panX += deltaX * 2;
+	camera.panY -= deltaY * 2;
+}
 
-	let fx = camera.target[0] - eye[0];
-	let fy = camera.target[1] - eye[1];
-	let fz = camera.target[2] - eye[2];
-	const fLen = Math.hypot(fx, fy, fz) || 1;
-	fx /= fLen;
-	fy /= fLen;
-	fz /= fLen;
-
-	// right = normalize(cross(forward, worldUp))
-	let rx = fy * 0 - fz * 1;
-	let ry = fz * 0 - fx * 0;
-	let rz = fx * 1 - fy * 0;
-	const rLen = Math.hypot(rx, ry, rz) || 1;
-	rx /= rLen;
-	ry /= rLen;
-	rz /= rLen;
-
-	// up = cross(right, forward)
-	const ux = ry * fz - rz * fy;
-	const uy = rz * fx - rx * fz;
-	const uz = rx * fy - ry * fx;
-
-	// World units spanned by the full viewport height at the target's depth
-	const span = 2 * camera.distance * Math.tan(camera.fov / 2);
-
-	// Drag right pushes the scene right, so the target moves left. Screen y runs
-	// downward, so a downward drag moves the target up.
-	camera.target[0] += (-rx * deltaX + ux * deltaY) * span;
-	camera.target[1] += (-ry * deltaX + uy * deltaY) * span;
-	camera.target[2] += (-rz * deltaX + uz * deltaY) * span;
+/** Clear the pan offset without disturbing the orbit angles or zoom. */
+export function resetPan(camera: OrbitCamera): void {
+	camera.panX = 0;
+	camera.panY = 0;
 }
 
 /** Orthonormal camera basis: forward (toward target), right, up. */
@@ -188,8 +180,11 @@ export function rayThrough(
 	const origin = cameraEye(camera);
 	const t = Math.tan(camera.fov / 2);
 
-	const sx = ndcX * t * aspect;
-	const sy = ndcY * t;
+	// Back out the pan, which shifts the image after projection: a cursor at
+	// screen ndcX corresponds to unshifted ndcX - panX. Skipping this would make
+	// picking drift away from the pointer by exactly the pan amount.
+	const sx = (ndcX - camera.panX / aspect) * t * aspect;
+	const sy = (ndcY - camera.panY) * t;
 
 	let dx = forward[0] + right[0] * sx + up[0] * sy;
 	let dy = forward[1] + right[1] * sx + up[1] * sy;
@@ -259,7 +254,7 @@ export function viewProjectionMatrix(
 	// Column-major: element [col * 4 + row].
 	// Row 3 is -(view row 2), so w_clip is the positive distance in front of the
 	// camera; getting this sign wrong makes every vertex fail the clip test.
-	return new Float32Array([
+	const m = new Float32Array([
 		// column 0
 		sx * rx,
 		sy * ux,
@@ -281,4 +276,23 @@ export function viewProjectionMatrix(
 		a * tz + b,
 		-tz
 	]);
+
+	// Pan as an off-axis projection shift: clip.xy += pan * clip.w, i.e. add a
+	// multiple of the w row into the x and y rows. This slides the image without
+	// touching the eye or the pivot, so orbiting still spins the shape about
+	// itself no matter how far the view has been panned.
+	const ox = camera.panX / aspect;
+	const oy = camera.panY;
+	if (ox !== 0 || oy !== 0) {
+		m[0] += ox * m[3];
+		m[4] += ox * m[7];
+		m[8] += ox * m[11];
+		m[12] += ox * m[15];
+		m[1] += oy * m[3];
+		m[5] += oy * m[7];
+		m[9] += oy * m[11];
+		m[13] += oy * m[15];
+	}
+
+	return m;
 }

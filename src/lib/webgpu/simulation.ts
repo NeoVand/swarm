@@ -42,6 +42,7 @@ import {
 	orbit,
 	zoom,
 	pan,
+	resetPan,
 	rayThrough,
 	type OrbitCamera
 } from './camera';
@@ -205,6 +206,7 @@ export function createSimulation(
 		camera.target[0] = 0;
 		camera.target[1] = 0;
 		camera.target[2] = 0;
+		resetPan(camera);
 		userMovedCamera = false;
 	}
 
