@@ -5,16 +5,30 @@
 :root {
 	/* Background colors */
 	--bg-base: #0a0b0d;
-	--bg-panel: rgba(8, 8, 12, 0.92);
-	--bg-elevated: rgba(20, 20, 25, 0.98);
+	--bg-panel: rgba(8, 9, 13, 0.52);
+	--bg-elevated: rgba(11, 12, 17, 0.66);
 	--bg-subtle: rgba(255, 255, 255, 0.02);
 	--bg-muted: rgba(255, 255, 255, 0.05);
 	--bg-hover: rgba(255, 255, 255, 0.08);
 
-	/* Border colors */
-	--border-subtle: rgba(255, 255, 255, 0.06);
-	--border-muted: rgba(255, 255, 255, 0.1);
-	--border-default: rgba(255, 255, 255, 0.12);
+	/*
+	 * The lab floats over the flock rather than covering it, so every chrome
+	 * surface is glass: a low-alpha tint plus a wide blur. The blur is doing the
+	 * legibility work, not the tint - it flattens the flock into a soft wash so
+	 * small text still reads over it, which is what lets the alpha go this low.
+	 * Saturation is lifted because blurring desaturates, and without it the
+	 * colour of the flock underneath turns to grey mud.
+	 */
+	--glass-blur: blur(26px) saturate(1.5);
+	--glass-blur-soft: blur(18px) saturate(1.4);
+
+	/*
+	 * Borders carry more of the shape now that the fills are see-through - an
+	 * edge over a bright patch of flock needs to be brighter than one over black.
+	 */
+	--border-subtle: rgba(255, 255, 255, 0.09);
+	--border-muted: rgba(255, 255, 255, 0.14);
+	--border-default: rgba(255, 255, 255, 0.17);
 
 	/* Text colors */
 	--text-primary: #f4f4f5;
