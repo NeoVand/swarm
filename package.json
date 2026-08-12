@@ -38,6 +38,8 @@
 		"vite": "^7.2.6"
 	},
 	"dependencies": {
+		"@hugeicons/core-free-icons": "^4.2.3",
+		"@hugeicons/svelte": "^1.1.4",
 		"@lucide/svelte": "^0.563.1",
 		"@types/three": "^0.182.0",
 		"driver.js": "^1.4.0",

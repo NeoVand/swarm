@@ -14,22 +14,15 @@
 	import { getShapePath } from '$lib/utils/shapes';
 	import { hslColor } from '$lib/utils/color';
 	import CurveEditor from './CurveEditor.svelte';
-	import CircleSlash from '@lucide/svelte/icons/circle-slash';
-	import MoveUpLeft from '@lucide/svelte/icons/move-up-left';
-	import Target from '@lucide/svelte/icons/target';
-	import GitMerge from '@lucide/svelte/icons/git-merge';
-	import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
-	import Globe from '@lucide/svelte/icons/globe';
-	import Footprints from '@lucide/svelte/icons/footprints';
-	import Shield from '@lucide/svelte/icons/shield';
-	import Maximize2 from '@lucide/svelte/icons/maximize-2';
-	import Swords from '@lucide/svelte/icons/swords';
-	import FlipHorizontal2 from '@lucide/svelte/icons/flip-horizontal-2';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import Settings from '@lucide/svelte/icons/settings';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import Plus from '@lucide/svelte/icons/plus';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import {
+		behaviorIcon,
+		metricSourceIcon,
+		IconAdd,
+		IconChevronDown,
+		IconDelete,
+		IconSettings
+	} from '$lib/icons';
 
 	let currentParams = $derived($params);
 	let activeSpecies = $derived(getActiveSpecies(currentParams));
@@ -123,20 +116,21 @@
 	let openMetricRoleDropdown = $state<number | null>(null);
 	let expandedSettings = $state<Set<number>>(new Set());
 
-	// Behavior options with Lucide icons and colors (matching tour card)
+	// Behaviour options. The glyph comes from the shared registry (see
+	// $lib/icons) so the dropdown, the closed row and the tour card cannot drift.
 	const behaviorOptions = [
-		{ value: InteractionBehavior.Ignore, label: 'Ignore', Icon: CircleSlash, color: '#71717a' },
-		{ value: InteractionBehavior.Flee, label: 'Flee', Icon: MoveUpLeft, color: '#f87171' },
-		{ value: InteractionBehavior.Chase, label: 'Chase', Icon: Target, color: '#fb923c' },
-		{ value: InteractionBehavior.Cohere, label: 'Cohere', Icon: GitMerge, color: '#22d3ee' },
-		{ value: InteractionBehavior.Align, label: 'Align', Icon: ChevronsRight, color: '#a78bfa' },
-		{ value: InteractionBehavior.Orbit, label: 'Orbit', Icon: Globe, color: '#f97316' },
-		{ value: InteractionBehavior.Follow, label: 'Follow', Icon: Footprints, color: '#34d399' },
-		{ value: InteractionBehavior.Guard, label: 'Guard', Icon: Shield, color: '#38bdf8' },
-		{ value: InteractionBehavior.Disperse, label: 'Scatter', Icon: Maximize2, color: '#fbbf24' },
-		{ value: InteractionBehavior.Mob, label: 'Mob', Icon: Swords, color: '#ef4444' },
-		{ value: InteractionBehavior.Mirror, label: 'Mirror', Icon: FlipHorizontal2, color: '#c084fc' },
-		{ value: InteractionBehavior.Spiral, label: 'Spiral', Icon: LoaderCircle, color: '#2dd4bf' }
+		{ value: InteractionBehavior.Ignore, label: 'Ignore', icon: behaviorIcon(InteractionBehavior.Ignore), color: '#71717a' },
+		{ value: InteractionBehavior.Flee, label: 'Flee', icon: behaviorIcon(InteractionBehavior.Flee), color: '#f87171' },
+		{ value: InteractionBehavior.Chase, label: 'Chase', icon: behaviorIcon(InteractionBehavior.Chase), color: '#fb923c' },
+		{ value: InteractionBehavior.Cohere, label: 'Cohere', icon: behaviorIcon(InteractionBehavior.Cohere), color: '#22d3ee' },
+		{ value: InteractionBehavior.Align, label: 'Align', icon: behaviorIcon(InteractionBehavior.Align), color: '#a78bfa' },
+		{ value: InteractionBehavior.Orbit, label: 'Orbit', icon: behaviorIcon(InteractionBehavior.Orbit), color: '#f97316' },
+		{ value: InteractionBehavior.Follow, label: 'Follow', icon: behaviorIcon(InteractionBehavior.Follow), color: '#34d399' },
+		{ value: InteractionBehavior.Guard, label: 'Guard', icon: behaviorIcon(InteractionBehavior.Guard), color: '#38bdf8' },
+		{ value: InteractionBehavior.Disperse, label: 'Scatter', icon: behaviorIcon(InteractionBehavior.Disperse), color: '#fbbf24' },
+		{ value: InteractionBehavior.Mob, label: 'Mob', icon: behaviorIcon(InteractionBehavior.Mob), color: '#ef4444' },
+		{ value: InteractionBehavior.Mirror, label: 'Mirror', icon: behaviorIcon(InteractionBehavior.Mirror), color: '#c084fc' },
+		{ value: InteractionBehavior.Spiral, label: 'Spiral', icon: behaviorIcon(InteractionBehavior.Spiral), color: '#2dd4bf' }
 	];
 
 	// Get behavior option by value
@@ -341,24 +335,8 @@
 									onclick={() => toggleMetricSourceDropdown(ruleIndex)}
 									title={getMetricLabel(metricSrc)}
 								>
-									{#if metricSrc === MetricSource.Speed}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
-									{:else if metricSrc === MetricSource.Orientation}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
-									{:else if metricSrc === MetricSource.Neighbors}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-									{:else if metricSrc === MetricSource.LocalDensity}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.5-8.97 4.08a2 2 0 0 1-1.66 0L2 12.5"/><path d="m22 17.5-8.97 4.08a2 2 0 0 1-1.66 0L2 17.5"/></svg>
-									{:else if metricSrc === MetricSource.Anisotropy}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/></svg>
-									{:else if metricSrc === MetricSource.TurnRate}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-									{:else if metricSrc === MetricSource.Acceleration}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-									{:else if metricSrc === MetricSource.Spectral}
-										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
-									{/if}
-									<ChevronDown size={10} strokeWidth={2} />
+									<HugeiconsIcon icon={metricSourceIcon(metricSrc)} size={14} strokeWidth={1.8} />
+									<HugeiconsIcon icon={IconChevronDown} size={10} strokeWidth={2} />
 								</button>
 								{#if openMetricSourceDropdown === ruleIndex}
 									<div class="dropdown-menu labeled-menu">
@@ -368,23 +346,7 @@
 												class:active={rule.metricSource === opt.value}
 												onclick={() => handleMetricSourceChange(ruleIndex, opt.value)}
 											>
-												{#if opt.value === MetricSource.Speed}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
-												{:else if opt.value === MetricSource.Orientation}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
-												{:else if opt.value === MetricSource.Neighbors}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-												{:else if opt.value === MetricSource.LocalDensity}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.5-8.97 4.08a2 2 0 0 1-1.66 0L2 12.5"/><path d="m22 17.5-8.97 4.08a2 2 0 0 1-1.66 0L2 17.5"/></svg>
-												{:else if opt.value === MetricSource.Anisotropy}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" x2="17" y1="12" y2="12"/></svg>
-												{:else if opt.value === MetricSource.TurnRate}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-												{:else if opt.value === MetricSource.Acceleration}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-												{:else if opt.value === MetricSource.Spectral}
-													<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
-												{/if}
+												<HugeiconsIcon icon={metricSourceIcon(opt.value)} size={14} strokeWidth={1.8} />
 												<span>{opt.label}</span>
 											</button>
 										{/each}
@@ -411,7 +373,7 @@
 										<!-- delta icon -->
 										<svg class="species-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4L4 20h16L12 4z"/></svg>
 									{/if}
-									<ChevronDown size={10} strokeWidth={2} />
+									<HugeiconsIcon icon={IconChevronDown} size={10} strokeWidth={2} />
 								</button>
 								{#if openMetricRoleDropdown === ruleIndex}
 									<div class="dropdown-menu labeled-menu">
@@ -443,8 +405,8 @@
 									title={behaviorOpt.label}
 									style="color: {behaviorOpt.color}"
 								>
-									<behaviorOpt.Icon size={14} strokeWidth={2} color={behaviorOpt.color} />
-									<ChevronDown size={10} strokeWidth={2} />
+									<HugeiconsIcon icon={behaviorOpt.icon} size={14} strokeWidth={1.8} color={behaviorOpt.color} />
+									<HugeiconsIcon icon={IconChevronDown} size={10} strokeWidth={2} />
 								</button>
 								{#if openBehaviorDropdown === ruleIndex}
 									<div class="dropdown-menu behavior-grid-menu">
@@ -456,7 +418,7 @@
 												title={opt.label}
 												style="--behavior-color: {opt.color}"
 											>
-												<opt.Icon size={14} strokeWidth={2} color={opt.color} />
+												<HugeiconsIcon icon={opt.icon} size={14} strokeWidth={1.8} color={opt.color} />
 												<span>{opt.label}</span>
 											</button>
 										{/each}
@@ -473,7 +435,7 @@
 										onclick={() => toggleSettings(ruleIndex)}
 										title="Settings"
 									>
-										<Settings size={14} strokeWidth={2} />
+										<HugeiconsIcon icon={IconSettings} size={14} strokeWidth={2} />
 									</button>
 								{/if}
 								<button
@@ -481,7 +443,7 @@
 									onclick={() => handleRemoveRule(ruleIndex)}
 									title="Remove rule"
 								>
-									<Trash2 size={12} strokeWidth={2} />
+									<HugeiconsIcon icon={IconDelete} size={12} strokeWidth={2} />
 								</button>
 							</div>
 						</div>
@@ -517,7 +479,7 @@
 											</svg>
 										{/if}
 									{/if}
-									<ChevronDown size={10} strokeWidth={2} />
+									<HugeiconsIcon icon={IconChevronDown} size={10} strokeWidth={2} />
 								</button>
 								{#if openTargetDropdown === ruleIndex}
 									{@const availableTargets = getAvailableTargetsForRule(ruleIndex)}
@@ -559,9 +521,9 @@
 									onclick={() => toggleBehaviorDropdown(ruleIndex)}
 									style="--behavior-color: {behaviorOpt.color}"
 								>
-									<behaviorOpt.Icon size={14} strokeWidth={2} color={behaviorOpt.color} />
+									<HugeiconsIcon icon={behaviorOpt.icon} size={14} strokeWidth={1.8} color={behaviorOpt.color} />
 									<span class="behavior-label">{behaviorOpt.label}</span>
-									<ChevronDown size={10} strokeWidth={2} />
+									<HugeiconsIcon icon={IconChevronDown} size={10} strokeWidth={2} />
 								</button>
 								{#if openBehaviorDropdown === ruleIndex}
 									<div class="dropdown-menu behavior-grid-menu">
@@ -573,7 +535,7 @@
 												title={opt.label}
 												style="--behavior-color: {opt.color}"
 											>
-												<opt.Icon size={14} strokeWidth={2} color={opt.color} />
+												<HugeiconsIcon icon={opt.icon} size={14} strokeWidth={1.8} color={opt.color} />
 												<span>{opt.label}</span>
 											</button>
 										{/each}
@@ -590,7 +552,7 @@
 										onclick={() => toggleSettings(ruleIndex)}
 										title="Settings"
 									>
-										<Settings size={14} strokeWidth={2} />
+										<HugeiconsIcon icon={IconSettings} size={14} strokeWidth={2} />
 									</button>
 								{/if}
 								<button
@@ -598,7 +560,7 @@
 									onclick={() => handleRemoveRule(ruleIndex)}
 									title="Remove rule"
 								>
-									<Trash2 size={12} strokeWidth={2} />
+									<HugeiconsIcon icon={IconDelete} size={12} strokeWidth={2} />
 								</button>
 							</div>
 						</div>
@@ -661,7 +623,7 @@
 						class="add-rule-btn"
 						onclick={handleAddSpeciesRule}
 					>
-						<Plus size={10} strokeWidth={2} />
+						<HugeiconsIcon icon={IconAdd} size={10} strokeWidth={2} />
 						<span>Species Rule</span>
 					</button>
 				{/if}
@@ -671,7 +633,7 @@
 					onclick={canAddMoreMetricRules ? handleAddMetricRule : undefined}
 					title={canAddMoreMetricRules ? "" : `Max ${MAX_METRIC_RULES_PER_SPECIES} metric rules`}
 				>
-					<Plus size={10} strokeWidth={2} />
+					<HugeiconsIcon icon={IconAdd} size={10} strokeWidth={2} />
 					<span>Metric Rule</span>
 				</button>
 			</div>
@@ -817,11 +779,13 @@
 		top: 100%;
 		left: 0;
 		margin-top: 2px;
-		background: rgba(20, 20, 25, 0.98);
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: var(--bg-elevated);
+		backdrop-filter: var(--glass-blur-soft);
+		-webkit-backdrop-filter: var(--glass-blur-soft);
+		border: 1px solid var(--border-muted);
 		border-radius: 6px;
 		z-index: 9999;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 	}
 
 	.dropdown-menu.compact {
