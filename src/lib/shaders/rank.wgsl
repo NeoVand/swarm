@@ -119,12 +119,32 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (boidIndex >= uniforms.boidCount) { return; }
     
     let myPos = positions[boidIndex];
-    let myVel = velocities[boidIndex];
+
+    // Same surface metric the simulation runs on - see metricFrameAt in
+    // embed.wgsl. Every quantity below is a shape or a direction read off the
+    // local neighbourhood, so measuring it in domain pixels would report the
+    // chart's distortion as structure in the flock: a perfectly round cluster
+    // in the neck of a Klein bottle would come out as an ellipse.
+    let metric = metricFrameAt(myPos);
+    let toSurface = metric.toSurface;
+    let toDomain = metric.toDomain;
+
+    let myVel = toSurface * velocities[boidIndex];
     let mySpeed = length(myVel);
     let perception = uniforms.perception;
-    
-    // Compute weighted center of mass, average velocity, and other statistics
-    var centerOfMass = vec2<f32>(0.0);
+
+    // Reshape the search block to the neighbourhood's domain-space aspect,
+    // matching simulate.wgsl so both passes see the same neighbours.
+    let reachX = length(vec2<f32>(toDomain[0][0], toDomain[1][0]));
+    let reachY = length(vec2<f32>(toDomain[0][1], toDomain[1][1]));
+    let reachRatio = sqrt(reachX / max(reachY, 1e-6));
+    let cellRadiusX = clamp(i32(round(2.0 * reachRatio)), 1, 5);
+    let cellRadiusY = clamp(i32(round(2.0 / max(reachRatio, 1e-6))), 1, 5);
+
+    // Offset from this boid to the neighbourhood's weighted centre, in surface
+    // units. Accumulated as a relative vector rather than an absolute position
+    // because a wrapped neighbour has no meaningful absolute one.
+    var centerOffset = vec2<f32>(0.0);
     var avgVelocity = vec2<f32>(0.0);
     var totalWeight: f32 = 0.0;
     var neighborCount: u32 = 0u;
@@ -133,9 +153,9 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let myCellX = i32(myPos.x / uniforms.cellSize);
     let myCellY = i32(myPos.y / uniforms.cellSize);
     
-    // Iterate over 5x5 cell neighborhood (needed for cellSize = perception/2)
-    for (var dy = -2i; dy <= 2i; dy++) {
-        for (var dx = -2i; dx <= 2i; dx++) {
+    // Iterate over the neighbourhood block (5x5 when unembedded)
+    for (var dy = -cellRadiusY; dy <= cellRadiusY; dy++) {
+        for (var dx = -cellRadiusX; dx <= cellRadiusX; dx++) {
             let ncx = myCellX + dx;
             let ncy = myCellY + dy;
             
@@ -150,7 +170,7 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 if (otherIdx == boidIndex) { continue; }
                 
                 let otherPos = positions[otherIdx];
-                let delta = getNeighborDelta(myPos, otherPos);
+                let delta = toSurface * getNeighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 
                 if (distSq >= perception * perception) { continue; }
@@ -159,13 +179,13 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 let weight = smoothKernel(dist, perception);
                 
                 if (weight > 0.0) {
-                    // Use myPos + delta instead of otherPos to handle boundary wrapping correctly
-                    centerOfMass += (myPos + delta) * weight;
+                    // Relative, so wrapping is already handled by the delta
+                    centerOffset += delta * weight;
                     // A neighbour reached across a flipping seam is stored in a
                     // mirrored frame, so its raw velocity points the wrong way.
                     // Averaging those directly is what made the flow metrics
                     // disagree with themselves along Mobius and Klein seams.
-                    avgVelocity += transformNeighborVelocity(myPos, otherPos, velocities[otherIdx]) * weight;
+                    avgVelocity += toSurface * transformNeighborVelocity(myPos, otherPos, velocities[otherIdx]) * weight;
                     totalWeight += weight;
                     neighborCount++;
                     maxDist = max(maxDist, dist);
@@ -182,11 +202,11 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     
     if (totalWeight > 1e-6 && neighborCount >= 3u) {
         // Compute center of mass and average velocity
-        centerOfMass /= totalWeight;
+        centerOffset /= totalWeight;
         avgVelocity /= totalWeight;
-        
+
         // Vector from center of mass to this boid
-        let relativePos = myPos - centerOfMass;
+        let relativePos = -centerOffset;
         let distFromCenter = length(relativePos);
         
         // For flow modes

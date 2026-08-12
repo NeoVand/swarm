@@ -9,6 +9,7 @@ import prefixSumShader from '$lib/shaders/prefix_sum.wgsl?raw';
 import scatterShader from '$lib/shaders/scatter.wgsl?raw';
 import simulateShader from '$lib/shaders/simulate.wgsl?raw';
 import commonShader from '$lib/shaders/common.wgsl?raw';
+import embedShader from '$lib/shaders/embed.wgsl?raw';
 import rankShader from '$lib/shaders/rank.wgsl?raw';
 import writeMetricsShader from '$lib/shaders/write_metrics.wgsl?raw';
 
@@ -59,7 +60,7 @@ export function createComputePipelines(
 	const prefixSumModule = device.createShaderModule({ code: prefixSumShader });
 	const scatterModule = device.createShaderModule({ code: scatterShader });
 	// Concatenate common.wgsl (Uniforms, boundary config) with simulate shader
-	const simulateModule = device.createShaderModule({ code: commonShader + simulateShader });
+	const simulateModule = device.createShaderModule({ code: commonShader + embedShader + simulateShader });
 
 	// === Clear Pipeline (clears both cellCounts and cellOffsets in one pass) ===
 	const clearBindGroupLayout = device.createBindGroupLayout({
@@ -281,7 +282,7 @@ export function createComputePipelines(
 
 	// === Rank (Spectral) Pipeline ===
 	// Concatenate common.wgsl (Uniforms, boundary config) with rank shader
-	const rankModule = device.createShaderModule({ code: commonShader + rankShader });
+	const rankModule = device.createShaderModule({ code: commonShader + embedShader + rankShader });
 
 	// Bind group 0 for rank: includes velocities for dynamic spectral modes
 	const rankBindGroupLayout0 = device.createBindGroupLayout({

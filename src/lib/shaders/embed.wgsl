@@ -278,6 +278,165 @@ fn surfaceScale() -> f32 {
     return domainWidth() / uniforms.canvasWidth;
 }
 
+// ---------------------------------------------------------------------------
+// Local metric
+// ---------------------------------------------------------------------------
+//
+// The simulation runs on the flat domain, but the flock is meant to live on the
+// surface, and those two disagree wherever the embedding is not isometric. A
+// domain patch of area dA covers sqrt(det g) dA of actual surface, so a flock
+// that spaces itself evenly in the domain piles up wherever the surface is
+// compressed and thins out where it stretches. Measured over the whole domain,
+// that factor runs 0.44 to 1.56 on the torus and 0.17 to 2.53 on a Klein
+// bottle - a fifteenfold density range, which is why the neck of the bottle
+// used to swallow far more boids than its area can hold.
+//
+// Area is only half of it. The Mobius strip's factor is near 1 everywhere, but
+// its two principal directions are stretched 1.96 and squeezed 0.50 - a 4:1
+// shear - and Mobius Y is 3.48 against 0.28, or 12:1. A flock even in the
+// domain comes out combed flat on the surface.
+//
+// The fix is to do the flocking in the surface's own units. `metricFrameAt`
+// returns the linear map taking a domain-space vector to one whose length is
+// the distance its image spans on the surface, together with the inverse.
+// Distances, speeds and forces measured through it are measured where the boids
+// actually are, so the equilibrium spacing is uniform on the shape rather than
+// in the chart: a tight tube admits fewer boids instead of squeezing more in.
+//
+// Normalised so the flat plane is exactly the identity - every tuning value in
+// the simulation keeps its meaning and unembedded mode is bit-for-bit unchanged.
+
+// Singular values are clamped before use. The Roman surface's pinch points are
+// genuine singularities of the immersion (its factor bottoms out near 0.04),
+// and 1/sigma appears in both the force and the position update, so without a
+// floor a boid there would be flung across the domain in one frame. 0.25 sits
+// just below the 1st percentile of every non-singular topology, so it costs
+// accuracy only where the surface itself has stopped being a surface.
+const METRIC_SIGMA_MIN: f32 = 0.25;
+const METRIC_SIGMA_MAX: f32 = 4.0;
+
+struct MetricFrame {
+    toSurface: mat2x2<f32>, // domain vector -> vector of the same length as its image
+    toDomain: mat2x2<f32>,  // and back
+}
+
+fn identityFrame() -> MetricFrame {
+    var out: MetricFrame;
+    out.toSurface = mat2x2<f32>(1.0, 0.0, 0.0, 1.0);
+    out.toDomain = mat2x2<f32>(1.0, 0.0, 0.0, 1.0);
+    return out;
+}
+
+fn metricFrameAt(domainPos: vec2<f32>) -> MetricFrame {
+    // Nothing to correct when the domain is being shown flat, and this is the
+    // common case - keep it free.
+    if (!isEmbedded()) {
+        return identityFrame();
+    }
+
+    let frame = surfaceFrameAt(domainToParam(domainPos));
+
+    // Columns of the differential in domain-pixel units, divided by the flat
+    // plane's uniform scale. Domain y runs opposite to parametric v, hence the
+    // sign; it cancels out of the metric but keeps the frame right-handed.
+    let a = frame.du / domainWidth();
+    let b = -frame.dv / domainHeight();
+
+    // g = J^T J, symmetric and positive semi-definite.
+    let gxx = dot(a, a);
+    let gxy = dot(a, b);
+    let gyy = dot(b, b);
+
+    // Closed-form eigendecomposition. The frame we want is g^(1/2), which for a
+    // symmetric matrix is just the same eigenvectors with square-rooted
+    // eigenvalues - and having them separately is what lets us clamp.
+    let tr = gxx + gyy;
+    let det = gxx * gyy - gxy * gxy;
+    let disc = sqrt(max(tr * tr - 4.0 * det, 0.0));
+    let l1 = 0.5 * (tr + disc);
+    let l2 = 0.5 * (tr - disc);
+
+    // Eigenvector for l1. This degenerates exactly when the metric is isotropic,
+    // where any orthonormal pair is an eigenbasis, so the fallback is free.
+    let cand = vec2<f32>(gxy, l1 - gxx);
+    var e1 = vec2<f32>(1.0, 0.0);
+    if (length(cand) > 1e-9 * max(tr, 1.0)) {
+        e1 = normalize(cand);
+    }
+    let e2 = vec2<f32>(-e1.y, e1.x);
+
+    let s1 = clamp(sqrt(max(l1, 0.0)), METRIC_SIGMA_MIN, METRIC_SIGMA_MAX);
+    let s2 = clamp(sqrt(max(l2, 0.0)), METRIC_SIGMA_MIN, METRIC_SIGMA_MAX);
+
+    let p1 = mat2x2<f32>(e1.x * e1.x, e1.x * e1.y, e1.x * e1.y, e1.y * e1.y);
+    let p2 = mat2x2<f32>(e2.x * e2.x, e2.x * e2.y, e2.x * e2.y, e2.y * e2.y);
+
+    var out: MetricFrame;
+    out.toSurface = p1 * s1 + p2 * s2;
+    out.toDomain = p1 * (1.0 / s1) + p2 * (1.0 / s2);
+    return out;
+}
+
+/**
+ * Surface area covered per unit of domain area. Exactly 1 on the flat plane;
+ * about 0.17 in the neck of a Klein bottle and 2.5 on its body.
+ */
+fn areaElementAt(uv: vec2<f32>) -> f32 {
+    let eps = 0.0015;
+    let du = surfacePoint(uv + vec2<f32>(eps, 0.0)) - surfacePoint(uv - vec2<f32>(eps, 0.0));
+    let dv = surfacePoint(uv + vec2<f32>(0.0, eps)) - surfacePoint(uv - vec2<f32>(0.0, eps));
+    let cell = (2.0 * eps) * (2.0 * eps) * domainWidth() * domainHeight();
+    return length(cross(du, dv)) / cell;
+}
+
+/**
+ * Gradient of log(area element), in surface units - how fast the surface gains
+ * room per unit of distance travelled across it.
+ *
+ * Getting the metric right makes each boid's own physics right: how far its
+ * neighbours are, how fast it swims, how big its neighbourhood is. It does not
+ * decide where on the surface the flock chooses to be, because flocking rules
+ * do not pin an absolute density - a flock is free to clump anywhere, and
+ * measured over two minutes on a Klein bottle it did exactly that, wandering
+ * between four and ten times as dense in the neck as on the body with no trend
+ * either way.
+ *
+ * This is the missing term, and it is the standard change of measure. Sampling
+ * a chart uniformly does not sample the surface uniformly - the classic case is
+ * a torus, where even sampling in (u,v) crowds the inner equator - and the fix
+ * is to weight by the area element. The dynamical form of that weighting is a
+ * drift along grad log(area), which is what makes a random walk in the chart
+ * settle to a distribution proportional to area. It reads plainly too: boids
+ * prefer roomier water, and slide out of a tube too tight to hold them.
+ *
+ * The step is 1% of the domain, matching the scale the area element actually
+ * varies on - anything finer just measures finite-difference noise.
+ */
+fn areaLogGradient(domainPos: vec2<f32>, toDomain: mat2x2<f32>) -> vec2<f32> {
+    if (!isEmbedded()) {
+        return vec2<f32>(0.0);
+    }
+
+    let h = 0.01;
+    let uv = domainToParam(domainPos);
+    let ax = areaElementAt(uv + vec2<f32>(h, 0.0));
+    let bx = areaElementAt(uv - vec2<f32>(h, 0.0));
+    let ay = areaElementAt(uv + vec2<f32>(0.0, h));
+    let by = areaElementAt(uv - vec2<f32>(0.0, h));
+
+    // log() of a vanishing area element runs away, and the Roman surface really
+    // does pinch to zero. The floor keeps the ratio finite there.
+    let floorA = 1e-3;
+    let gu = (log(max(ax, floorA)) - log(max(bx, floorA))) / (2.0 * h);
+    let gv = (log(max(ay, floorA)) - log(max(by, floorA))) / (2.0 * h);
+
+    // Parameter-space gradient -> domain pixels (v runs opposite to domain y),
+    // then to surface units: for a scalar the frame acts on the gradient by its
+    // inverse transpose, and the frame is symmetric, so that is toDomain.
+    let gradDomain = vec2<f32>(gu / uniforms.canvasWidth, -gv / uniforms.canvasHeight);
+    return toDomain * gradDomain;
+}
+
 /**
  * Project a point that sits at `domainPos` on the surface, offset by
  * `localOffset` pixels in the surface tangent plane. `forward` is the domain-
