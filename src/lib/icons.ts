@@ -31,7 +31,6 @@ import {
 	ArrowRight01Icon,
 	ArrowRightDoubleIcon,
 	Atom01Icon,
-	BirdIcon,
 	Cancel01Icon,
 	Camera01Icon,
 	Compass01Icon,
@@ -47,14 +46,15 @@ import {
 	Github01Icon,
 	GitMergeIcon,
 	GlobeIcon,
-	Grid02Icon,
+	FishIcon,
+	Grid3X3Icon,
 	HelpCircleIcon,
 	KeyboardIcon,
 	Layers01Icon,
 	Location01Icon,
-	Magnet02Icon,
 	Maximize02Icon,
 	MinusSignIcon,
+	MagnetIcon,
 	MirrorIcon,
 	Navigation03Icon,
 	Orbit01Icon,
@@ -132,15 +132,15 @@ export const IconGithub = Github01Icon;
 
 // --- Panel sections --------------------------------------------------------
 
-/** Boids: the flock itself. */
-export const IconBoids = BirdIcon;
+/** Boids: the flock itself - a school rather than a flock, given the swimming. */
+export const IconBoids = FishIcon;
 export const IconColor = PaintBoardIcon;
 /** Forces: the cursor pulling and pushing the flock around. */
-export const IconForces = Magnet02Icon;
+export const IconForces = MagnetIcon;
 /** Interactions: species acting on each other, like bonded particles. */
 export const IconInteractions = Atom01Icon;
 /** Flocking: the three rules that make a group out of individuals. */
-export const IconFlocking = UserGroupIcon;
+export const IconFlocking = UserMultipleIcon;
 /** World: the topology the flock lives on. */
 export const IconWorld = GlobeIcon;
 /** Dynamics: speed, noise, the energy in the system. */
@@ -156,9 +156,14 @@ export const IconPower = PowerIcon;
 export const IconPencil = PencilIcon;
 export const IconEraser = EraserIcon;
 /** The parameter grid drawn over an embedded surface. */
-export const IconGrid = Grid02Icon;
-/** Auto-rotate: the view turning slowly on its own. */
-export const IconAutoRotate = Rotate01Icon;
+export const IconGrid = Grid3X3Icon;
+/**
+ * Auto-rotate: the view turning slowly around the shape. Deliberately an orbit
+ * and not a circular arrow - it sat next to the camera reset in the embed row
+ * and the two were indistinguishable. Shared with the Orbit interaction
+ * behaviour below, which means the same thing and never appears alongside it.
+ */
+export const IconAutoRotate = Orbit01Icon;
 /** Opens the extra options on an interaction rule. */
 export const IconSettings = Settings01Icon;
 
