@@ -33,26 +33,8 @@ fn smoothKernel(dist: f32, radius: f32) -> f32 {
     return t * t * t;
 }
 
-// Get shortest delta accounting for boundary wrapping
-fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
-    let cfg = getBoundaryConfig();
-    let w = uniforms.canvasWidth;
-    let h = uniforms.canvasHeight;
-    
-    var delta = otherPos - myPos;
-    
-    if (cfg.wrapX && !cfg.flipOnWrapX) {
-        if (delta.x > w * 0.5) { delta.x -= w; }
-        else if (delta.x < -w * 0.5) { delta.x += w; }
-    }
-    
-    if (cfg.wrapY && !cfg.flipOnWrapY) {
-        if (delta.y > h * 0.5) { delta.y -= h; }
-        else if (delta.y < -h * 0.5) { delta.y += h; }
-    }
-    
-    return delta;
-}
+// getNeighborDelta and transformNeighborVelocity now live in common.wgsl so this
+// shader and simulate.wgsl cannot drift apart again.
 
 // Locally perfect hashing constant
 const M: u32 = 9u;
@@ -179,7 +161,11 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 if (weight > 0.0) {
                     // Use myPos + delta instead of otherPos to handle boundary wrapping correctly
                     centerOfMass += (myPos + delta) * weight;
-                    avgVelocity += velocities[otherIdx] * weight;
+                    // A neighbour reached across a flipping seam is stored in a
+                    // mirrored frame, so its raw velocity points the wrong way.
+                    // Averaging those directly is what made the flow metrics
+                    // disagree with themselves along Mobius and Klein seams.
+                    avgVelocity += transformNeighborVelocity(myPos, otherPos, velocities[otherIdx]) * weight;
                     totalWeight += weight;
                     neighborCount++;
                     maxDist = max(maxDist, dist);

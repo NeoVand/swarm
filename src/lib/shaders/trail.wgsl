@@ -219,16 +219,32 @@ fn vs_main(
     
     // Handle boundary wrapping - clamp p2 to edge if segment crosses boundary
     if (isWrapped(p1, p2)) {
-        p2 = handleWrap(p1, p2);
-        // If still wrapped after handling (shouldn't happen), skip
-        if (isWrapped(p1, p2)) {
-            output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-            output.color = vec3<f32>(0.0);
-            output.alpha = 0.0;
-            return output;
+        // Embedded mode continues the segment past the edge instead of clamping
+        // it, so the ribbon flows across the seam as it does on the real
+        // surface. Clamping here would truncate every trail within a
+        // trail-length-wide band of the seam, which reads as a visible join.
+        if (isEmbedded()) {
+            let unwrapped = unwrapAcrossSeam(p1, p2);
+            if (!unwrapped.valid) {
+                output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                output.color = vec3<f32>(0.0);
+                output.alpha = 0.0;
+                return output;
+            }
+            p2 = unwrapped.pos;
+        } else {
+            p2 = handleWrap(p1, p2);
+            // If still wrapped after handling (shouldn't happen), skip
+            if (isWrapped(p1, p2)) {
+                output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                output.color = vec3<f32>(0.0);
+                output.alpha = 0.0;
+                return output;
+            }
         }
     }
-    
+
+
     // Each segment is a quad (2 triangles, 6 vertices)
     // vertexIndex: 0-5 for the quad
     let quadVertex = vertexIndex % 6u;
@@ -299,11 +315,17 @@ fn vs_main(
         default: { worldPos = p1; alpha = 0.0; }
     }
     
-    // Convert to clip space
-    let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;
-    let clipY = 1.0 - (worldPos.y / uniforms.canvasHeight) * 2.0;
-    
-    output.position = vec4<f32>(clipX, clipY, 0.0, 1.0);
+    if (isEmbedded()) {
+        // The ribbon's width is already expressed in domain pixels, so mapping
+        // each corner through the surface keeps it lying flat on the geometry.
+        output.position = projectDomainPoint(worldPos);
+    } else {
+        // Convert to clip space
+        let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;
+        let clipY = 1.0 - (worldPos.y / uniforms.canvasHeight) * 2.0;
+
+        output.position = vec4<f32>(clipX, clipY, 0.0, 1.0);
+    }
     
     // Color based on historical velocity for gradient trail effect
     // historicalVel was computed earlier from trail buffer (or current vel for newest segment)

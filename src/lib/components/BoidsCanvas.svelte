@@ -28,7 +28,8 @@
 		beginStroke,
 		endStrokeWithHollow,
 		wallsDirty,
-		speciesDirty
+		speciesDirty,
+		needsCameraReset
 	} from '$lib/stores/simulation';
 
 	let canvas: HTMLCanvasElement;
@@ -71,10 +72,16 @@
 		(s) => s.id === currentParams?.activeSpeciesId
 	);
 	$: speciesCursorResponse = activeSpeciesForCursor?.cursorResponse ?? CursorResponse.Ignore;
-	$: speciesVortexDirection =
-		activeSpeciesForCursor?.cursorVortex ?? VortexDirection.Off;
+	$: speciesVortexDirection = activeSpeciesForCursor?.cursorVortex ?? VortexDirection.Off;
 	$: hasVortexActive = speciesVortexDirection !== VortexDirection.Off;
 	$: hasCursorInteraction = speciesCursorResponse !== CursorResponse.Ignore || hasVortexActive;
+
+	const unsubCameraReset = needsCameraReset.subscribe((needs) => {
+		if (needs && simulation) {
+			simulation.resetCamera();
+			needsCameraReset.set(false);
+		}
+	});
 
 	const unsubSpeciesDirty = speciesDirty.subscribe((dirty) => {
 		if (dirty && simulation) {
@@ -141,7 +148,96 @@
 		}
 	}
 
+	// --- Embedded 3D camera control ---
+	// While embedded, the pointer drives the camera instead of the flock: cursor
+	// forces and wall painting are suspended until the view is flattened again.
+	// Left-drag orbits, right-drag pans, and simply hovering pushes boids around
+	// on the surface - the same thing the cursor does in the flat view.
+	let isOrbiting = false;
+	let isPanning = false;
+	let isPushing = false;
+	let lastOrbitX = 0;
+	let lastOrbitY = 0;
+	let pinchDistance = 0;
+
+	const ORBIT_SENSITIVITY = 0.006; // radians per pixel
+
+	function isEmbeddedMode(): boolean {
+		return currentParams?.embedded3D === true;
+	}
+
+	function beginOrbit(clientX: number, clientY: number, pan = false): void {
+		isOrbiting = !pan;
+		isPanning = pan;
+		lastOrbitX = clientX;
+		lastOrbitY = clientY;
+	}
+
+	function moveOrbit(clientX: number, clientY: number): void {
+		if (!isOrbiting && !isPanning) return;
+		const rawX = clientX - lastOrbitX;
+		const rawY = clientY - lastOrbitY;
+		lastOrbitX = clientX;
+		lastOrbitY = clientY;
+		if (isPanning) {
+			// Pan deltas are fractions of viewport height
+			const h = Math.max(canvas?.clientHeight ?? window.innerHeight, 1);
+			simulation?.panCamera(rawX / h, rawY / h);
+		} else {
+			simulation?.orbitCamera(rawX * ORBIT_SENSITIVITY, rawY * ORBIT_SENSITIVITY);
+		}
+	}
+
+	/**
+	 * Project the pointer onto the embedded surface and feed the result back as
+	 * a domain-space cursor, so cursor forces and vortices work in 3D exactly as
+	 * they do flat. Skipped while dragging the camera.
+	 */
+	function pickDomainAt(clientX: number, clientY: number): { x: number; y: number } | null {
+		if (!canvas || !simulation) return null;
+		const rect = canvas.getBoundingClientRect();
+		cursorCssX = clientX - rect.left;
+		cursorCssY = clientY - rect.top;
+		const ndcX = (cursorCssX / Math.max(rect.width, 1)) * 2 - 1;
+		const ndcY = 1 - (cursorCssY / Math.max(rect.height, 1)) * 2;
+		return simulation.pickDomainPosition(ndcX, ndcY);
+	}
+
+	function updateEmbeddedCursor(clientX: number, clientY: number, pressed?: boolean): void {
+		const hit = pickDomainAt(clientX, clientY);
+		if (!hit) {
+			cursor.update((c) => ({ ...c, isActive: false }));
+			return;
+		}
+		cursor.update((c) => ({
+			...c,
+			x: hit.x,
+			y: hit.y,
+			isActive: true,
+			isPressed: pressed ?? c.isPressed
+		}));
+	}
+
+	function handleWheel(e: WheelEvent): void {
+		if (!isEmbeddedMode()) return;
+		e.preventDefault();
+		// Exponential so each notch feels the same at any distance
+		simulation?.zoomCamera(Math.exp(e.deltaY * 0.0015));
+	}
+
+	function touchDistance(a: Touch, b: Touch): number {
+		return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+	}
+
 	function handleMouseMove(e: MouseEvent): void {
+		if (isEmbeddedMode()) {
+			if (isOrbiting || isPanning) {
+				moveOrbit(e.clientX, e.clientY);
+			} else {
+				updateEmbeddedCursor(e.clientX, e.clientY, isPushing ? true : undefined);
+			}
+			return;
+		}
 		if (!canvas) return;
 		const rect = canvas.getBoundingClientRect();
 		const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -169,7 +265,27 @@
 		}));
 	}
 
-	function handleMouseDown(): void {
+	function handleMouseDown(e: MouseEvent): void {
+		if (isEmbeddedMode()) {
+			// Right (or middle) button always pans
+			if (e.button === 2 || e.button === 1) {
+				beginOrbit(e.clientX, e.clientY, true);
+				cursor.update((c) => ({ ...c, isActive: false, isPressed: false }));
+				return;
+			}
+			// Left button: pressing on the surface pushes boids, pressing empty
+			// space orbits. Grabbing the object to spin it and grabbing the flock
+			// to shove it are different intents.
+			const hit = pickDomainAt(e.clientX, e.clientY);
+			if (hit) {
+				isPushing = true;
+				cursor.update((c) => ({ ...c, x: hit.x, y: hit.y, isActive: true, isPressed: true }));
+			} else {
+				beginOrbit(e.clientX, e.clientY);
+				cursor.update((c) => ({ ...c, isActive: false, isPressed: false }));
+			}
+			return;
+		}
 		if (currentWallTool !== WallTool.None) {
 			isPaintingWall = true;
 			// Begin stroke tracking if using ring brush with pencil
@@ -194,6 +310,16 @@
 	}
 
 	function handleMouseUp(): void {
+		if (isPushing) {
+			isPushing = false;
+			cursor.update((c) => ({ ...c, isPressed: false }));
+			return;
+		}
+		if (isOrbiting || isPanning) {
+			isOrbiting = false;
+			isPanning = false;
+			return;
+		}
 		// Auto-hollow if ring brush was used for drawing
 		if (
 			isPaintingWall &&
@@ -207,6 +333,9 @@
 	}
 
 	function handleMouseLeave(): void {
+		isOrbiting = false;
+		isPanning = false;
+		isPushing = false;
 		// Auto-hollow if ring brush was used for drawing
 		if (
 			isPaintingWall &&
@@ -221,6 +350,18 @@
 
 	function handleTouchStart(e: TouchEvent): void {
 		e.preventDefault();
+		if (isEmbeddedMode()) {
+			if (e.touches.length === 2) {
+				isOrbiting = false;
+				isPanning = false; // set on the first move, once there is a delta
+				pinchDistance = touchDistance(e.touches[0], e.touches[1]);
+				lastOrbitX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+				lastOrbitY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+			} else if (e.touches.length === 1) {
+				beginOrbit(e.touches[0].clientX, e.touches[0].clientY);
+			}
+			return;
+		}
 		if (e.touches.length > 0) {
 			const touch = e.touches[0];
 			const rect = canvas.getBoundingClientRect();
@@ -259,6 +400,30 @@
 
 	function handleTouchMove(e: TouchEvent): void {
 		e.preventDefault();
+		if (isEmbeddedMode()) {
+			if (e.touches.length === 2) {
+				// Two fingers pinch to zoom and drag to pan at the same time
+				const dist = touchDistance(e.touches[0], e.touches[1]);
+				if (pinchDistance > 0 && dist > 0) {
+					simulation?.zoomCamera(pinchDistance / dist);
+				}
+				pinchDistance = dist;
+
+				const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+				const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+				if (isPanning) {
+					const h = Math.max(canvas?.clientHeight ?? window.innerHeight, 1);
+					simulation?.panCamera((cx - lastOrbitX) / h, (cy - lastOrbitY) / h);
+				}
+				isPanning = true;
+				isOrbiting = false;
+				lastOrbitX = cx;
+				lastOrbitY = cy;
+			} else if (e.touches.length === 1) {
+				moveOrbit(e.touches[0].clientX, e.touches[0].clientY);
+			}
+			return;
+		}
 		if (e.touches.length > 0) {
 			const touch = e.touches[0];
 			const rect = canvas.getBoundingClientRect();
@@ -288,6 +453,10 @@
 
 	function handleTouchEnd(e: TouchEvent): void {
 		e.preventDefault();
+		isOrbiting = false;
+		isPanning = false;
+		pinchDistance = 0;
+		if (isEmbeddedMode()) return;
 		// Auto-hollow if ring brush was used for drawing
 		if (
 			isPaintingWall &&
@@ -394,6 +563,7 @@
 		unsubWallTool();
 		unsubWallsDirty();
 		unsubSpeciesDirty();
+		unsubCameraReset();
 		canvasElement.set(null);
 		simulation?.destroy();
 		destroyWebGPU(gpuContext);
@@ -404,15 +574,20 @@
 <div bind:this={container} class="fixed relative inset-0 overflow-hidden bg-[#0a0b0d]">
 	<canvas
 		bind:this={canvas}
-		class="block touch-none select-none {currentParams?.cursorMode !== CursorMode.Off ||
-		hasVortexActive ||
-		currentWallTool !== WallTool.None
-			? 'cursor-none'
-			: ''}"
+		class="block touch-none select-none {currentParams?.embedded3D
+			? isOrbiting
+				? 'cursor-grabbing'
+				: 'cursor-grab'
+			: currentParams?.cursorMode !== CursorMode.Off ||
+				  hasVortexActive ||
+				  currentWallTool !== WallTool.None
+				? 'cursor-none'
+				: ''}"
 		onmousemove={handleMouseMove}
 		onmousedown={handleMouseDown}
 		onmouseup={handleMouseUp}
 		onmouseleave={handleMouseLeave}
+		onwheel={handleWheel}
 		ontouchstart={handleTouchStart}
 		ontouchmove={handleTouchMove}
 		ontouchend={(e) => handleTouchEnd(e)}
@@ -421,7 +596,7 @@
 	></canvas>
 
 	<!-- Wall tool cursor overlay -->
-	{#if currentCursor?.isActive && currentWallTool !== WallTool.None}
+	{#if currentCursor?.isActive && currentWallTool !== WallTool.None && !currentParams?.embedded3D}
 		{@const brushSize = currentParams?.wallBrushSize ?? 30}
 		{@const isPencil = currentWallTool === WallTool.Pencil}
 		{@const brushColor = isPencil ? '100, 116, 139' : '239, 68, 68'}
@@ -462,7 +637,9 @@
 	{/if}
 
 	<!-- Custom cursor overlay for boid interaction (shows alongside wall tool cursor) -->
-	{#if currentCursor?.isActive && hasCursorInteraction}
+	<!-- Shown in embedded mode too: the pointer is projected onto the surface, so
+	     cursor forces work there and the ring should follow them. -->
+	{#if currentCursor?.isActive && hasCursorInteraction && !isOrbiting && !isPanning}
 		{@const radius = currentParams?.cursorRadius ?? 50}
 		{@const isAttract = speciesCursorResponse === CursorResponse.Attract}
 		{@const isVortexOnly = speciesCursorResponse === CursorResponse.Ignore && hasVortexActive}

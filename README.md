@@ -21,6 +21,7 @@ A high-performance boids flocking simulation running entirely on the GPU using W
 - **Interactive Cursors** — Attract, repel, or create vortices—each species can respond differently
 - **Drawable Walls** — Paint obstacles that deflect boids in real-time
 - **Exotic Boundaries** — Torus, Klein bottle, Möbius strip, projective plane topologies
+- **Embedded 3D View** — Lift the flat domain onto the actual surface its topology describes, and orbit around it
 - **Multiple Algorithms** — 5 neighbor-finding strategies with tunable parameters
 - **Rich Visualization** — 8 color modes including species coloring, speed, direction, density, and more
 - **Media Capture** — Record videos or take screenshots directly from the app
@@ -119,6 +120,21 @@ Multi-species support is implemented efficiently on the GPU:
 | **Klein Bottle**     | Double twist, non-orientable surface              |
 | **Projective Plane** | Both axes twisted                                 |
 
+### Embedded 3D View
+
+Every boundary mode above is really a gluing rule on a flat rectangle. Toggle **Embed** (or press `M`) and the rectangle morphs into the surface those rules actually describe — a cylinder rolls up, a torus closes into a donut, a Möbius strip picks up its half-twist. Drag to orbit, scroll to zoom.
+
+Switching topology while embedded cross-fades between the two surfaces rather than snapping, so you can watch a torus become a Klein bottle.
+
+The simulation itself is unchanged: physics and neighbor search always run on the flat domain, which is why flocks cross seams seamlessly. Embedded mode only re-projects the rendering, mapping each boid through the surface parametrization and orienting it in the local tangent plane.
+
+Caveats worth knowing, mathematical rather than bugs:
+
+- The **Klein bottle** and **projective plane** cannot be embedded in 3D without passing through themselves, so you will see self-intersection. The shapes shown are the standard immersions (Dickson's bottle and the Roman surface).
+- The **projective plane keeps a visible seam**, and this is not fixable at the rendering layer. Its boundary rule flips both axes, and those two deck transformations do not commute — so it is not a consistent quotient of the plane. Nor could it be: RP²'s universal cover is the sphere, not R². The other eight modes are genuine flat quotients (plane, cylinder, torus, Möbius, Klein) and their embeddings reproduce the simulation's gluing exactly, so the flock crosses their seams continuously.
+- The surface is drawn opaque, so the flock on the far side is hidden behind the near wall. Orbit to see around it.
+- While embedded, cursor forces and wall drawing are suspended — the pointer drives the camera instead. Painted walls still affect the simulation and appear tinted on the surface.
+
 ### Color Modes
 
 - **Species** — Each species rendered in its custom color (hue/saturation/lightness)
@@ -145,6 +161,7 @@ Multi-species support is implemented efficiently on the GPU:
 | `C`     | Cycle color mode                        |
 | `P`     | Cycle palette                           |
 | `B`     | Cycle boundary topology                 |
+| `M`     | Toggle embedded 3D view                 |
 | `A`     | Cycle algorithm                         |
 | `+/-`   | Adjust population                       |
 | `[/]`   | Adjust trail length                     |

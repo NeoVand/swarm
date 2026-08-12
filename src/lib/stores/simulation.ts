@@ -259,6 +259,29 @@ export function setBoundaryMode(value: BoundaryMode): void {
 	needsTrailClear.set(true);
 }
 
+export function setEmbedded3D(value: boolean): void {
+	params.update((p) => ({ ...p, embedded3D: value }));
+}
+
+export function toggleEmbedded3D(): void {
+	params.update((p) => ({ ...p, embedded3D: !p.embedded3D }));
+}
+
+export function toggleEmbedGrid(): void {
+	params.update((p) => ({ ...p, embedShowGrid: !p.embedShowGrid }));
+}
+
+export function toggleEmbedAutoRotate(): void {
+	params.update((p) => ({ ...p, embedAutoRotate: !p.embedAutoRotate }));
+}
+
+/** Set to request the embedded-mode camera return to its default framing. */
+export const needsCameraReset = writable(false);
+
+export function resetEmbedCamera(): void {
+	needsCameraReset.set(true);
+}
+
 export function setCursorMode(value: CursorMode): void {
 	params.update((p) => ({ ...p, cursorMode: value }));
 }
@@ -313,7 +336,6 @@ export function setPopulation(value: number): void {
 	params.update((p) => ({ ...p, population: value }));
 	needsBufferReallocation.set(true);
 }
-
 
 // Spectral/Flow metrics parameters
 export function setEnableInfluence(value: boolean): void {
@@ -610,9 +632,7 @@ export function cycleSpeciesCursorVortex(id: number): void {
 
 		return {
 			...p,
-			species: p.species.map((s) =>
-				s.id === id ? { ...s, cursorVortex: nextDirection } : s
-			)
+			species: p.species.map((s) => (s.id === id ? { ...s, cursorVortex: nextDirection } : s))
 		};
 	});
 	// Trigger GPU buffer update
@@ -839,7 +859,7 @@ export {
  * - Per-species flocking parameters (slight variations)
  * - Per-species cursor interaction
  * - Inter-species interaction rules
- * 
+ *
  * Does NOT change: size, trails, boundary, dynamics, colors
  */
 export function randomizeSimulation(canvasWidth: number, canvasHeight: number): void {
@@ -848,9 +868,9 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 		// Target: ~6000-10000 on typical screens, up to 15000 on large screens
 		const area = canvasWidth * canvasHeight;
 		const maxPopulation = Math.min(15000, Math.max(6000, Math.floor(area / 180)));
-		
+
 		// Random number of species (1-7, weighted towards 2-4)
-		const speciesWeights = [0.08, 0.25, 0.30, 0.20, 0.10, 0.05, 0.02]; // Weights for 1-7 species
+		const speciesWeights = [0.08, 0.25, 0.3, 0.2, 0.1, 0.05, 0.02]; // Weights for 1-7 species
 		const rand = Math.random();
 		let cumulative = 0;
 		let numSpecies = 1;
@@ -861,7 +881,7 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 				break;
 			}
 		}
-		
+
 		// Distribute population across species (random but reasonable)
 		const populations: number[] = [];
 		let totalPop = 0;
@@ -874,40 +894,48 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 		// Use 90-100% of max population
 		const targetTotal = Math.floor(maxPopulation * (0.9 + Math.random() * 0.1));
 		// Minimum per species scales with count: 1500 for single, down to 600 for many
-		const minPerSpecies = numSpecies === 1 ? 3000 : numSpecies <= 2 ? 1500 : numSpecies <= 4 ? 1000 : 600;
+		const minPerSpecies =
+			numSpecies === 1 ? 3000 : numSpecies <= 2 ? 1500 : numSpecies <= 4 ? 1000 : 600;
 		for (let i = 0; i < populations.length; i++) {
-			populations[i] = Math.max(minPerSpecies, Math.round((populations[i] / totalPop) * targetTotal));
+			populations[i] = Math.max(
+				minPerSpecies,
+				Math.round((populations[i] / totalPop) * targetTotal)
+			);
 		}
 		// Sort populations descending so Species 1 always has the highest population
 		populations.sort((a, b) => b - a);
-		
+
 		// Create species with randomized settings
 		const newSpecies: Species[] = [];
 		const usedShapes = new Set<HeadShape>();
-		
+
 		for (let i = 0; i < numSpecies; i++) {
 			// Get color from the predefined palette
-			const [hue, saturation, lightness] = SPECIES_COLORS[i] || [((i * 51) % 360), 85, 55];
-			
+			const [hue, saturation, lightness] = SPECIES_COLORS[i] || [(i * 51) % 360, 85, 55];
+
 			// Pick a unique shape if possible
-			let shape = i % 5 as HeadShape;
+			let shape = (i % 5) as HeadShape;
 			if (usedShapes.size < 5) {
 				while (usedShapes.has(shape)) {
 					shape = Math.floor(Math.random() * 5) as HeadShape;
 				}
 				usedShapes.add(shape);
 			}
-			
+
 			// Randomize flocking parameters (±25% from defaults)
 			const varyParam = (base: number, variance: number = 0.25) => {
 				const factor = 1 - variance + Math.random() * variance * 2;
 				return base * factor;
 			};
-			
+
 			// Random cursor interaction
 			const cursorResponses = [CursorResponse.Attract, CursorResponse.Repel, CursorResponse.Ignore];
-			const vortexDirections = [VortexDirection.Off, VortexDirection.Clockwise, VortexDirection.CounterClockwise];
-			
+			const vortexDirections = [
+				VortexDirection.Off,
+				VortexDirection.Clockwise,
+				VortexDirection.CounterClockwise
+			];
+
 			const species: Species = {
 				id: i,
 				name: SPECIES_NAMES[i] || `Species ${i + 1}`,
@@ -930,14 +958,17 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 				// Random cursor interaction
 				cursorForce: 0.3 + Math.random() * 0.7, // 0.3-1.0
 				cursorResponse: cursorResponses[Math.floor(Math.random() * cursorResponses.length)],
-				cursorVortex: Math.random() < 0.7 ? VortexDirection.Off : vortexDirections[Math.floor(Math.random() * vortexDirections.length)],
+				cursorVortex:
+					Math.random() < 0.7
+						? VortexDirection.Off
+						: vortexDirections[Math.floor(Math.random() * vortexDirections.length)],
 				// Interactions will be set below
 				interactions: []
 			};
-			
+
 			newSpecies.push(species);
 		}
-		
+
 		// Generate random interaction rules
 		const behaviors = [
 			InteractionBehavior.Flee,
@@ -950,18 +981,18 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 			InteractionBehavior.Disperse,
 			InteractionBehavior.Mob
 		];
-		
+
 		for (let i = 0; i < newSpecies.length; i++) {
 			const interactions: InteractionRule[] = [];
-			
+
 			if (numSpecies === 1) {
 				// Single species: no inter-species rules needed
 				continue;
 			}
-			
+
 			// Decide: use "All" rule or specific rules?
 			const useAllRule = Math.random() < 0.4; // 40% chance to use "All" fallback
-			
+
 			if (useAllRule) {
 				// Add an "All others" rule
 				interactions.push({
@@ -970,15 +1001,15 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 					strength: 0.3 + Math.random() * 0.5, // 0.3-0.8
 					range: 0 // Auto
 				});
-				
+
 				// Maybe add 1-2 specific overrides
 				const numOverrides = Math.floor(Math.random() * Math.min(3, numSpecies));
-				const availableTargets = newSpecies.filter(s => s.id !== i).map(s => s.id);
-				
+				const availableTargets = newSpecies.filter((s) => s.id !== i).map((s) => s.id);
+
 				for (let j = 0; j < numOverrides && availableTargets.length > 0; j++) {
 					const targetIdx = Math.floor(Math.random() * availableTargets.length);
 					const targetId = availableTargets.splice(targetIdx, 1)[0];
-					
+
 					interactions.push({
 						targetSpecies: targetId,
 						behavior: behaviors[Math.floor(Math.random() * behaviors.length)],
@@ -989,12 +1020,12 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 			} else {
 				// Add specific rules for some (not all) other species
 				const numRules = 1 + Math.floor(Math.random() * Math.min(numSpecies - 1, 3)); // 1-3 rules
-				const availableTargets = newSpecies.filter(s => s.id !== i).map(s => s.id);
-				
+				const availableTargets = newSpecies.filter((s) => s.id !== i).map((s) => s.id);
+
 				for (let j = 0; j < numRules && availableTargets.length > 0; j++) {
 					const targetIdx = Math.floor(Math.random() * availableTargets.length);
 					const targetId = availableTargets.splice(targetIdx, 1)[0];
-					
+
 					interactions.push({
 						targetSpecies: targetId,
 						behavior: behaviors[Math.floor(Math.random() * behaviors.length)],
@@ -1002,7 +1033,7 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 						range: 0
 					});
 				}
-				
+
 				// If we didn't cover all species, add an "All" fallback
 				if (availableTargets.length > 0) {
 					interactions.push({
@@ -1013,13 +1044,13 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 					});
 				}
 			}
-			
+
 			newSpecies[i].interactions = interactions;
 		}
-		
+
 		// Calculate new total population
 		const newTotalPopulation = newSpecies.reduce((sum, s) => sum + s.population, 0);
-		
+
 		return {
 			...p,
 			species: newSpecies,
@@ -1027,7 +1058,7 @@ export function randomizeSimulation(canvasWidth: number, canvasHeight: number): 
 			activeSpeciesId: 0
 		};
 	});
-	
+
 	// Trigger buffer reallocation for the new configuration
 	needsBufferReallocation.set(true);
 }

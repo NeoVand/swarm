@@ -284,6 +284,11 @@ export interface SimulationParams {
 	noise: number;
 	rebels: number;
 	boundaryMode: BoundaryMode;
+	// Embedded 3D view: draw the domain as the surface its topology describes,
+	// with an orbitable camera, instead of as the unrolled flat rectangle.
+	embedded3D: boolean;
+	embedShowGrid: boolean; // Parameter lines drawn on the surface
+	embedAutoRotate: boolean; // Slow turntable spin
 	cursorMode: CursorMode;
 	cursorShape: CursorShape;
 	cursorVortex: VortexDirection; // Vortex rotation direction (Off, Clockwise, CounterClockwise)
@@ -477,6 +482,9 @@ export const DEFAULT_PARAMS: SimulationParams = {
 	noise: 0.0,
 	rebels: 0.02,
 	boundaryMode: BoundaryMode.Plane,
+	embedded3D: false,
+	embedShowGrid: true,
+	embedAutoRotate: false,
 	cursorMode: CursorMode.Repel,
 	cursorShape: CursorShape.Disk,
 	cursorVortex: VortexDirection.Off,
@@ -593,7 +601,7 @@ export function calculateOptimalSpeciesPopulations(
 	// Split: Species 1 ~64%, Species 2 ~20%, Species 3 ~14%, Species 4 ~2%
 	// Species 4 (predator) is a small minority for interesting dynamics
 	const species1Raw = Math.floor(totalPopulation * 0.64);
-	const species2Raw = Math.floor(totalPopulation * 0.20);
+	const species2Raw = Math.floor(totalPopulation * 0.2);
 	const species3Raw = Math.floor(totalPopulation * 0.14);
 	const species4Raw = totalPopulation - species1Raw - species2Raw - species3Raw;
 
@@ -614,7 +622,9 @@ export function calculateOptimalSpeciesPopulations(
 }
 
 // Uniform buffer layout (must match WGSL struct)
-export const UNIFORM_BUFFER_SIZE = 256; // Padded for alignment
+// 46 scalars (184B) + embedBlend/embedTopology (192B) + mat4x4 viewProj (256B)
+// + cameraPos (272B) + embedParams (288B), rounded up for alignment headroom.
+export const UNIFORM_BUFFER_SIZE = 512;
 
 export const WORKGROUP_SIZE = 256;
 

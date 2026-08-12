@@ -29,6 +29,11 @@
 		setMaxForce,
 		setNoise,
 		setBoundaryMode,
+		toggleEmbedded3D,
+		setEmbedded3D,
+		toggleEmbedGrid,
+		toggleEmbedAutoRotate,
+		resetEmbedCamera,
 		setCursorShape,
 		setCursorRadius,
 		setColorMode,
@@ -110,18 +115,18 @@
 			// Clear any existing timers
 			if (flaskAnimationInterval) clearInterval(flaskAnimationInterval);
 			if (flaskInitialTimeout) clearTimeout(flaskInitialTimeout);
-			
+
 			// Play animation 2 seconds after app loads
 			flaskInitialTimeout = setTimeout(() => {
 				triggerFlaskAnimation();
 			}, 2000);
-			
+
 			// Then set up 30-second interval
 			flaskAnimationInterval = setInterval(() => {
 				triggerFlaskAnimation();
 			}, 30000);
 		}
-		
+
 		// Cleanup on destroy or when touched
 		return () => {
 			if (flaskAnimationInterval) {
@@ -156,12 +161,20 @@
 	let showHueCurve = $state(false);
 	let showSaturationCurve = $state(false);
 	let showBrightnessCurve = $state(false);
-	
+
 	// Curve disabled states - curves have no effect for Species/None modes
-	const hueCurveDisabled = $derived(currentParams.colorMode === ColorMode.None || currentParams.colorMode === ColorMode.Species);
-	const satCurveDisabled = $derived(currentParams.saturationSource === ColorMode.None || currentParams.saturationSource === ColorMode.Species);
-	const brightCurveDisabled = $derived(currentParams.brightnessSource === ColorMode.None || currentParams.brightnessSource === ColorMode.Species);
-	
+	const hueCurveDisabled = $derived(
+		currentParams.colorMode === ColorMode.None || currentParams.colorMode === ColorMode.Species
+	);
+	const satCurveDisabled = $derived(
+		currentParams.saturationSource === ColorMode.None ||
+			currentParams.saturationSource === ColorMode.Species
+	);
+	const brightCurveDisabled = $derived(
+		currentParams.brightnessSource === ColorMode.None ||
+			currentParams.brightnessSource === ColorMode.Species
+	);
+
 	let alphaDropdownOpen = $state(false);
 	let alphaDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 
@@ -176,17 +189,17 @@
 	function handleHeaderMouseDown(e: MouseEvent) {
 		// Only start drag on left mouse button
 		if (e.button !== 0) return;
-		
+
 		const panel = (e.currentTarget as HTMLElement).closest('.panel') as HTMLElement;
 		if (!panel) return;
 
 		const rect = panel.getBoundingClientRect();
-		
+
 		// Initialize position if not set
 		if (panelPosition === null) {
 			panelPosition = { x: rect.left, y: rect.top };
 		}
-		
+
 		isDragging = true;
 		dragOffset = {
 			x: e.clientX - panelPosition.x,
@@ -198,14 +211,14 @@
 
 	function handleMouseMove(e: MouseEvent) {
 		if (!isDragging) return;
-		
+
 		const newX = e.clientX - dragOffset.x;
 		const newY = e.clientY - dragOffset.y;
-		
+
 		// Constrain to viewport
 		const maxX = window.innerWidth - 256; // panel width
 		const maxY = window.innerHeight - 100;
-		
+
 		panelPosition = {
 			x: Math.max(0, Math.min(newX, maxX)),
 			y: Math.max(0, Math.min(newY, maxY))
@@ -506,6 +519,8 @@
 	function resetWorldSection(e: Event): void {
 		e.stopPropagation();
 		setBoundaryMode(DEFAULT_PARAMS.boundaryMode);
+		setEmbedded3D(DEFAULT_PARAMS.embedded3D);
+		resetEmbedCamera();
 		// Reset wall tools
 		setWallTool(WallTool.None);
 		setWallBrushSize(DEFAULT_PARAMS.wallBrushSize);
@@ -540,7 +555,6 @@
 		setTimeScale(DEFAULT_PARAMS.timeScale);
 		setGlobalCollision(DEFAULT_PARAMS.globalCollision);
 	}
-
 
 	// Keyboard handler for accessible span buttons
 	function handleKeydown(e: KeyboardEvent, action: (e: Event) => void): void {
@@ -577,12 +591,14 @@
 
 	// Check if a color mode requires spectral computation
 	function isSpectralMode(mode: ColorMode): boolean {
-		return mode === ColorMode.Influence ||
+		return (
+			mode === ColorMode.Influence ||
 			mode === ColorMode.SpectralRadial ||
 			mode === ColorMode.SpectralAsymmetry ||
 			mode === ColorMode.FlowAngular ||
 			mode === ColorMode.FlowRadial ||
-			mode === ColorMode.FlowDivergence;
+			mode === ColorMode.FlowDivergence
+		);
 	}
 
 	// Get the spectral mode for a color mode
@@ -818,6 +834,13 @@
 				break;
 			}
 
+			// Toggle the embedded 3D view of the current topology
+			// ('m' for manifold - 'v' is already taken by video recording)
+			case 'm':
+				event.preventDefault();
+				toggleEmbedded3D();
+				break;
+
 			case 'c': {
 				event.preventDefault();
 				// Use colorOptions values for cycling (same as dropdown)
@@ -1028,12 +1051,12 @@
 
 	// Show welcome card on first load (without opening panel)
 	let hasShownWelcome = $state(false);
-	
+
 	function showWelcomeOnLoad(): void {
 		// Small delay to let the app settle
 		setTimeout(() => {
 			const isTouch = isTouchDevice();
-			
+
 			const welcomeDriver = driver({
 				showProgress: false,
 				animate: true,
@@ -1799,7 +1822,8 @@
 											const trailAlpha = 0.5 * (1 - (trailIdx + 1) / (trailCount + 2));
 											const trailWidth = 1.2 * (1 - trailIdx * 0.1);
 											for (let armIndex = 0; armIndex < 3; armIndex++) {
-												const armBaseAngle = outerAngle - trailOffset + (armIndex * Math.PI * 2) / 3;
+												const armBaseAngle =
+													outerAngle - trailOffset + (armIndex * Math.PI * 2) / 3;
 												drawArm(armBaseAngle, trailAlpha, trailWidth);
 											}
 										}
@@ -1968,7 +1992,10 @@
 
 <!-- Floating button (flask or recording indicator when closed) -->
 <button
-	onclick={() => { onFlaskInteraction(); togglePanel(); }}
+	onclick={() => {
+		onFlaskInteraction();
+		togglePanel();
+	}}
 	onmouseenter={onFlaskInteraction}
 	class="gear-btn fixed top-4 right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full transition-all"
 	class:gear-hidden={isOpen}
@@ -1992,14 +2019,16 @@
 			class:flask-auto-animate={flaskAutoAnimate}
 		>
 			<!-- Liquid fill (bottom portion of flask) -->
-			<path 
+			<path
 				class="flask-liquid"
-				d="M7 15 L5.5 19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2L17 15Z" 
+				d="M7 15 L5.5 19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2L17 15Z"
 				fill="rgba(161, 161, 170, 0.3)"
 				stroke="none"
 			/>
 			<!-- Flask outline -->
-			<path d="M10 2v6.185a1 1 0 0 1-.316.733L4.2 14.1A2 2 0 0 0 3.5 15.6V19a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-3.4a2 2 0 0 0-.7-1.5l-5.484-5.182A1 1 0 0 1 14 8.185V2" />
+			<path
+				d="M10 2v6.185a1 1 0 0 1-.316.733L4.2 14.1A2 2 0 0 0 3.5 15.6V19a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-3.4a2 2 0 0 0-.7-1.5l-5.484-5.182A1 1 0 0 1 14 8.185V2"
+			/>
 			<path d="M8.5 2h7" />
 		</svg>
 	{/if}
@@ -2010,29 +2039,34 @@
 	<div
 		class="panel fixed z-40 w-64 rounded-xl"
 		class:dragging={isDragging}
-		style={panelPosition ? `left: ${panelPosition.x}px; top: ${panelPosition.y}px;` : 'top: 1rem; right: 1rem;'}
+		style={panelPosition
+			? `left: ${panelPosition.x}px; top: ${panelPosition.y}px;`
+			: 'top: 1rem; right: 1rem;'}
 		transition:scale={{ duration: 200, easing: cubicOut, start: 0.95, opacity: 0 }}
 	>
 		<!-- Header with logo and buttons (draggable) -->
-		<div 
+		<div
 			class="panel-header flex items-center justify-between px-3 py-2.5"
 			onmousedown={handleHeaderMouseDown}
 			role="button"
 			tabindex="-1"
 		>
-			<div class="flex items-center gap-2" onclick={(e) => {
-				if (e.shiftKey) {
-					e.stopPropagation();
-					const json = JSON.stringify(currentParams, null, 2);
-					const blob = new Blob([json], { type: 'application/json' });
-					const url = URL.createObjectURL(blob);
-					const a = document.createElement('a');
-					a.href = url;
-					a.download = `swarm-settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-					a.click();
-					URL.revokeObjectURL(url);
-				}
-			}}>
+			<div
+				class="flex items-center gap-2"
+				onclick={(e) => {
+					if (e.shiftKey) {
+						e.stopPropagation();
+						const json = JSON.stringify(currentParams, null, 2);
+						const blob = new Blob([json], { type: 'application/json' });
+						const url = URL.createObjectURL(blob);
+						const a = document.createElement('a');
+						a.href = url;
+						a.download = `swarm-settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+						a.click();
+						URL.revokeObjectURL(url);
+					}
+				}}
+			>
 				<img src="{base}/favicon.svg" alt="Swarm" class="h-5 w-5" />
 				<span class="brand-title">Swarm</span>
 			</div>
@@ -2383,16 +2417,16 @@
 							<input
 								type="range"
 								min="0"
-							max="50"
-							step="1"
-							value={activeSpecies?.trailLength ?? 20}
-							oninput={(e) =>
-								activeSpecies &&
+								max="50"
+								step="1"
+								value={activeSpecies?.trailLength ?? 20}
+								oninput={(e) =>
+									activeSpecies &&
 									setSpeciesTrailLength(activeSpecies.id, parseInt(e.currentTarget.value))}
 								class="slider"
-							aria-label="Trail"
-						/>
-						<span class="value">{activeSpecies?.trailLength ?? 20}</span>
+								aria-label="Trail"
+							/>
+							<span class="value">{activeSpecies?.trailLength ?? 20}</span>
 						</div>
 						<div class="row">
 							<span class="label">Rebels</span>
@@ -2430,19 +2464,22 @@
 						>
 							<defs>
 								<linearGradient id="rainbow-stroke" x1="0%" y1="0%" x2="100%" y2="100%">
-									<stop offset="0%" stop-color="#f87171"/>
-									<stop offset="20%" stop-color="#fbbf24"/>
-									<stop offset="40%" stop-color="#4ade80"/>
-									<stop offset="60%" stop-color="#22d3ee"/>
-									<stop offset="80%" stop-color="#818cf8"/>
-									<stop offset="100%" stop-color="#e879f9"/>
+									<stop offset="0%" stop-color="#f87171" />
+									<stop offset="20%" stop-color="#fbbf24" />
+									<stop offset="40%" stop-color="#4ade80" />
+									<stop offset="60%" stop-color="#22d3ee" />
+									<stop offset="80%" stop-color="#818cf8" />
+									<stop offset="100%" stop-color="#e879f9" />
 								</linearGradient>
 							</defs>
-							<circle cx="13.5" cy="6.5" r="1.5" fill="#f87171"/>
-							<circle cx="17.5" cy="10.5" r="1.5" fill="#fbbf24"/>
-							<circle cx="8.5" cy="7.5" r="1.5" fill="#4ade80"/>
-							<circle cx="6.5" cy="12.5" r="1.5" fill="#818cf8"/>
-							<path stroke="url(#rainbow-stroke)" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"/>
+							<circle cx="13.5" cy="6.5" r="1.5" fill="#f87171" />
+							<circle cx="17.5" cy="10.5" r="1.5" fill="#fbbf24" />
+							<circle cx="8.5" cy="7.5" r="1.5" fill="#4ade80" />
+							<circle cx="6.5" cy="12.5" r="1.5" fill="#818cf8" />
+							<path
+								stroke="url(#rainbow-stroke)"
+								d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.555C21.965 6.012 17.461 2 12 2z"
+							/>
 						</svg>
 						<span class="section-label">Color</span>
 					</div>
@@ -2506,7 +2543,7 @@
 					<div class="section-content" transition:slide={{ duration: 200, easing: cubicOut }}>
 						<div class="row">
 							<span class="label">Hue</span>
-							<div class="relative flex-1 min-w-0" bind:this={colorizeDropdownRef}>
+							<div class="relative min-w-0 flex-1" bind:this={colorizeDropdownRef}>
 								<button
 									class="sel flex w-full items-center gap-2 text-left"
 									onclick={() => (colorizeDropdownOpen = !colorizeDropdownOpen)}
@@ -2640,9 +2677,11 @@
 											stroke-width="2"
 											stroke-linecap="round"
 											stroke-linejoin="round"
-											><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path
-												d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"
-											/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" /></svg
+											><path
+												d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"
+											/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path
+												d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"
+											/></svg
 										>
 									{:else if currentParams.colorMode === ColorMode.Anisotropy}
 										<!-- Lucide: scan-line (structure/anisotropy) -->
@@ -2660,27 +2699,102 @@
 										>
 									{:else if currentParams.colorMode === ColorMode.Influence}
 										<!-- Spectral Angular - circle with angle -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><path d="M12 2v10l7 7" /></svg
+										>
 									{:else if currentParams.colorMode === ColorMode.SpectralRadial}
 										<!-- Spectral Radial - concentric circles -->
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
-								{:else if currentParams.colorMode === ColorMode.SpectralAsymmetry}
-									<!-- Spectral Asymmetry - unbalanced -->
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
-								{:else if currentParams.colorMode === ColorMode.FlowAngular}
-									<!-- Flow Angular - velocity direction wheel -->
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
-								{:else if currentParams.colorMode === ColorMode.FlowRadial}
-									<!-- Flow Radial - expanding/contracting -->
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
-								{:else if currentParams.colorMode === ColorMode.FlowDivergence}
-									<!-- Flow Divergence - alignment -->
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
-								{:else if currentParams.colorMode === ColorMode.TrueTurning}
-									<!-- Turn Rate - activity/zigzag -->
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-								{/if}
-								<span class="flex-1 truncate"
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="7" /><circle
+												cx="12"
+												cy="12"
+												r="10"
+											/></svg
+										>
+									{:else if currentParams.colorMode === ColorMode.SpectralAsymmetry}
+										<!-- Spectral Asymmetry - unbalanced -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M12 3v18" /><circle cx="7" cy="8" r="3" /><circle
+												cx="17"
+												cy="16"
+												r="3"
+											/></svg
+										>
+									{:else if currentParams.colorMode === ColorMode.FlowAngular}
+										<!-- Flow Angular - velocity direction wheel -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path
+												d="M8 12h8"
+											/><path d="m15 9-3 3 3 3" /></svg
+										>
+									{:else if currentParams.colorMode === ColorMode.FlowRadial}
+										<!-- Flow Radial - expanding/contracting -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="3" /><path
+												d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"
+											/></svg
+										>
+									{:else if currentParams.colorMode === ColorMode.FlowDivergence}
+										<!-- Flow Divergence - alignment -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="m5 12 7-7 7 7" /><path d="m5 19 7-7 7 7" /></svg
+										>
+									{:else if currentParams.colorMode === ColorMode.TrueTurning}
+										<!-- Turn Rate - activity/zigzag -->
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg
+										>
+									{/if}
+									<span class="flex-1 truncate"
 										>{colorOptions.find((o) => o.value === currentParams.colorMode)?.label}</span
 									>
 									<svg
@@ -2834,9 +2948,11 @@
 														stroke-width="2"
 														stroke-linecap="round"
 														stroke-linejoin="round"
-														><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path
-															d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"
-														/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" /></svg
+														><path
+															d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"
+														/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path
+															d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"
+														/></svg
 													>
 												{:else if opt.value === ColorMode.Anisotropy}
 													<!-- Lucide: scan-line (structure/anisotropy) -->
@@ -2848,31 +2964,108 @@
 														stroke-width="2"
 														stroke-linecap="round"
 														stroke-linejoin="round"
-														><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path
-															d="M21 17v2a2 2 0 0 1-2 2h-2"
-														/><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg
+														><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path
+															d="M17 3h2a2 2 0 0 1 2 2v2"
+														/><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path
+															d="M7 21H5a2 2 0 0 1-2-2v-2"
+														/><path d="M7 12h10" /></svg
 													>
 												{:else if opt.value === ColorMode.Influence}
 													<!-- Spectral Angular -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><path d="M12 2v10l7 7" /></svg
+													>
 												{:else if opt.value === ColorMode.SpectralRadial}
 													<!-- Spectral Radial -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="7" /><circle
+															cx="12"
+															cy="12"
+															r="10"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.SpectralAsymmetry}
 													<!-- Spectral Asymmetry -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M12 3v18" /><circle cx="7" cy="8" r="3" /><circle
+															cx="17"
+															cy="16"
+															r="3"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.FlowAngular}
 													<!-- Flow Angular -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path
+															d="M8 12h8"
+														/><path d="m15 9-3 3 3 3" /></svg
+													>
 												{:else if opt.value === ColorMode.FlowRadial}
 													<!-- Flow Radial -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="3" /><path
+															d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.FlowDivergence}
 													<!-- Flow Divergence -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="m5 12 7-7 7 7" /><path d="m5 19 7-7 7 7" /></svg
+													>
 												{:else if opt.value === ColorMode.TrueTurning}
 													<!-- Lucide: activity (turn rate) -->
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg
+													>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
@@ -2885,7 +3078,9 @@
 								<button
 									class="palette-toggle"
 									onclick={() => (paletteDropdownOpen = !paletteDropdownOpen)}
-									title={currentParams.colorMode === ColorMode.Species ? 'Species color' : 'Color palette'}
+									title={currentParams.colorMode === ColorMode.Species
+										? 'Species color'
+										: 'Color palette'}
 								>
 									{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
 										<div
@@ -2914,14 +3109,26 @@
 													onmousedown={(e) => {
 														const rect = e.currentTarget.getBoundingClientRect();
 														const updateSL = (clientX: number, clientY: number) => {
-															const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-															const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+															const x = Math.max(
+																0,
+																Math.min(1, (clientX - rect.left) / rect.width)
+															);
+															const y = Math.max(
+																0,
+																Math.min(1, (clientY - rect.top) / rect.height)
+															);
 															const saturation = Math.round(x * 100);
 															const lightness = Math.round((1 - y) * 100);
-															setSpeciesColor(activeSpecies.id, activeSpecies.hue, saturation, lightness);
+															setSpeciesColor(
+																activeSpecies.id,
+																activeSpecies.hue,
+																saturation,
+																lightness
+															);
 														};
 														updateSL(e.clientX, e.clientY);
-														const moveHandler = (me: MouseEvent) => updateSL(me.clientX, me.clientY);
+														const moveHandler = (me: MouseEvent) =>
+															updateSL(me.clientX, me.clientY);
 														const upHandler = () => {
 															window.removeEventListener('mousemove', moveHandler);
 															window.removeEventListener('mouseup', upHandler);
@@ -2932,7 +3139,8 @@
 												>
 													<div
 														class="sl-handle"
-														style="left: {activeSpecies.saturation}%; top: {100 - activeSpecies.lightness}%"
+														style="left: {activeSpecies.saturation}%; top: {100 -
+															activeSpecies.lightness}%"
 													></div>
 												</div>
 												<input
@@ -2942,7 +3150,8 @@
 													max="360"
 													step="1"
 													value={activeSpecies.hue}
-													oninput={(e) => setSpeciesHue(activeSpecies.id, parseInt(e.currentTarget.value))}
+													oninput={(e) =>
+														setSpeciesHue(activeSpecies.id, parseInt(e.currentTarget.value))}
 													style="background: linear-gradient(to right, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))"
 												/>
 											</div>
@@ -2994,7 +3203,7 @@
 								class:active={showHueCurve && !hueCurveDisabled}
 								onclick={() => !hueCurveDisabled && (showHueCurve = !showHueCurve)}
 								disabled={hueCurveDisabled}
-								title={hueCurveDisabled ? "Curve not available for this mode" : "Edit hue curve"}
+								title={hueCurveDisabled ? 'Curve not available for this mode' : 'Edit hue curve'}
 							>
 								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
@@ -3028,7 +3237,7 @@
 						<!-- Saturation source row -->
 						<div class="row">
 							<span class="label">Saturation</span>
-							<div class="relative flex-1 min-w-0" bind:this={saturationDropdownRef}>
+							<div class="relative min-w-0 flex-1" bind:this={saturationDropdownRef}>
 								<button
 									class="sel flex w-full items-center gap-2 text-left"
 									onclick={() => (saturationDropdownOpen = !saturationDropdownOpen)}
@@ -3036,83 +3245,480 @@
 									aria-expanded={saturationDropdownOpen}
 								>
 									{#if currentParams.saturationSource === ColorMode.None}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><rect width="18" height="18" x="3" y="3" rx="2" /></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Species}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path
+												d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
+											/><rect x="3" y="14" width="7" height="7" rx="1" /><circle
+												cx="17.5"
+												cy="17.5"
+												r="3.5"
+											/></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Density}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="7.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="7.5" cy="7.5" r="1.5" /><circle
+												cx="7.5"
+												cy="16.5"
+												r="1.5"
+											/><circle cx="16.5" cy="7.5" r="1.5" /><circle
+												cx="16.5"
+												cy="16.5"
+												r="1.5"
+											/><circle cx="12" cy="12" r="1.5" /></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Speed}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Orientation}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><polygon
+												points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"
+												fill="currentColor"
+												stroke="none"
+											/></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Turning}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path
+												d="M21 3v5h-5"
+											/></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Neighbors}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle
+												cx="9"
+												cy="7"
+												r="4"
+											/><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path
+												d="M16 3.13a4 4 0 0 1 0 7.75"
+											/></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.LocalDensity}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path
+												d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"
+											/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path
+												d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"
+											/></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Anisotropy}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path
+												d="M21 17v2a2 2 0 0 1-2 2h-2"
+											/><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.Influence}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><path d="M12 2v10l7 7" /></svg
+										>
 									{:else if currentParams.saturationSource === ColorMode.SpectralRadial}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
-								{:else if currentParams.saturationSource === ColorMode.SpectralAsymmetry}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
-								{:else if currentParams.saturationSource === ColorMode.FlowAngular}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
-								{:else if currentParams.saturationSource === ColorMode.FlowRadial}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
-								{:else if currentParams.saturationSource === ColorMode.FlowDivergence}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
-								{:else if currentParams.saturationSource === ColorMode.TrueTurning}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-								{/if}
-								<span class="flex-1 truncate">{saturationOptions.find((o) => o.value === currentParams.saturationSource)?.label ?? 'Full'}</span>
-									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={saturationDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
-										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="7" /><circle
+												cx="12"
+												cy="12"
+												r="10"
+											/></svg
+										>
+									{:else if currentParams.saturationSource === ColorMode.SpectralAsymmetry}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M12 3v18" /><circle cx="7" cy="8" r="3" /><circle
+												cx="17"
+												cy="16"
+												r="3"
+											/></svg
+										>
+									{:else if currentParams.saturationSource === ColorMode.FlowAngular}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path
+												d="M8 12h8"
+											/><path d="m15 9-3 3 3 3" /></svg
+										>
+									{:else if currentParams.saturationSource === ColorMode.FlowRadial}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="3" /><path
+												d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"
+											/></svg
+										>
+									{:else if currentParams.saturationSource === ColorMode.FlowDivergence}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="m5 12 7-7 7 7" /><path d="m5 19 7-7 7 7" /></svg
+										>
+									{:else if currentParams.saturationSource === ColorMode.TrueTurning}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg
+										>
+									{/if}
+									<span class="flex-1 truncate"
+										>{saturationOptions.find((o) => o.value === currentParams.saturationSource)
+											?.label ?? 'Full'}</span
+									>
+									<svg
+										class="h-3 w-3 opacity-50 transition-transform"
+										class:rotate-180={saturationDropdownOpen}
+										viewBox="0 0 20 20"
+										fill="currentColor"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+											clip-rule="evenodd"
+										/>
 									</svg>
 								</button>
 								{#if saturationDropdownOpen}
-									<div class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md" transition:slide={{ duration: 150, easing: cubicOut }}>
+									<div
+										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
+										transition:slide={{ duration: 150, easing: cubicOut }}
+									>
 										{#each saturationOptions as opt (opt.value)}
-											<button class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]" class:active={currentParams.saturationSource === opt.value} onclick={() => selectSaturationSource(opt.value)}>
+											<button
+												class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
+												class:active={currentParams.saturationSource === opt.value}
+												onclick={() => selectSaturationSource(opt.value)}
+											>
 												{#if opt.value === ColorMode.None}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><rect width="18" height="18" x="3" y="3" rx="2" /></svg
+													>
 												{:else if opt.value === ColorMode.Species}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path
+															d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
+														/><rect x="3" y="14" width="7" height="7" rx="1" /><circle
+															cx="17.5"
+															cy="17.5"
+															r="3.5"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Density}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="7.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="7.5" cy="7.5" r="1.5" /><circle
+															cx="7.5"
+															cy="16.5"
+															r="1.5"
+														/><circle cx="16.5" cy="7.5" r="1.5" /><circle
+															cx="16.5"
+															cy="16.5"
+															r="1.5"
+														/><circle cx="12" cy="12" r="1.5" /></svg
+													>
 												{:else if opt.value === ColorMode.Speed}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></svg
+													>
 												{:else if opt.value === ColorMode.Orientation}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><polygon
+															points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"
+															fill="currentColor"
+															stroke="none"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Turning}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path
+															d="M21 3v5h-5"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Neighbors}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle
+															cx="9"
+															cy="7"
+															r="4"
+														/><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path
+															d="M16 3.13a4 4 0 0 1 0 7.75"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.LocalDensity}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path
+															d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"
+														/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path
+															d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Anisotropy}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path
+															d="M17 3h2a2 2 0 0 1 2 2v2"
+														/><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path
+															d="M7 21H5a2 2 0 0 1-2-2v-2"
+														/><path d="M7 12h10" /></svg
+													>
 												{:else if opt.value === ColorMode.Influence}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><path d="M12 2v10l7 7" /></svg
+													>
 												{:else if opt.value === ColorMode.SpectralRadial}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="7" /><circle
+															cx="12"
+															cy="12"
+															r="10"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.SpectralAsymmetry}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M12 3v18" /><circle cx="7" cy="8" r="3" /><circle
+															cx="17"
+															cy="16"
+															r="3"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.FlowAngular}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path
+															d="M8 12h8"
+														/><path d="m15 9-3 3 3 3" /></svg
+													>
 												{:else if opt.value === ColorMode.FlowRadial}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="3" /><path
+															d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.FlowDivergence}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="m5 12 7-7 7 7" /><path d="m5 19 7-7 7 7" /></svg
+													>
 												{:else if opt.value === ColorMode.TrueTurning}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg
+													>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
-											{/each}
+										{/each}
 									</div>
 								{/if}
 							</div>
@@ -3121,7 +3727,9 @@
 								class:active={showSaturationCurve && !satCurveDisabled}
 								onclick={() => !satCurveDisabled && (showSaturationCurve = !showSaturationCurve)}
 								disabled={satCurveDisabled}
-								title={satCurveDisabled ? "Curve not available for this mode" : "Edit saturation curve"}
+								title={satCurveDisabled
+									? 'Curve not available for this mode'
+									: 'Edit saturation curve'}
 							>
 								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
@@ -3152,7 +3760,7 @@
 						<!-- Brightness source row -->
 						<div class="row">
 							<span class="label">Brightness</span>
-							<div class="relative flex-1 min-w-0" bind:this={brightnessDropdownRef}>
+							<div class="relative min-w-0 flex-1" bind:this={brightnessDropdownRef}>
 								<button
 									class="sel flex w-full items-center gap-2 text-left"
 									onclick={() => (brightnessDropdownOpen = !brightnessDropdownOpen)}
@@ -3160,83 +3768,492 @@
 									aria-expanded={brightnessDropdownOpen}
 								>
 									{#if currentParams.brightnessSource === ColorMode.None}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path
+												d="M12 20v2"
+											/><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path
+												d="M2 12h2"
+											/><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path
+												d="m19.07 4.93-1.41 1.41"
+											/></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Species}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path
+												d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
+											/><rect x="3" y="14" width="7" height="7" rx="1" /><circle
+												cx="17.5"
+												cy="17.5"
+												r="3.5"
+											/></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Density}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="7.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="7.5" cy="7.5" r="1.5" /><circle
+												cx="7.5"
+												cy="16.5"
+												r="1.5"
+											/><circle cx="16.5" cy="7.5" r="1.5" /><circle
+												cx="16.5"
+												cy="16.5"
+												r="1.5"
+											/><circle cx="12" cy="12" r="1.5" /></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Speed}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Orientation}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><polygon
+												points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"
+												fill="currentColor"
+												stroke="none"
+											/></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Turning}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path
+												d="M21 3v5h-5"
+											/></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Neighbors}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle
+												cx="9"
+												cy="7"
+												r="4"
+											/><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path
+												d="M16 3.13a4 4 0 0 1 0 7.75"
+											/></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.LocalDensity}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path
+												d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"
+											/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path
+												d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"
+											/></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Anisotropy}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path
+												d="M21 17v2a2 2 0 0 1-2 2h-2"
+											/><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.Influence}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><path d="M12 2v10l7 7" /></svg
+										>
 									{:else if currentParams.brightnessSource === ColorMode.SpectralRadial}
-										<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
-								{:else if currentParams.brightnessSource === ColorMode.SpectralAsymmetry}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
-								{:else if currentParams.brightnessSource === ColorMode.FlowAngular}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
-								{:else if currentParams.brightnessSource === ColorMode.FlowRadial}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
-								{:else if currentParams.brightnessSource === ColorMode.FlowDivergence}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
-								{:else if currentParams.brightnessSource === ColorMode.TrueTurning}
-									<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-								{/if}
-								<span class="flex-1 truncate">{brightnessOptions.find((o) => o.value === currentParams.brightnessSource)?.label ?? 'Default'}</span>
-									<svg class="h-3 w-3 opacity-50 transition-transform" class:rotate-180={brightnessDropdownOpen} viewBox="0 0 20 20" fill="currentColor">
-										<path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="7" /><circle
+												cx="12"
+												cy="12"
+												r="10"
+											/></svg
+										>
+									{:else if currentParams.brightnessSource === ColorMode.SpectralAsymmetry}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="M12 3v18" /><circle cx="7" cy="8" r="3" /><circle
+												cx="17"
+												cy="16"
+												r="3"
+											/></svg
+										>
+									{:else if currentParams.brightnessSource === ColorMode.FlowAngular}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path
+												d="M8 12h8"
+											/><path d="m15 9-3 3 3 3" /></svg
+										>
+									{:else if currentParams.brightnessSource === ColorMode.FlowRadial}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><circle cx="12" cy="12" r="3" /><path
+												d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"
+											/></svg
+										>
+									{:else if currentParams.brightnessSource === ColorMode.FlowDivergence}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><path d="m5 12 7-7 7 7" /><path d="m5 19 7-7 7 7" /></svg
+										>
+									{:else if currentParams.brightnessSource === ColorMode.TrueTurning}
+										<svg
+											class="colorize-icon"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg
+										>
+									{/if}
+									<span class="flex-1 truncate"
+										>{brightnessOptions.find((o) => o.value === currentParams.brightnessSource)
+											?.label ?? 'Default'}</span
+									>
+									<svg
+										class="h-3 w-3 opacity-50 transition-transform"
+										class:rotate-180={brightnessDropdownOpen}
+										viewBox="0 0 20 20"
+										fill="currentColor"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+											clip-rule="evenodd"
+										/>
 									</svg>
 								</button>
 								{#if brightnessDropdownOpen}
-									<div class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md" transition:slide={{ duration: 150, easing: cubicOut }}>
+									<div
+										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
+										transition:slide={{ duration: 150, easing: cubicOut }}
+									>
 										{#each brightnessOptions as opt (opt.value)}
-											<button class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]" class:active={currentParams.brightnessSource === opt.value} onclick={() => selectBrightnessSource(opt.value)}>
+											<button
+												class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
+												class:active={currentParams.brightnessSource === opt.value}
+												onclick={() => selectBrightnessSource(opt.value)}
+											>
 												{#if opt.value === ColorMode.None}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path
+															d="M12 20v2"
+														/><path d="m4.93 4.93 1.41 1.41" /><path
+															d="m17.66 17.66 1.41 1.41"
+														/><path d="M2 12h2" /><path d="M20 12h2" /><path
+															d="m6.34 17.66-1.41 1.41"
+														/><path d="m19.07 4.93-1.41 1.41" /></svg
+													>
 												{:else if opt.value === ColorMode.Species}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path
+															d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"
+														/><rect x="3" y="14" width="7" height="7" rx="1" /><circle
+															cx="17.5"
+															cy="17.5"
+															r="3.5"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Density}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="7.5" r="1.5"/><circle cx="7.5" cy="16.5" r="1.5"/><circle cx="16.5" cy="7.5" r="1.5"/><circle cx="16.5" cy="16.5" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="7.5" cy="7.5" r="1.5" /><circle
+															cx="7.5"
+															cy="16.5"
+															r="1.5"
+														/><circle cx="16.5" cy="7.5" r="1.5" /><circle
+															cx="16.5"
+															cy="16.5"
+															r="1.5"
+														/><circle cx="12" cy="12" r="1.5" /></svg
+													>
 												{:else if opt.value === ColorMode.Speed}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></svg
+													>
 												{:else if opt.value === ColorMode.Orientation}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" stroke="none"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><polygon
+															points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"
+															fill="currentColor"
+															stroke="none"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Turning}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path
+															d="M21 3v5h-5"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Neighbors}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle
+															cx="9"
+															cy="7"
+															r="4"
+														/><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path
+															d="M16 3.13a4 4 0 0 1 0 7.75"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.LocalDensity}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path
+															d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"
+														/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path
+															d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.Anisotropy}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path
+															d="M17 3h2a2 2 0 0 1 2 2v2"
+														/><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path
+															d="M7 21H5a2 2 0 0 1-2-2v-2"
+														/><path d="M7 12h10" /></svg
+													>
 												{:else if opt.value === ColorMode.Influence}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v10l7 7"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><path d="M12 2v10l7 7" /></svg
+													>
 												{:else if opt.value === ColorMode.SpectralRadial}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="10"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="7" /><circle
+															cx="12"
+															cy="12"
+															r="10"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.SpectralAsymmetry}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><circle cx="7" cy="8" r="3"/><circle cx="17" cy="16" r="3"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="M12 3v18" /><circle cx="7" cy="8" r="3" /><circle
+															cx="17"
+															cy="16"
+															r="3"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.FlowAngular}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/><path d="m15 9-3 3 3 3"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="10" /><path d="M12 8v8" /><path
+															d="M8 12h8"
+														/><path d="m15 9-3 3 3 3" /></svg
+													>
 												{:else if opt.value === ColorMode.FlowRadial}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><circle cx="12" cy="12" r="3" /><path
+															d="m2 12 4 4m-4-4 4-4M22 12l-4 4m4-4-4-4M12 2l4 4m-4-4-4 4M12 22l4-4m-4 4-4-4"
+														/></svg
+													>
 												{:else if opt.value === ColorMode.FlowDivergence}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="m5 19 7-7 7 7"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><path d="m5 12 7-7 7 7" /><path d="m5 19 7-7 7 7" /></svg
+													>
 												{:else if opt.value === ColorMode.TrueTurning}
-													<svg class="colorize-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+													<svg
+														class="colorize-icon"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg
+													>
 												{/if}
 												<span>{opt.label}</span>
 											</button>
-											{/each}
+										{/each}
 									</div>
 								{/if}
 							</div>
@@ -3245,7 +4262,9 @@
 								class:active={showBrightnessCurve && !brightCurveDisabled}
 								onclick={() => !brightCurveDisabled && (showBrightnessCurve = !showBrightnessCurve)}
 								disabled={brightCurveDisabled}
-								title={brightCurveDisabled ? "Curve not available for this mode" : "Edit brightness curve"}
+								title={brightCurveDisabled
+									? 'Curve not available for this mode'
+									: 'Edit brightness curve'}
 							>
 								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 									<path d="M3 20Q7 4 12 12Q17 20 21 4" />
@@ -3835,6 +4854,102 @@
 						<TopologySelector currentMode={currentParams.boundaryMode} />
 
 						<div class="row">
+							<span class="label">Embed</span>
+							<div class="cursor-toggle cursor-toggle-4">
+								<!-- Lift the flat domain onto the surface its topology describes -->
+								<button
+									class="cursor-toggle-btn power-btn"
+									class:active={currentParams.embedded3D}
+									onclick={() => toggleEmbedded3D()}
+									aria-label="Toggle embedded 3D view"
+									title="Show this topology as its actual 3D surface"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2.2"
+										stroke-linecap="round"
+									>
+										<path d="M12 3 L12 11" />
+										<path d="M6.3 6.3 A8.5 8.5 0 1 0 17.7 6.3" />
+									</svg>
+								</button>
+								<!-- Parameter grid on the surface -->
+								<button
+									class="cursor-toggle-btn"
+									class:active={currentParams.embedShowGrid && currentParams.embedded3D}
+									disabled={!currentParams.embedded3D}
+									onclick={() => toggleEmbedGrid()}
+									aria-label="Toggle grid"
+									title="Parameter grid on the surface"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.8"
+										stroke-linecap="round"
+									>
+										<path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+									</svg>
+								</button>
+								<!-- Turntable spin. Deliberately not a circular arrow - that reads as a
+								     second reset button sitting next to the real one. -->
+								<button
+									class="cursor-toggle-btn"
+									class:active={currentParams.embedAutoRotate && currentParams.embedded3D}
+									disabled={!currentParams.embedded3D}
+									onclick={() => toggleEmbedAutoRotate()}
+									aria-label="Toggle auto-rotate"
+									title="Slowly spin the view"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.8"
+										stroke-linecap="round"
+									>
+										<circle cx="12" cy="12" r="3.2" />
+										<ellipse cx="12" cy="12" rx="9.5" ry="4.2" />
+									</svg>
+								</button>
+								<!-- Recenter the orbit camera -->
+								<button
+									class="cursor-toggle-btn"
+									disabled={!currentParams.embedded3D}
+									onclick={() => resetEmbedCamera()}
+									aria-label="Reset view"
+									title="Reset camera angle, pan and zoom"
+								>
+									<svg
+										viewBox="0 0 24 24"
+										class="h-5 w-5"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+										<path d="M3 3v5h5" />
+									</svg>
+								</button>
+							</div>
+						</div>
+
+						{#if currentParams.embedded3D}
+							<div class="embed-hint">
+								Hover or drag on the surface to push · Drag off it to orbit · Right-drag to pan ·
+								Scroll to zoom
+							</div>
+						{/if}
+
+						<div class="row">
 							<span class="label">Walls</span>
 							<div class="cursor-toggle cursor-toggle-4">
 								<!-- Power button for wall drawing on/off -->
@@ -4138,7 +5253,6 @@
 					</div>
 				{/if}
 			</div>
-
 		</div>
 	</div>
 {/if}
@@ -4229,7 +5343,9 @@
 
 	/* Flask icon tilt animation on hover */
 	.flask-icon {
-		transition: transform 0.3s ease, color 0.2s ease;
+		transition:
+			transform 0.3s ease,
+			color 0.2s ease;
 		transform-origin: 50% 85%; /* Pivot near the bottom of the flask */
 	}
 
@@ -4249,11 +5365,21 @@
 	}
 
 	@keyframes flask-tilt {
-		0% { transform: rotate(0deg); }
-		25% { transform: rotate(-12deg); }
-		50% { transform: rotate(8deg); }
-		75% { transform: rotate(-4deg); }
-		100% { transform: rotate(0deg); }
+		0% {
+			transform: rotate(0deg);
+		}
+		25% {
+			transform: rotate(-12deg);
+		}
+		50% {
+			transform: rotate(8deg);
+		}
+		75% {
+			transform: rotate(-4deg);
+		}
+		100% {
+			transform: rotate(0deg);
+		}
 	}
 
 	.recording-dot {
@@ -4802,7 +5928,9 @@
 		border: 2px solid transparent;
 		border-radius: 4px;
 		cursor: pointer;
-		transition: border-color 0.15s, transform 0.1s;
+		transition:
+			border-color 0.15s,
+			transform 0.1s;
 	}
 
 	.palette-bar-option:hover {
@@ -4868,7 +5996,6 @@
 		cursor: grab;
 	}
 
-
 	/* Premium Cursor Toggle */
 	.cursor-toggle {
 		display: grid;
@@ -4883,6 +6010,19 @@
 	}
 	.cursor-toggle.cursor-toggle-4 {
 		grid-template-columns: repeat(4, 36px);
+	}
+	.embed-hint {
+		padding: 2px 2px 6px;
+		font-size: 10px;
+		line-height: 1.5;
+		color: rgb(113 113 122);
+	}
+	.cursor-toggle-btn:disabled {
+		opacity: 0.3;
+		cursor: default;
+	}
+	.cursor-toggle-btn:disabled:hover {
+		color: rgb(113 113 122);
 	}
 	.cursor-toggle-indicator {
 		position: absolute;

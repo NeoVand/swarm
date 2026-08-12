@@ -387,97 +387,6 @@ fn applyBoundaryWithVelFix(pos: vec2<f32>, vel: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(newPos, velMult);
 }
 
-// Compute shortest delta between two positions, accounting for wrapping AND flipping
-// This is critical for correct neighbor detection on Möbius/Klein/Projective
-fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
-    let cfg = getBoundaryConfig();
-    let w = uniforms.canvasWidth;
-    let h = uniforms.canvasHeight;
-    
-    var delta = otherPos - myPos;
-    
-    // For simple wrap (no flip), use standard toroidal distance
-    if (cfg.wrapX && !cfg.flipOnWrapX) {
-        if (delta.x > w * 0.5) { delta.x -= w; }
-        else if (delta.x < -w * 0.5) { delta.x += w; }
-    }
-    
-    if (cfg.wrapY && !cfg.flipOnWrapY) {
-        if (delta.y > h * 0.5) { delta.y -= h; }
-        else if (delta.y < -h * 0.5) { delta.y += h; }
-    }
-    
-    // For flip-wrap boundaries, we need to check both direct path and flipped path
-    if (cfg.flipOnWrapX) {
-        // Direct delta
-        let directDist = abs(delta.x);
-        // Flipped path: go through edge, flip Y
-        let flippedOtherY = h - otherPos.y;
-        let flippedDeltaX = (w - myPos.x) + otherPos.x;  // Distance going right through edge
-        let flippedDeltaX2 = myPos.x + (w - otherPos.x); // Distance going left through edge
-        let flippedDeltaY = flippedOtherY - myPos.y;
-        
-        // Check if going through the X edge (with Y flip) is shorter
-        if (flippedDeltaX < directDist) {
-            delta.x = flippedDeltaX;
-            delta.y = flippedDeltaY;
-        } else if (flippedDeltaX2 < directDist) {
-            delta.x = -flippedDeltaX2;
-            delta.y = flippedDeltaY;
-        }
-    }
-    
-    if (cfg.flipOnWrapY) {
-        // Direct delta (possibly already modified by X flip)
-        let directDist = abs(delta.y);
-        // Flipped path: go through edge, flip X
-        let flippedOtherX = w - otherPos.x;
-        let flippedDeltaY = (h - myPos.y) + otherPos.y;
-        let flippedDeltaY2 = myPos.y + (h - otherPos.y);
-        let flippedDeltaX = flippedOtherX - myPos.x;
-        
-        if (flippedDeltaY < directDist) {
-            delta.y = flippedDeltaY;
-            delta.x = flippedDeltaX;
-        } else if (flippedDeltaY2 < directDist) {
-            delta.y = -flippedDeltaY2;
-            delta.x = flippedDeltaX;
-        }
-    }
-    
-    return delta;
-}
-
-// Transform a neighbor's velocity to our reference frame (for alignment across flip boundaries)
-fn transformNeighborVelocity(myPos: vec2<f32>, otherPos: vec2<f32>, otherVel: vec2<f32>) -> vec2<f32> {
-    let cfg = getBoundaryConfig();
-    let w = uniforms.canvasWidth;
-    let h = uniforms.canvasHeight;
-    
-    var vel = otherVel;
-    
-    // Check if the shortest path goes through a flip boundary
-    if (cfg.flipOnWrapX) {
-        let directDistX = abs(otherPos.x - myPos.x);
-        let wrappedDistX = w - directDistX;
-        if (wrappedDistX < directDistX) {
-            // Neighbor is "across" the flip boundary - flip their Y velocity
-            vel.y = -vel.y;
-        }
-    }
-    
-    if (cfg.flipOnWrapY) {
-        let directDistY = abs(otherPos.y - myPos.y);
-        let wrappedDistY = h - directDistY;
-        if (wrappedDistY < directDistY) {
-            // Neighbor is "across" the flip boundary - flip their X velocity
-            vel.x = -vel.x;
-        }
-    }
-    
-    return vel;
-}
-
 // Locally perfect hashing constant
 const M: u32 = 9u;
 
@@ -1593,16 +1502,24 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let boundaryResult = applyBoundaryWithVelFix(newPos, newVel);
     newPos = boundaryResult.xy;
     let velMult = boundaryResult.zw;
+
+    // Keep the pre-flip velocity for the turn-rate measurement below. Crossing a
+    // Mobius/Klein seam reflects a velocity component, which is a change of
+    // chart, not a change of heading - the boid did not turn. Measuring across
+    // the flip reports up to a 180 degree turn, and because the value is
+    // temporally smoothed the false spike decays over several frames, painting a
+    // dark band alongside every flipping seam.
+    let velBeforeFlip = newVel;
     newVel = newVel * velMult;  // Flip velocity components when crossing flip boundaries
-    
+
     // Compute angular velocity (true turning rate) for visualization
     // Compare heading angle change between old and new velocity
     let oldSpeed = length(myVel);
-    let newSpeed = length(newVel);
+    let newSpeed = length(velBeforeFlip);
     var rawTurnRate = 0.0;
     if (oldSpeed > 0.01 && newSpeed > 0.01) {
         let oldAngle = atan2(myVel.y, myVel.x);
-        let newAngle = atan2(newVel.y, newVel.x);
+        let newAngle = atan2(velBeforeFlip.y, velBeforeFlip.x);
         var angleDiff = newAngle - oldAngle;
         // Normalize to [-PI, PI] to handle wraparound
         if (angleDiff > 3.14159265) { angleDiff -= 6.28318530; }
