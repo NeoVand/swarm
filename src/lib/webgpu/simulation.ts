@@ -38,7 +38,6 @@ import {
 	planeHalfExtents,
 	fitDistance,
 	fitDistanceForRadius,
-	SHAPE_BOUNDING_RADIUS,
 	orbit,
 	zoom,
 	pan,
@@ -46,7 +45,7 @@ import {
 	rayThrough,
 	type OrbitCamera
 } from './camera';
-import { pickSurfaceUV, type EmbedView } from './embedding';
+import { pickSurfaceUV, topologyBoundingRadius, type EmbedView } from './embedding';
 import {
 	getWallData,
 	getWallTextureDimensions,
@@ -107,6 +106,9 @@ const REVEAL_ELEVATION = 0.36;
 
 // Turntable speed in radians per second
 const AUTO_ROTATE_SPEED = 0.35;
+
+// Breathing room around the framed shape
+const SHAPE_FRAMING_MARGIN = 1.18;
 
 // Smoothstep-style ease so the morph starts and ends gently.
 function easeInOut(t: number): number {
@@ -228,9 +230,22 @@ export function createSimulation(
 		const t = easeInOut(revealProgress);
 		// Start framed on the flat rectangle (so the morph begins exactly where
 		// the 2D view left off) and pull back to frame the whole 3D shape.
+		//
+		// The radius is per-topology now that each surface is sized from the
+		// domain: a torus rolled from the sheet is less than half the radius of
+		// the sheet itself, so one shared number would leave it tiny on screen.
+		const view = currentEmbedView();
+		const radius =
+			view.topologyBlend >= 0.9999 || view.prevTopology === view.topology
+				? topologyBoundingRadius(view.topology, view)
+				: topologyBoundingRadius(view.prevTopology, view) +
+					(topologyBoundingRadius(view.topology, view) -
+						topologyBoundingRadius(view.prevTopology, view)) *
+						view.topologyBlend;
+
 		const flatDistance = fitDistance(canvasWidth, canvasHeight, camera.fov);
 		const shapeDistance = fitDistanceForRadius(
-			SHAPE_BOUNDING_RADIUS,
+			radius * SHAPE_FRAMING_MARGIN,
 			canvasWidth,
 			canvasHeight,
 			camera.fov

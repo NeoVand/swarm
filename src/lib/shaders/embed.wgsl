@@ -19,74 +19,101 @@ fn domainToParam(pos: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(pos.x / uniforms.canvasWidth, 1.0 - pos.y / uniforms.canvasHeight);
 }
 
-// --- Individual surfaces (u, v both in [0,1], periodic where the topology wraps) ---
+// --- Individual surfaces ---
+//
+// Every surface derives its proportions from the domain rather than from
+// hardcoded constants. Previously each carried fixed dimensions, so the 16:9
+// domain was stretched onto whatever shape happened to be there: the Roman
+// surface ended up carrying 13x the area it should and Mobius Y was squashed
+// 12:1. Boids sample their size from the local metric, so that inflated them
+// too - the "skin" looked stretched.
+//
+// Lu and Lv are the domain's width and height in world units.
+//
+// Plane, cylinders and torus are developable enough to match BOTH the domain's
+// aspect and its area, so they are exactly isometric - no stretch at all.
+//
+// The Mobius strip, Klein bottle and Roman surface cannot be: an isometric
+// Mobius from a 16:9 sheet needs a strip wider than its own loop radius
+// (inner edge at -0.17, passing through its own axis), and the two immersions
+// have intrinsically non-uniform metrics. Those match area only, which is what
+// keeps boid size and density right, and keep their recognisable shape.
+
+// Mobius width as a fraction of loop radius, and the area/radius of that strip
+// at unit radius - used to solve for the radius that matches the domain area.
+const MOBIUS_WIDTH_RATIO: f32 = 0.454545;
+const MOBIUS_UNIT_AREA: f32 = 5.822360;
+// Area of the unit-scale Dickson and Steiner immersions
+const KLEIN_UNIT_AREA: f32 = 1888.940032;
+const ROMAN_UNIT_AREA: f32 = 6.493252;
+
+fn domainWidth() -> f32 { return 2.0 * uniforms.embedParams.x; }
+fn domainHeight() -> f32 { return 2.0 * uniforms.embedParams.y; }
 
 fn surfFlat(uv: vec2<f32>) -> vec3<f32> {
-    let hw = uniforms.embedParams.x;
-    let hh = uniforms.embedParams.y;
-    return vec3<f32>((uv.x - 0.5) * 2.0 * hw, (uv.y - 0.5) * 2.0 * hh, 0.0);
+    return vec3<f32>((uv.x - 0.5) * domainWidth(), (uv.y - 0.5) * domainHeight(), 0.0);
 }
 
+// Rolled about u: the wrapped axis becomes the circumference, so the sheet maps
+// onto the tube without stretching in either direction.
 fn surfCylinderX(uv: vec2<f32>) -> vec3<f32> {
-    let R = 0.5;
-    let height = 1.2;
+    let R = domainWidth() / TAU;
     let U = uv.x * TAU;
-    let V = (uv.y - 0.5) * height;
-    return vec3<f32>(cos(U) * R, V, sin(U) * R);
+    return vec3<f32>(cos(U) * R, (uv.y - 0.5) * domainHeight(), sin(U) * R);
 }
 
 fn surfCylinderY(uv: vec2<f32>) -> vec3<f32> {
-    let R = 0.5;
-    let height = 1.2;
+    let R = domainHeight() / TAU;
     let U = uv.y * TAU;
-    let V = (uv.x - 0.5) * height;
-    return vec3<f32>(V, cos(U) * R, sin(U) * R);
+    return vec3<f32>((uv.x - 0.5) * domainWidth(), cos(U) * R, sin(U) * R);
 }
 
+// Both circumferences come straight from the domain, so a 16:9 sheet gives a
+// noticeably fatter torus than the old fixed 0.6/0.22 - which is correct.
 fn surfTorus(uv: vec2<f32>) -> vec3<f32> {
-    let R = 0.6;  // Major radius
-    let r = 0.22; // Minor radius
+    let R = domainWidth() / TAU;
+    let r = domainHeight() / TAU;
     let U = uv.x * TAU;
     let V = uv.y * TAU;
-    let x = (R + r * cos(V)) * cos(U);
-    let y = (R + r * cos(V)) * sin(U);
-    let z = r * sin(V);
-    return vec3<f32>(x, z, y);
+    let ring = R + r * cos(V);
+    return vec3<f32>(ring * cos(U), r * sin(V), ring * sin(U));
+}
+
+fn mobiusRadius() -> f32 {
+    return sqrt(domainWidth() * domainHeight() / MOBIUS_UNIT_AREA);
 }
 
 // The U/2 term is the half-twist: going once around u flips the strip over.
 fn surfMobiusX(uv: vec2<f32>) -> vec3<f32> {
-    let R = 0.55;
-    let w = 0.25;
+    let R = mobiusRadius();
+    let w = MOBIUS_WIDTH_RATIO * R;
     let U = uv.x * TAU;
     let S = (uv.y - 0.5) * 2.0 * w;
-    let x = (R + S * cos(U / 2.0)) * cos(U);
-    let y = (R + S * cos(U / 2.0)) * sin(U);
-    let z = S * sin(U / 2.0);
-    return vec3<f32>(x, z, y);
+    let radial = R + S * cos(U / 2.0);
+    return vec3<f32>(radial * cos(U), S * sin(U / 2.0), radial * sin(U));
 }
 
 fn surfMobiusY(uv: vec2<f32>) -> vec3<f32> {
-    let R = 0.55;
-    let w = 0.25;
+    let R = mobiusRadius();
+    let w = MOBIUS_WIDTH_RATIO * R;
     let U = uv.y * TAU;
     let S = (uv.x - 0.5) * 2.0 * w;
-    let x = (R + S * cos(U / 2.0)) * cos(U);
-    let y = (R + S * cos(U / 2.0)) * sin(U);
-    let z = S * sin(U / 2.0);
-    return vec3<f32>(z, x, y);
+    let radial = R + S * cos(U / 2.0);
+    return vec3<f32>(S * sin(U / 2.0), radial * cos(U), radial * sin(U));
 }
 
 // Dickson's piecewise immersion - the recognizable "bottle" whose neck passes
 // through its own side. Self-intersection is unavoidable: the Klein bottle does
-// not embed in 3D.
+// not embed in 3D. Scaled so its area matches the domain's, which is what keeps
+// boids the same size here as anywhere else; its metric is intrinsically uneven
+// so the aspect cannot also be matched.
 fn kleinBase(u: f32, v: f32) -> vec3<f32> {
-    let scale = 0.04;
+    let scale = sqrt(domainWidth() * domainHeight() / KLEIN_UNIT_AREA);
 
     // This immersion is NOT periodic in u: it satisfies F(u + 1, v) = F(u, -v),
     // the Klein bottle's orientation-reversing gluing. Treating u as periodic
-    // tears the surface at the seam and makes the finite-difference frame below
-    // blow up. So reduce u by whole turns and flip v once per turn.
+    // tears the surface at the seam and makes the finite-difference frame blow
+    // up. So reduce u by whole turns and flip v once per turn.
     let turns = floor(u);
     let uu = u - turns;
     var vv = v;
@@ -138,22 +165,22 @@ fn surfKleinY(uv: vec2<f32>) -> vec3<f32> {
 }
 
 // Roman (Steiner) surface - one immersion of the projective plane, with four
-// lobes meeting at a triple point.
-//
-// Scaled up relative to the thumbnail in topologyMeshes.ts: at the thumbnail's
-// 0.9 its bounding radius is only 0.52 against ~0.82 for the other topologies,
-// so the same domain was crammed onto roughly a third of the area and the flock
-// looked squeezed. 1.5 puts it on par with the torus.
+// lobes meeting at a triple point. Area-matched like the Klein bottle: at its
+// old fixed scale it carried thirteen times the domain's area, which is what
+// made the flock on it look blown up.
 fn surfProjective(uv: vec2<f32>) -> vec3<f32> {
-    let scale = 1.5;
+    let scale = sqrt(domainWidth() * domainHeight() / ROMAN_UNIT_AREA);
     let theta = uv.x * 3.141592653589793;
     let phi = uv.y * TAU;
     let cosTheta = cos(theta);
     let sinTheta = sin(theta);
-    let x = cosTheta * sinTheta * sin(phi) * scale;
-    let y = cosTheta * sinTheta * cos(phi) * scale;
-    let z = cosTheta * cosTheta * cos(phi) * sin(phi) * scale;
-    return vec3<f32>(x, z, y);
+    let cosPhi = cos(phi);
+    let sinPhi = sin(phi);
+    return vec3<f32>(
+        cosTheta * sinTheta * sinPhi * scale,
+        cosTheta * cosTheta * cosPhi * sinPhi * scale,
+        cosTheta * sinTheta * cosPhi * scale
+    );
 }
 
 fn embeddedPointFor(uv: vec2<f32>, mode: u32) -> vec3<f32> {

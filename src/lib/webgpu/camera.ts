@@ -63,10 +63,6 @@ export function fitDistance(canvasWidth: number, canvasHeight: number, fov: numb
 	return Math.max(distV, distH);
 }
 
-// Largest bounding radius across the parametric shapes in topologyMeshes.ts
-// (torus R+r = 0.82 is the widest), plus margin so nothing clips at the edges.
-export const SHAPE_BOUNDING_RADIUS = 0.95;
-
 /**
  * Distance at which a sphere of the given radius fits the viewport. Uses the
  * narrower of the vertical and horizontal fields of view so the shape fits in
@@ -116,12 +112,7 @@ export function zoom(camera: OrbitCamera, factor: number): void {
 	camera.distance = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, camera.distance * factor));
 }
 
-/**
- * Slide the orbit target across the view plane.
- *
- * Deltas are fractions of the viewport height, scaled by distance so a drag
- * moves the surface the same amount under the pointer at any zoom level.
- */
+/** Slide the projected image across the view plane. */
 export function pan(camera: OrbitCamera, deltaX: number, deltaY: number): void {
 	// Deltas arrive as fractions of the viewport height; NDC spans 2 over that
 	// height. Screen y runs downward, so a downward drag lowers the image.

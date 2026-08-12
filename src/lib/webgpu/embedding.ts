@@ -28,53 +28,66 @@ export interface EmbedView {
 	planeHalfHeight: number;
 }
 
+// Surface proportions are derived from the domain, not hardcoded, so the sheet
+// is not stretched onto a shape of unrelated dimensions. Must mirror embed.wgsl.
+const MOBIUS_WIDTH_RATIO = 0.454545;
+const MOBIUS_UNIT_AREA = 5.82236;
+const MOBIUS_UNIT_RADIUS = 1.4545;
+const KLEIN_UNIT_AREA = 1888.940032;
+const KLEIN_UNIT_RADIUS = 24.3337;
+const ROMAN_UNIT_AREA = 6.493252;
+const ROMAN_UNIT_RADIUS = 0.5773;
+
+const domainWidth = (view: EmbedView) => 2 * view.planeHalfWidth;
+const domainHeight = (view: EmbedView) => 2 * view.planeHalfHeight;
+const mobiusRadius = (view: EmbedView) =>
+	Math.sqrt((domainWidth(view) * domainHeight(view)) / MOBIUS_UNIT_AREA);
+
 function surfFlat(u: number, v: number, view: EmbedView): Vec3 {
-	return [(u - 0.5) * 2 * view.planeHalfWidth, (v - 0.5) * 2 * view.planeHalfHeight, 0];
+	return [(u - 0.5) * domainWidth(view), (v - 0.5) * domainHeight(view), 0];
 }
 
-function surfCylinderX(u: number, v: number): Vec3 {
-	const R = 0.5;
-	const height = 1.2;
+function surfCylinderX(u: number, v: number, view: EmbedView): Vec3 {
+	const R = domainWidth(view) / TAU;
 	const U = u * TAU;
-	return [Math.cos(U) * R, (v - 0.5) * height, Math.sin(U) * R];
+	return [Math.cos(U) * R, (v - 0.5) * domainHeight(view), Math.sin(U) * R];
 }
 
-function surfCylinderY(u: number, v: number): Vec3 {
-	const R = 0.5;
-	const height = 1.2;
+function surfCylinderY(u: number, v: number, view: EmbedView): Vec3 {
+	const R = domainHeight(view) / TAU;
 	const U = v * TAU;
-	return [(u - 0.5) * height, Math.cos(U) * R, Math.sin(U) * R];
+	return [(u - 0.5) * domainWidth(view), Math.cos(U) * R, Math.sin(U) * R];
 }
 
-function surfTorus(u: number, v: number): Vec3 {
-	const R = 0.6;
-	const r = 0.22;
+function surfTorus(u: number, v: number, view: EmbedView): Vec3 {
+	const R = domainWidth(view) / TAU;
+	const r = domainHeight(view) / TAU;
 	const U = u * TAU;
 	const V = v * TAU;
 	const ring = R + r * Math.cos(V);
 	return [ring * Math.cos(U), r * Math.sin(V), ring * Math.sin(U)];
 }
 
-function surfMobiusX(u: number, v: number): Vec3 {
-	const R = 0.55;
-	const w = 0.25;
+function surfMobiusX(u: number, v: number, view: EmbedView): Vec3 {
+	const R = mobiusRadius(view);
+	const w = MOBIUS_WIDTH_RATIO * R;
 	const U = u * TAU;
 	const S = (v - 0.5) * 2 * w;
 	const radial = R + S * Math.cos(U / 2);
 	return [radial * Math.cos(U), S * Math.sin(U / 2), radial * Math.sin(U)];
 }
 
-function surfMobiusY(u: number, v: number): Vec3 {
-	const R = 0.55;
-	const w = 0.25;
+function surfMobiusY(u: number, v: number, view: EmbedView): Vec3 {
+	const R = mobiusRadius(view);
+	const w = MOBIUS_WIDTH_RATIO * R;
 	const U = v * TAU;
 	const S = (u - 0.5) * 2 * w;
 	const radial = R + S * Math.cos(U / 2);
 	return [S * Math.sin(U / 2), radial * Math.cos(U), radial * Math.sin(U)];
 }
 
-function kleinBase(u: number, v: number): Vec3 {
-	const scale = 0.04;
+function kleinBase(u: number, v: number, view: EmbedView): Vec3 {
+	const scale = Math.sqrt((domainWidth(view) * domainHeight(view)) / KLEIN_UNIT_AREA);
 
 	// Not periodic in u: F(u + 1, v) = F(u, -v). See embed.wgsl.
 	const turns = Math.floor(u);
@@ -102,19 +115,18 @@ function kleinBase(u: number, v: number): Vec3 {
 	return [x * scale, 4 * c * sinV * scale, (y - 8) * scale];
 }
 
-function surfKleinX(u: number, v: number): Vec3 {
-	return kleinBase(u, v);
+function surfKleinX(u: number, v: number, view: EmbedView): Vec3 {
+	return kleinBase(u, v, view);
 }
 
-function surfKleinY(u: number, v: number): Vec3 {
-	const p = kleinBase(v, u);
-	// Axis permutation plus the quarter turn about X that stands it upright.
+function surfKleinY(u: number, v: number, view: EmbedView): Vec3 {
+	const p = kleinBase(v, u, view);
 	const permuted: Vec3 = [p[1], p[0], p[2]];
 	return [permuted[0], -permuted[2], permuted[1]];
 }
 
-function surfProjective(u: number, v: number): Vec3 {
-	const scale = 1.5;
+function surfProjective(u: number, v: number, view: EmbedView): Vec3 {
+	const scale = Math.sqrt((domainWidth(view) * domainHeight(view)) / ROMAN_UNIT_AREA);
 	const theta = u * PI;
 	const phi = v * TAU;
 	const cosTheta = Math.cos(theta);
@@ -128,24 +140,56 @@ function surfProjective(u: number, v: number): Vec3 {
 	];
 }
 
+/**
+ * Bounding radius of a topology at the current domain size, so the camera can
+ * frame each shape properly. These now differ a lot - a torus rolled from the
+ * sheet is far more compact than the flat sheet itself - so a single shared
+ * radius would leave most shapes either clipped or lost in the middle.
+ */
+export function topologyBoundingRadius(mode: BoundaryMode, view: EmbedView): number {
+	const hw = view.planeHalfWidth;
+	const hh = view.planeHalfHeight;
+	const Lu = 2 * hw;
+	const Lv = 2 * hh;
+	const areaScale = (unitArea: number) => Math.sqrt((Lu * Lv) / unitArea);
+	switch (mode) {
+		case BoundaryMode.CylinderX:
+			return Math.hypot(Lu / TAU, hh);
+		case BoundaryMode.CylinderY:
+			return Math.hypot(hw, Lv / TAU);
+		case BoundaryMode.Torus:
+			return (Lu + Lv) / TAU;
+		case BoundaryMode.MobiusX:
+		case BoundaryMode.MobiusY:
+			return MOBIUS_UNIT_RADIUS * areaScale(MOBIUS_UNIT_AREA);
+		case BoundaryMode.KleinX:
+		case BoundaryMode.KleinY:
+			return KLEIN_UNIT_RADIUS * areaScale(KLEIN_UNIT_AREA);
+		case BoundaryMode.ProjectivePlane:
+			return ROMAN_UNIT_RADIUS * areaScale(ROMAN_UNIT_AREA);
+		default:
+			return Math.hypot(hw, hh);
+	}
+}
+
 function embeddedPointFor(u: number, v: number, mode: BoundaryMode, view: EmbedView): Vec3 {
 	switch (mode) {
 		case BoundaryMode.CylinderX:
-			return surfCylinderX(u, v);
+			return surfCylinderX(u, v, view);
 		case BoundaryMode.CylinderY:
-			return surfCylinderY(u, v);
+			return surfCylinderY(u, v, view);
 		case BoundaryMode.Torus:
-			return surfTorus(u, v);
+			return surfTorus(u, v, view);
 		case BoundaryMode.MobiusX:
-			return surfMobiusX(u, v);
+			return surfMobiusX(u, v, view);
 		case BoundaryMode.MobiusY:
-			return surfMobiusY(u, v);
+			return surfMobiusY(u, v, view);
 		case BoundaryMode.KleinX:
-			return surfKleinX(u, v);
+			return surfKleinX(u, v, view);
 		case BoundaryMode.KleinY:
-			return surfKleinY(u, v);
+			return surfKleinY(u, v, view);
 		case BoundaryMode.ProjectivePlane:
-			return surfProjective(u, v);
+			return surfProjective(u, v, view);
 		default:
 			return surfFlat(u, v, view);
 	}
