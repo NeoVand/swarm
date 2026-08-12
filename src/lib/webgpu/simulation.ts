@@ -108,7 +108,7 @@ const REVEAL_ELEVATION = 0.36;
 const AUTO_ROTATE_SPEED = 0.35;
 
 // Breathing room around the framed shape
-const SHAPE_FRAMING_MARGIN = 1.18;
+const SHAPE_FRAMING_MARGIN = 1.06;
 
 // Smoothstep-style ease so the morph starts and ends gently.
 function easeInOut(t: number): number {

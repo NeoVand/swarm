@@ -262,17 +262,20 @@ fn surfaceFrameAt(uv: vec2<f32>) -> SurfaceFrame {
  * shrink where the surface compresses (the inner rim of a torus) and grow where
  * it stretches, instead of all being one flat size.
  */
-fn surfaceScale(frame: SurfaceFrame) -> f32 {
-    let su = length(frame.du) / uniforms.canvasWidth;
-    let sv = length(frame.dv) / uniforms.canvasHeight;
-    let scale = 0.5 * (su + sv);
-
-    // Safety net: if a parametrization ever loses continuity, the central
-    // difference reports a near-infinite derivative and every boid near the
-    // discontinuity inflates into a giant slab. Legitimate stretch stays well
-    // inside this bound (the outer rim of a torus is ~4x the flat plane).
-    let nominal = 2.0 * uniforms.embedParams.x / uniforms.canvasWidth;
-    return clamp(scale, nominal * 0.05, nominal * 20.0);
+/**
+ * World size of one domain pixel, constant across the whole surface.
+ *
+ * This deliberately ignores the local metric. Sizing each boid by the stretch
+ * under it makes them swell on the body of a Klein bottle and shrink in the
+ * neck, which reads as a texture stretched over the shape rather than a flock
+ * on it. A boid is an agent, not a piece of skin: it keeps its own size
+ * wherever it swims, exactly as it does in the flat view.
+ *
+ * Being constant also removes the need for the old blow-up guard - there is no
+ * longer any derivative in the size at all.
+ */
+fn surfaceScale() -> f32 {
+    return domainWidth() / uniforms.canvasWidth;
 }
 
 /**
@@ -283,7 +286,7 @@ fn surfaceScale(frame: SurfaceFrame) -> f32 {
 fn projectOnSurface(domainPos: vec2<f32>, localOffset: vec2<f32>, forward: vec2<f32>) -> vec4<f32> {
     let uv = domainToParam(domainPos);
     let frame = surfaceFrameAt(uv);
-    let scale = surfaceScale(frame);
+    let scale = surfaceScale();
 
     // Push the domain-space heading through the surface differential. Domain y
     // grows downward while parametric v grows upward, hence the negated y.
@@ -297,6 +300,40 @@ fn projectOnSurface(domainPos: vec2<f32>, localOffset: vec2<f32>, forward: vec2<
     let up = cross(frame.normal, right);
 
     let world = frame.pos + (right * localOffset.x - up * localOffset.y) * scale;
+    return uniforms.viewProj * vec4<f32>(world, 1.0);
+}
+
+/**
+ * Project one edge of a ribbon whose centreline lies on the surface.
+ *
+ * Trails need a constant world-space width, same as boids, but the full tangent
+ * frame costs five surface evaluations per vertex and trails are by far the
+ * heaviest draw - doing it that way cost about 13% of the frame rate. Stepping
+ * once along the perpendicular gives the same edge direction for two
+ * evaluations instead of five, and the ribbon is far too thin for the
+ * difference between a first- and second-order derivative to show.
+ */
+fn projectRibbonEdge(domainPos: vec2<f32>, perpDomain: vec2<f32>, halfWidth: f32) -> vec4<f32> {
+    let uv = domainToParam(domainPos);
+    let p0 = surfacePoint(uv);
+
+    // Perpendicular in parameter space. Domain y is flipped relative to
+    // parametric v, matching domainToParam.
+    let step = vec2<f32>(perpDomain.x / uniforms.canvasWidth, -perpDomain.y / uniforms.canvasHeight);
+    let stepLen = length(step);
+    if (stepLen < 1e-9) {
+        return uniforms.viewProj * vec4<f32>(p0, 1.0);
+    }
+
+    let eps = 0.0015;
+    let p1 = surfacePoint(uv + step / stepLen * eps);
+    var edge = p1 - p0;
+    let edgeLen = length(edge);
+    if (edgeLen < 1e-9) {
+        return uniforms.viewProj * vec4<f32>(p0, 1.0);
+    }
+
+    let world = p0 + edge / edgeLen * halfWidth * surfaceScale();
     return uniforms.viewProj * vec4<f32>(world, 1.0);
 }
 

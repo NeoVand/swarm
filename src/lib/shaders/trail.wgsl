@@ -305,20 +305,31 @@ fn vs_main(
         alpha2 = 1.0 - ageRatio - 1.0 / f32(speciesTrailLen - 1u);
     }
     
+    // Track the endpoint, side and heading separately as well as the flat
+    // position: embedded mode rebuilds the ribbon in the surface tangent plane
+    // rather than offsetting in domain space, so it needs them apart.
+    var basePos = p1;          // centreline endpoint this vertex belongs to
+    var basePerp = perp1;      // ribbon perpendicular at that endpoint
+    var side = 1.0;            // which edge of the ribbon
+    var halfWidth = width1;
+
     switch (quadVertex) {
-        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; }
-        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
-        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
-        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
-        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
-        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; }
+        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; basePos = p1; basePerp = perp1; side =  1.0; halfWidth = width1; }
+        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; basePos = p1; basePerp = perp1; side = -1.0; halfWidth = width1; }
+        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; basePos = p2; basePerp = perp2; side =  1.0; halfWidth = width2; }
+        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; basePos = p2; basePerp = perp2; side =  1.0; halfWidth = width2; }
+        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; basePos = p1; basePerp = perp1; side = -1.0; halfWidth = width1; }
+        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; basePos = p2; basePerp = perp2; side = -1.0; halfWidth = width2; }
         default: { worldPos = p1; alpha = 0.0; }
     }
     
     if (isEmbedded()) {
-        // The ribbon's width is already expressed in domain pixels, so mapping
-        // each corner through the surface keeps it lying flat on the geometry.
-        output.position = projectDomainPoint(worldPos);
+        // Build the ribbon in the surface tangent plane, the same way boids are
+        // built. Offsetting in domain space and then mapping the corners made
+        // the trail width follow the local stretch, so trails fattened and
+        // thinned across the surface while the boids they trail from stayed one
+        // size - the ribbon read as stretched skin rather than a wake.
+        output.position = projectRibbonEdge(basePos, basePerp * side, halfWidth);
     } else {
         // Convert to clip space
         let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;

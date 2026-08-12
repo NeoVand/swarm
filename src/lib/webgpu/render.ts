@@ -20,7 +20,8 @@ const GRID_LINES_V = 12;
 const GRID_SEGMENTS = 160;
 
 const SHELL_VERTEX_COUNT = SHELL_U * SHELL_V * 6;
-const GRID_VERTEX_COUNT = (GRID_LINES_U + GRID_LINES_V) * GRID_SEGMENTS * 2;
+// One extra line per axis so open boundaries get drawn (see vs_grid)
+const GRID_VERTEX_COUNT = (GRID_LINES_U + 1 + GRID_LINES_V + 1) * GRID_SEGMENTS * 2;
 
 export interface RenderBindGroups {
 	boidA: GPUBindGroup;

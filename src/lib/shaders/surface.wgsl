@@ -99,19 +99,32 @@ fn vs_grid(@builtin(vertex_index) vertexIndex: u32) -> GridOut {
 
     let t = f32(segment + endpoint) / f32(GRID_SEGMENTS);
 
+    // One extra line per axis so both boundaries are drawn. Lines used to stop
+    // at (N-1)/N, which is invisible on a wrapping axis - the missing line sits
+    // exactly on the one at 0 - but leaves an *open* edge with no line on it at
+    // all, so the cylinder ends, the Mobius rim and the plane border all just
+    // stopped mid-air. Where the axis does wrap, the duplicate is suppressed
+    // instead so that seam is not drawn twice as bright.
     var uv: vec2<f32>;
-    if (lineIndex < GRID_LINES_U) {
+    var visible = true;
+    if (lineIndex <= GRID_LINES_U) {
         // Lines of constant u, running along v
+        if (lineIndex == GRID_LINES_U && wrapsX()) {
+            visible = false;
+        }
         uv = vec2<f32>(f32(lineIndex) / f32(GRID_LINES_U), t);
     } else {
         // Lines of constant v, running along u
-        let vIndex = lineIndex - GRID_LINES_U;
+        let vIndex = lineIndex - GRID_LINES_U - 1u;
+        if (vIndex == GRID_LINES_V && wrapsY()) {
+            visible = false;
+        }
         uv = vec2<f32>(t, f32(vIndex) / f32(GRID_LINES_V));
     }
 
     var out: GridOut;
     out.position = uniforms.viewProj * vec4<f32>(surfacePoint(uv), 1.0);
-    out.fade = 1.0;
+    out.fade = select(0.0, 1.0, visible);
     return out;
 }
 
