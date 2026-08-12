@@ -264,10 +264,16 @@ fn vs_main(
     // Ghosts are rendered on the opposite side of the canvas for wrapped edges
     var ghostOffset = vec2<f32>(0.0, 0.0);
     let edgeThreshold = size * 1.5;  // How close to edge before we render a ghost
-    
+
     // Determine if this ghost copy should be rendered
     var shouldRender = true;
-    
+
+    // In embedded mode the surface wraps for real, so the flat-view edge ghosts
+    // are redundant - the seam is a seam, not a boundary.
+    if (isEmbedded() && ghostType != 0u) {
+        shouldRender = false;
+    } else
+
     if (ghostType == 1u) {
         // X-ghost: rendered when boid is near left or right edge on wrapped X
         if (wrapsX()) {
@@ -336,14 +342,21 @@ fn vs_main(
         return output;
     }
     
-    // Translate to world position with ghost offset
-    let worldPos = pos + rotatedVert + ghostOffset;
-    
-    // Convert to clip space (orthographic projection)
-    let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;
-    let clipY = 1.0 - (worldPos.y / uniforms.canvasHeight) * 2.0;
-    
-    output.position = vec4<f32>(clipX, clipY, 0.0, 1.0);
+    if (isEmbedded()) {
+        // Build the shape in the surface tangent plane instead of screen space.
+        // The frame's "right" axis is the pushed-forward velocity, so the
+        // unrotated local vertex is used - orientation comes from the surface.
+        output.position = projectOnSurface(pos, scaledVert, vel);
+    } else {
+        // Translate to world position with ghost offset
+        let worldPos = pos + rotatedVert + ghostOffset;
+
+        // Convert to clip space (orthographic projection)
+        let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;
+        let clipY = 1.0 - (worldPos.y / uniforms.canvasHeight) * 2.0;
+
+        output.position = vec4<f32>(clipX, clipY, 0.0, 1.0);
+    }
     
     // Calculate color based on mode
     var colorValue: f32;

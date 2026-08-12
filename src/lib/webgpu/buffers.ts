@@ -1,6 +1,12 @@
 // Buffer creation and management
 
-import type { SimulationBuffers, SimulationParams, CursorState, Species, CurvePoint } from './types';
+import type {
+	SimulationBuffers,
+	SimulationParams,
+	CursorState,
+	Species,
+	CurvePoint
+} from './types';
 import {
 	WORKGROUP_SIZE,
 	WALL_TEXTURE_SCALE,
@@ -8,7 +14,8 @@ import {
 	MAX_METRIC_RULES_PER_SPECIES,
 	VortexDirection,
 	MetricSource,
-	MetricRole
+	MetricRole,
+	UNIFORM_BUFFER_SIZE
 } from './types';
 
 // Curve samples per metric rule
@@ -89,9 +96,9 @@ export function createBuffers(device: GPUDevice, config: BufferConfig): Simulati
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
 	});
 
-	// Uniform buffer (256 bytes, padded for alignment)
+	// Uniform buffer (padded for alignment)
 	const uniforms = device.createBuffer({
-		size: 256,
+		size: UNIFORM_BUFFER_SIZE,
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
 	});
 
@@ -357,11 +364,23 @@ export interface UniformData {
 	// Locally perfect hashing
 	reducedWidth: number;
 	totalSlots: number;
+	// Embedded 3D view
+	embedBlend: number;
+	embedTopology: number;
+	viewProj: Float32Array; // 16 floats, column-major
+	cameraEye: [number, number, number];
+	planeHalfWidth: number;
+	planeHalfHeight: number;
+	/** 0..1 fade-in during the morph. The shell itself is opaque. */
+	shellFade: number;
+	gridOpacity: number;
+	topologyBlend: number;
+	embedTopologyPrev: number;
 }
 
 export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: UniformData): void {
 	// Pack uniforms according to WGSL struct layout
-	const uniformArray = new ArrayBuffer(256);
+	const uniformArray = new ArrayBuffer(UNIFORM_BUFFER_SIZE);
 	const f32View = new Float32Array(uniformArray);
 	const u32View = new Uint32Array(uniformArray);
 
@@ -423,6 +442,34 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	f32View[offset++] = data.params.hueStrength;
 	f32View[offset++] = data.params.saturationStrength;
 	f32View[offset++] = data.params.brightnessStrength;
+
+	// --- Embedded 3D view ---
+	// offset is 46 here; these two bring it to 48 (192 bytes), which is the
+	// 16-byte boundary the mat4x4 below requires.
+	f32View[offset++] = data.embedBlend;
+	u32View[offset++] = data.embedTopology;
+
+	// viewProj occupies floats 48..63 (bytes 192..256)
+	f32View.set(data.viewProj, 48);
+	offset = 64;
+
+	// cameraPos (bytes 256..272)
+	f32View[offset++] = data.cameraEye[0];
+	f32View[offset++] = data.cameraEye[1];
+	f32View[offset++] = data.cameraEye[2];
+	f32View[offset++] = 0;
+
+	// embedParams (bytes 272..288)
+	f32View[offset++] = data.planeHalfWidth;
+	f32View[offset++] = data.planeHalfHeight;
+	f32View[offset++] = data.shellFade;
+	f32View[offset++] = data.gridOpacity;
+
+	// Topology cross-fade (bytes 288..304), padded to a 16-byte block
+	f32View[offset++] = data.topologyBlend;
+	u32View[offset++] = data.embedTopologyPrev;
+	f32View[offset++] = 0;
+	f32View[offset++] = 0;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
 }
@@ -626,7 +673,9 @@ export function updateMetricRules(
 	// vec4[0]: [source, role, behavior, strength]
 	// vec4[1]: [range, enabled, curveOffset, padding]
 	const rulesData = new Float32Array(MAX_SPECIES * MAX_METRIC_RULES_PER_SPECIES * 2 * 4);
-	const curvesData = new Float32Array(MAX_SPECIES * MAX_METRIC_RULES_PER_SPECIES * METRIC_CURVE_SAMPLES);
+	const curvesData = new Float32Array(
+		MAX_SPECIES * MAX_METRIC_RULES_PER_SPECIES * METRIC_CURVE_SAMPLES
+	);
 
 	// Default linear curve for rules without custom curves
 	const defaultCurve: CurvePoint[] = [

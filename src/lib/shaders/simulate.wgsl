@@ -32,6 +32,39 @@ const WALL_FORCE_STRENGTH: f32 = 0.8;  // Strength of wall avoidance
 @group(1) @binding(4) var<uniform> metricRules: array<vec4<f32>, 28>;  // 7 species * 2 rules * 2 vec4s per rule
 @group(1) @binding(5) var<uniform> metricRuleCurves: array<vec4<f32>, 224>;  // 7 species * 2 rules * 64 samples (packed as vec4)
 
+// ============================================================================
+// SURFACE METRIC
+// ============================================================================
+//
+// Flocking is done in the units of the surface the domain is embedded on, not
+// in domain pixels. See metricFrameAt in embed.wgsl for why: a flock spaced
+// evenly in the chart is not spaced evenly on the shape, so the neck of a Klein
+// bottle used to admit as many boids as its far wider body and they simply
+// overlapped there.
+//
+// Both matrices are set once per invocation at the top of main(). Every
+// separation, velocity and force below is then in surface units, and the
+// accumulated acceleration is mapped back to the domain at the very end. The
+// flat plane gives the identity, so nothing changes when embedding is off.
+var<private> toSurface: mat2x2<f32> = mat2x2<f32>(1.0, 0.0, 0.0, 1.0);
+var<private> toDomain: mat2x2<f32> = mat2x2<f32>(1.0, 0.0, 0.0, 1.0);
+
+// Half-extent of the spatial-hash block to search, in cells, per domain axis.
+// A surface-sized neighbourhood is an ellipse in the domain, not a disc, so
+// this is reshaped to match - see main().
+var<private> cellRadiusX: i32 = 2;
+var<private> cellRadiusY: i32 = 2;
+
+/** Separation to a neighbour, measured on the surface. */
+fn neighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
+    return toSurface * getNeighborDelta(myPos, otherPos);
+}
+
+/** A neighbour's velocity in our frame and in surface units. */
+fn neighborVelocity(myPos: vec2<f32>, otherPos: vec2<f32>, otherVel: vec2<f32>) -> vec2<f32> {
+    return toSurface * transformNeighborVelocity(myPos, otherPos, otherVel);
+}
+
 // Species params layout: 2 vec4s per species (8 floats total)
 // vec4[0]: [alignment, cohesion, separation, perception]
 // vec4[1]: [maxSpeed, maxForce, hue, headShape]
@@ -211,14 +244,17 @@ fn getBoidMetric(boidIdx: u32, source: u32) -> f32 {
         case METRIC_SPECTRAL: { return m.w; }    // Already 0-1 (current spectral mode)
         case METRIC_TURN_RATE: { return m.z; }   // Already 0-1
         case METRIC_SPEED: {
-            // Compute speed from velocity, normalized to 0-1 range
-            let vel = velocitiesIn[boidIdx];
+            // Speed over the surface, not across the chart. Stored velocities
+            // are domain-space, where a boid on a compressed patch has to move
+            // faster in pixels to hold the same speed on the shape - reading
+            // them raw would light up the whole neck of a Klein bottle.
+            let vel = toSurface * velocitiesIn[boidIdx];
             let speed = length(vel);
             return clamp(speed / uniforms.maxSpeed, 0.0, 1.0);
         }
         case METRIC_ORIENTATION: {
-            // Compute orientation angle from velocity, mapped to 0-1
-            let vel = velocitiesIn[boidIdx];
+            // Heading on the surface, same reasoning as METRIC_SPEED.
+            let vel = toSurface * velocitiesIn[boidIdx];
             let angle = atan2(vel.y, vel.x);  // -PI to PI
             return (angle + 3.14159265) / 6.28318530;  // Map to 0-1
         }
@@ -385,97 +421,6 @@ fn applyBoundaryWithVelFix(pos: vec2<f32>, vel: vec2<f32>) -> vec4<f32> {
     }
     
     return vec4<f32>(newPos, velMult);
-}
-
-// Compute shortest delta between two positions, accounting for wrapping AND flipping
-// This is critical for correct neighbor detection on Möbius/Klein/Projective
-fn getNeighborDelta(myPos: vec2<f32>, otherPos: vec2<f32>) -> vec2<f32> {
-    let cfg = getBoundaryConfig();
-    let w = uniforms.canvasWidth;
-    let h = uniforms.canvasHeight;
-    
-    var delta = otherPos - myPos;
-    
-    // For simple wrap (no flip), use standard toroidal distance
-    if (cfg.wrapX && !cfg.flipOnWrapX) {
-        if (delta.x > w * 0.5) { delta.x -= w; }
-        else if (delta.x < -w * 0.5) { delta.x += w; }
-    }
-    
-    if (cfg.wrapY && !cfg.flipOnWrapY) {
-        if (delta.y > h * 0.5) { delta.y -= h; }
-        else if (delta.y < -h * 0.5) { delta.y += h; }
-    }
-    
-    // For flip-wrap boundaries, we need to check both direct path and flipped path
-    if (cfg.flipOnWrapX) {
-        // Direct delta
-        let directDist = abs(delta.x);
-        // Flipped path: go through edge, flip Y
-        let flippedOtherY = h - otherPos.y;
-        let flippedDeltaX = (w - myPos.x) + otherPos.x;  // Distance going right through edge
-        let flippedDeltaX2 = myPos.x + (w - otherPos.x); // Distance going left through edge
-        let flippedDeltaY = flippedOtherY - myPos.y;
-        
-        // Check if going through the X edge (with Y flip) is shorter
-        if (flippedDeltaX < directDist) {
-            delta.x = flippedDeltaX;
-            delta.y = flippedDeltaY;
-        } else if (flippedDeltaX2 < directDist) {
-            delta.x = -flippedDeltaX2;
-            delta.y = flippedDeltaY;
-        }
-    }
-    
-    if (cfg.flipOnWrapY) {
-        // Direct delta (possibly already modified by X flip)
-        let directDist = abs(delta.y);
-        // Flipped path: go through edge, flip X
-        let flippedOtherX = w - otherPos.x;
-        let flippedDeltaY = (h - myPos.y) + otherPos.y;
-        let flippedDeltaY2 = myPos.y + (h - otherPos.y);
-        let flippedDeltaX = flippedOtherX - myPos.x;
-        
-        if (flippedDeltaY < directDist) {
-            delta.y = flippedDeltaY;
-            delta.x = flippedDeltaX;
-        } else if (flippedDeltaY2 < directDist) {
-            delta.y = -flippedDeltaY2;
-            delta.x = flippedDeltaX;
-        }
-    }
-    
-    return delta;
-}
-
-// Transform a neighbor's velocity to our reference frame (for alignment across flip boundaries)
-fn transformNeighborVelocity(myPos: vec2<f32>, otherPos: vec2<f32>, otherVel: vec2<f32>) -> vec2<f32> {
-    let cfg = getBoundaryConfig();
-    let w = uniforms.canvasWidth;
-    let h = uniforms.canvasHeight;
-    
-    var vel = otherVel;
-    
-    // Check if the shortest path goes through a flip boundary
-    if (cfg.flipOnWrapX) {
-        let directDistX = abs(otherPos.x - myPos.x);
-        let wrappedDistX = w - directDistX;
-        if (wrappedDistX < directDistX) {
-            // Neighbor is "across" the flip boundary - flip their Y velocity
-            vel.y = -vel.y;
-        }
-    }
-    
-    if (cfg.flipOnWrapY) {
-        let directDistY = abs(otherPos.y - myPos.y);
-        let wrappedDistY = h - directDistY;
-        if (wrappedDistY < directDistY) {
-            // Neighbor is "across" the flip boundary - flip their X velocity
-            vel.x = -vel.x;
-        }
-    }
-    
-    return vel;
 }
 
 // Locally perfect hashing constant
@@ -704,6 +649,27 @@ const OVERLAP_PUSH_STRENGTH: f32 = 2.0;     // Force when boids overlap
 const GLOBAL_COLLISION_RADIUS_MULT: f32 = 32.0;  // Collision radius = avg size * this
 const GLOBAL_COLLISION_STRENGTH: f32 = 3.0;     // Base strength multiplier for collision force
 
+// Strength of the drift toward roomier surface, and its share of the force
+// budget. See the note on areaLogGradient in embed.wgsl for what it does.
+//
+// The theoretical coefficient is the flock's diffusivity, which a flock does
+// not really have - it is a correlated fluid, not a gas - so this is calibrated
+// instead. Measured as the ratio between how densely the surface is populated
+// where it is tightest and where it is loosest, 1.00 being even coverage:
+//
+//                     uncorrected   drift 1.0   drift 0.5
+//   torus                  5.7x        0.34x       1.3-1.7x
+//   Klein bottle (X)       5.6x        1.4-1.7x    1.5x
+//
+// 1.0 overshoots on the torus - it empties the inner equator, which looks as
+// wrong as filling it - and the two surfaces disagree by about a factor of two
+// on where the balance sits, so no single constant makes both exactly even.
+// 0.5 lands both in the same band and never overshoots, which is the property
+// worth having: under-correcting looks like less of the old behaviour, while
+// over-correcting invents a hole that is not in the geometry.
+const AREA_DRIFT: f32 = 0.5;
+const AREA_DRIFT_MAX_FORCE: f32 = 2.0;
+
 // ============================================================================
 // FLOCKING ALGORITHM: HASH-FREE (Per-boid randomized grid - no global seams)
 // ============================================================================
@@ -739,8 +705,8 @@ fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
     var cxy: f32 = 0.0;
     var cyy: f32 = 0.0;
     
-    for (var dy = -2i; dy <= 2i; dy++) {
-        for (var dx = -2i; dx <= 2i; dx++) {
+    for (var dy = -cellRadiusY; dy <= cellRadiusY; dy++) {
+        for (var dx = -cellRadiusX; dx <= cellRadiusX; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
@@ -756,7 +722,7 @@ fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
                 if (otherIdx == boidIndex) { continue; }
                 
                 let otherPos = positionsIn[otherIdx];
-                let delta = getNeighborDelta(myPos, otherPos);
+                let delta = neighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 let otherSpecies = speciesIds[otherIdx];
                 let isSameSpecies = otherSpecies == speciesId;
@@ -795,7 +761,7 @@ fn computeFlockingForces(boidIndex: u32, myPos: vec2<f32>, myVel: vec2<f32>, spe
                 
                 // Flocking forces (same-species only)
                 if (weight > 0.0 && isSameSpecies) {
-                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    let otherVel = neighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
                     alignmentSum += otherVel * weight;
                     cohesionSum += delta * weight;
                     totalWeight += weight;
@@ -895,9 +861,9 @@ fn calculateInterSpeciesForce(
     var spiralOrbitSum = vec2<f32>(0.0);
     var spiralCount = 0u;
     
-    // Search neighbors in 5x5 grid (needed for cellSize = perception/2)
-    for (var dy = -2i; dy <= 2i; dy++) {
-        for (var dx = -2i; dx <= 2i; dx++) {
+    // Search the neighbourhood block (see cellRadiusX/Y - 5x5 when unembedded)
+    for (var dy = -cellRadiusY; dy <= cellRadiusY; dy++) {
+        for (var dx = -cellRadiusX; dx <= cellRadiusX; dx++) {
             let cx = myCellX + dx;
             let cy = myCellY + dy;
             
@@ -926,8 +892,8 @@ fn calculateInterSpeciesForce(
                 if (range < 1.0) { range = getSpeciesPerception(mySpecies) * 1.5; }
                 
                 let otherPos = positionsIn[otherIdx];
-                let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
-                let delta = getNeighborDelta(myPos, otherPos);
+                let otherVel = neighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                let delta = neighborDelta(myPos, otherPos);
                 let distSq = dot(delta, delta);
                 let rangeSq = range * range;
                 
@@ -946,9 +912,11 @@ fn calculateInterSpeciesForce(
                         fleeCount++;
                     }
                     case BEHAVIOR_CHASE: {
-                        // Predatory pursuit - target predicted future position
-                        let prediction = otherPos + otherVel * 0.5;  // Predict 0.5s ahead
-                        let predictDelta = getNeighborDelta(myPos, prediction);
+                        // Predatory pursuit - target predicted future position.
+                        // delta and otherVel are both already in surface units,
+                        // so the lead is just their sum; re-deriving it from a
+                        // predicted domain position would mix the two frames.
+                        let predictDelta = delta + otherVel * 0.5;  // Predict 0.5s ahead
                         chaseSum += delta * weight * strength;
                         chasePredictSum += predictDelta * weight * strength;
                         chaseCount++;
@@ -977,9 +945,9 @@ fn calculateInterSpeciesForce(
                         var followOffset = delta;
                         if (otherSpeed > 0.1) {
                             let otherDir = otherVel / otherSpeed;
-                            // Position 30 units behind the leader
-                            let targetPos = otherPos - otherDir * 30.0;
-                            followOffset = getNeighborDelta(myPos, targetPos);
+                            // Slot 30 units behind the leader, measured along
+                            // the surface like every other distance here.
+                            followOffset = delta - otherDir * 30.0;
                         }
                         followSum += followOffset * weight * strength;
                         followCount++;
@@ -1164,9 +1132,9 @@ fn calculateMetricForce(
         var forceSum = vec2<f32>(0.0);
         var forceCount = 0u;
         
-        // Search neighbors in 5x5 grid
-        for (var dy = -2i; dy <= 2i; dy++) {
-            for (var dx = -2i; dx <= 2i; dx++) {
+        // Search the neighbourhood block (see cellRadiusX/Y)
+        for (var dy = -cellRadiusY; dy <= cellRadiusY; dy++) {
+            for (var dx = -cellRadiusX; dx <= cellRadiusX; dx++) {
                 let cx = myCellX + dx;
                 let cy = myCellY + dy;
                 
@@ -1181,8 +1149,8 @@ fn calculateMetricForce(
                     if (otherIdx == boidIndex) { continue; }
                     
                     let otherPos = positionsIn[otherIdx];
-                    let otherVel = transformNeighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
-                    let delta = getNeighborDelta(myPos, otherPos);
+                    let otherVel = neighborVelocity(myPos, otherPos, velocitiesIn[otherIdx]);
+                    let delta = neighborDelta(myPos, otherPos);
                     let distSq = dot(delta, delta);
                     let rangeSq = range * range;
                     
@@ -1219,8 +1187,9 @@ fn calculateMetricForce(
                             forceCount++;
                         }
                         case BEHAVIOR_CHASE: {
-                            let prediction = otherPos + otherVel * 0.5;
-                            let predictDelta = getNeighborDelta(myPos, prediction);
+                            // Surface units throughout - see the same case in
+                            // calculateInterSpeciesForce.
+                            let predictDelta = delta + otherVel * 0.5;
                             forceSum += predictDelta * effectiveStrength;
                             forceCount++;
                         }
@@ -1242,8 +1211,7 @@ fn calculateMetricForce(
                             var followOffset = delta;
                             if (otherSpeed > 0.1) {
                                 let otherDir = otherVel / otherSpeed;
-                                let targetPos = otherPos - otherDir * 30.0;
-                                followOffset = getNeighborDelta(myPos, targetPos);
+                                followOffset = delta - otherDir * 30.0;
                             }
                             forceSum += followOffset * effectiveStrength;
                             forceCount++;
@@ -1315,7 +1283,31 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let myPos = positionsIn[boidIndex];
     let myVel = velocitiesIn[boidIndex];
     let mySpecies = speciesIds[boidIndex];
-    
+
+    // Everything from here to the position update is done in surface units.
+    // Flocking on the flat chart spaces boids evenly in the chart, which on a
+    // curved embedding means evenly in the *wrong* measure: the neck of a Klein
+    // bottle covers a fifteenth of the surface per unit of domain that its body
+    // does, so a chart-even flock crams fifteen times the density into it and
+    // the boids simply overlap. Measured on the surface instead, the separation
+    // rule does what it says, and a tight tube admits fewer boids.
+    let metric = metricFrameAt(myPos);
+    toSurface = metric.toSurface;
+    toDomain = metric.toDomain;
+    let myVelS = toSurface * myVel;
+
+    // The hash grid is a domain-space grid, so a surface-sized neighbourhood is
+    // an ellipse in it rather than a disc - on Mobius Y one domain axis reaches
+    // twelve times as far as the other. A fixed 5x5 block would miss every
+    // neighbour along the short axis, so reshape the block to the same ratio.
+    // Only the ratio is applied, never the overall size, which keeps the cell
+    // budget at 25 give or take and the inner loop at its current cost.
+    let reachX = length(vec2<f32>(toDomain[0][0], toDomain[1][0]));
+    let reachY = length(vec2<f32>(toDomain[0][1], toDomain[1][1]));
+    let reachRatio = sqrt(reachX / max(reachY, 1e-6));
+    cellRadiusX = clamp(i32(round(2.0 * reachRatio)), 1, 5);
+    cellRadiusY = clamp(i32(round(2.0 / max(reachRatio, 1e-6))), 1, 5);
+
     // Get per-species parameters
     let speciesRebels = getSpeciesRebels(mySpecies);
     let speciesMaxSpeed = getSpeciesMaxSpeed(mySpecies);
@@ -1333,16 +1325,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let rebelFactor = select(1.0, 0.1, isRebel);
     
     // Compute flocking forces (returns acceleration in xy, metrics in zw)
-    let flockResult = computeFlockingForces(boidIndex, myPos, myVel, mySpecies, rebelFactor);
+    let flockResult = computeFlockingForces(boidIndex, myPos, myVelS, mySpecies, rebelFactor);
     var acceleration = flockResult.xy;
     let density = flockResult.z;
     let anisotropy = flockResult.w;
-    
+
     // Add inter-species forces
-    acceleration += calculateInterSpeciesForce(boidIndex, myPos, myVel, mySpecies);
-    
+    acceleration += calculateInterSpeciesForce(boidIndex, myPos, myVelS, mySpecies);
+
     // Add metric-based forces
-    acceleration += calculateMetricForce(boidIndex, myPos, myVel, mySpecies);
+    acceleration += calculateMetricForce(boidIndex, myPos, myVelS, mySpecies);
     
     // Cursor interaction - Shape determines radial force, Vortex adds rotation
     // Per-species cursor response: 0 = Attract, 1 = Repel, 2 = Ignore
@@ -1355,7 +1347,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Allow interaction if species responds OR if vortex is enabled for this species
     if ((speciesCursorResponse != 2u || hasVortex) && uniforms.cursorActive != 0u) {
         let cursorPos = vec2<f32>(uniforms.cursorX, uniforms.cursorY);
-        let toCursor = getNeighborDelta(myPos, cursorPos);
+        let toCursor = neighborDelta(myPos, cursorPos);
         let cursorDist = length(toCursor);
         
         // Use cursorRadius from params (in CSS pixels, scale by DPR)
@@ -1560,6 +1552,23 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
     
+    // Room to swim. The metric above fixes each boid's own physics but leaves
+    // the flock free to sit wherever it likes, so a tight tube still filled up
+    // with boids that were merely closer together on the surface than anywhere
+    // else. This is the drift that makes the flock's own wandering settle at a
+    // density proportional to area - see areaLogGradient in embed.wgsl - and it
+    // is what finally makes a narrow neck admit fewer boids instead of the same
+    // number squeezed. maxSpeed^2 turns the per-length gradient into an
+    // acceleration; the cap keeps it a nudge rather than a current, and holds it
+    // finite at the Roman surface's pinch points.
+    if (isEmbedded()) {
+        let room = areaLogGradient(myPos, toDomain);
+        acceleration += limitMagnitude(
+            room * speciesMaxSpeed * speciesMaxSpeed * AREA_DRIFT,
+            speciesMaxForce * AREA_DRIFT_MAX_FORCE
+        );
+    }
+
     // Noise - adds random perturbation for more organic movement
     // Uses maxSpeed as scale (not maxForce) so the effect is actually visible
     if (uniforms.noise > 0.0) {
@@ -1568,24 +1577,35 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         acceleration += noiseVec * uniforms.noise * speciesMaxSpeed * 0.15;
     }
     
-    // Apply soft steering for bouncy boundaries
-    var newVel = applySoftSteering(myPos, myVel + acceleration);
-    
-    // Apply wall avoidance (user-drawn obstacles)
-    newVel = applyWallAvoidance(myPos, newVel);
-    
-    newVel = limitMagnitude(newVel, speciesMaxSpeed);
-    
+    // Bouncy edges and painted walls belong to the flat domain - the wall
+    // texture is drawn in domain coordinates and the insets are domain pixels -
+    // so they are computed there and pushed into surface units to join the rest.
+    // Both helpers are purely additive, hence the subtraction to recover the
+    // force each contributes.
+    let steerForce = applySoftSteering(myPos, vec2<f32>(0.0));
+    let wallForce = applyWallAvoidance(myPos, myVel) - myVel;
+
+    var newVelS = toSurface * (myVel + steerForce + wallForce) + acceleration;
+
+    // Speed limits are surface speeds, so a boid covers the same distance on
+    // the shape every frame wherever it happens to be. In domain pixels it
+    // therefore speeds up through a compressed patch and slows through a
+    // stretched one, which is what makes it read as swimming on the surface
+    // rather than being dragged across a texture stretched over it.
+    newVelS = limitMagnitude(newVelS, speciesMaxSpeed);
+
     // Minimum speed
-    let speed = length(newVel);
+    let speed = length(newVelS);
     if (speed < speciesMaxSpeed * 0.3) {
         if (speed > 0.001) {
-            newVel = normalize(newVel) * speciesMaxSpeed * 0.3;
+            newVelS = normalize(newVelS) * speciesMaxSpeed * 0.3;
         } else {
-            newVel = normalize(random2(boidIndex * 13u + uniforms.frameCount * 23u)) * speciesMaxSpeed * 0.3;
+            newVelS = normalize(random2(boidIndex * 13u + uniforms.frameCount * 23u)) * speciesMaxSpeed * 0.3;
         }
     }
-    
+
+    var newVel = toDomain * newVelS;
+
     // Update position (timeScale controls simulation speed)
     var newPos = myPos + newVel * uniforms.deltaTime * 60.0 * uniforms.timeScale;
     
@@ -1593,16 +1613,28 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let boundaryResult = applyBoundaryWithVelFix(newPos, newVel);
     newPos = boundaryResult.xy;
     let velMult = boundaryResult.zw;
+
+    // Keep the pre-flip velocity for the turn-rate measurement below. Crossing a
+    // Mobius/Klein seam reflects a velocity component, which is a change of
+    // chart, not a change of heading - the boid did not turn. Measuring across
+    // the flip reports up to a 180 degree turn, and because the value is
+    // temporally smoothed the false spike decays over several frames, painting a
+    // dark band alongside every flipping seam.
+    let velBeforeFlip = newVel;
     newVel = newVel * velMult;  // Flip velocity components when crossing flip boundaries
-    
-    // Compute angular velocity (true turning rate) for visualization
-    // Compare heading angle change between old and new velocity
-    let oldSpeed = length(myVel);
-    let newSpeed = length(newVel);
+
+    // Compute angular velocity (true turning rate) for visualization.
+    // Both headings are read in the surface frame at this boid's position: the
+    // domain angle drifts on its own wherever the chart shears, which would
+    // report a turn the boid never made.
+    let oldVelS = myVelS;
+    let newVelSMeasured = toSurface * velBeforeFlip;
+    let oldSpeed = length(oldVelS);
+    let newSpeed = length(newVelSMeasured);
     var rawTurnRate = 0.0;
     if (oldSpeed > 0.01 && newSpeed > 0.01) {
-        let oldAngle = atan2(myVel.y, myVel.x);
-        let newAngle = atan2(newVel.y, newVel.x);
+        let oldAngle = atan2(oldVelS.y, oldVelS.x);
+        let newAngle = atan2(newVelSMeasured.y, newVelSMeasured.x);
         var angleDiff = newAngle - oldAngle;
         // Normalize to [-PI, PI] to handle wraparound
         if (angleDiff > 3.14159265) { angleDiff -= 6.28318530; }
@@ -1631,12 +1663,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         // Store at the BASE of the boid (x = -0.7 in local space), not the center
         // This ensures trails connect seamlessly to the triangle's back edge
         let speciesSize = getSpeciesSize(mySpecies);
-        let finalSpeed = length(newVel);
+        let finalSpeed = length(newVelS);
         var trailPos = newPos;
         if (finalSpeed > 0.001) {
-            let trailDir = newVel / finalSpeed;
-            // Offset to the triangle's base: 0.7 * boidSize * 6.0
-            trailPos = newPos - trailDir * 0.7 * speciesSize * 6.0;
+            let trailDir = newVelS / finalSpeed;
+            // Offset to the triangle's base: 0.7 * boidSize * 6.0. Boids are
+            // drawn at a constant world size, so this is a fixed distance along
+            // the surface - map it back to domain pixels rather than stepping
+            // that many pixels through a chart that may be squeezed here.
+            trailPos = newPos - toDomain * (trailDir * 0.7 * speciesSize * 6.0);
         }
         // Use MAX_TRAIL_LENGTH for buffer stride so changing trailLength doesn't shift data
         // Store position + velocity for gradient trail colors

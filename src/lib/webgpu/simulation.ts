@@ -32,6 +32,21 @@ import {
 	type RenderResources
 } from './render';
 import {
+	createOrbitCamera,
+	viewProjectionMatrix,
+	cameraEye,
+	planeHalfExtents,
+	fitDistance,
+	fitDistanceForRadius,
+	orbit,
+	zoom,
+	pan,
+	resetPan,
+	rayThrough,
+	type OrbitCamera
+} from './camera';
+import { pickSurfaceUV, topologyBoundingRadius, type EmbedView } from './embedding';
+import {
 	getWallData,
 	getWallTextureDimensions,
 	initWallData,
@@ -57,6 +72,48 @@ export interface Simulation {
 	isRunning: () => boolean;
 	updateWalls: () => void;
 	updateSpecies: () => void;
+	/** Orbit the embedded-mode camera. Deltas are in radians. */
+	orbitCamera: (deltaAzimuth: number, deltaElevation: number) => void;
+	/** Zoom the embedded-mode camera. factor < 1 moves closer. */
+	zoomCamera: (factor: number) => void;
+	/** Pan the embedded-mode camera. Deltas are fractions of viewport height. */
+	panCamera: (deltaX: number, deltaY: number) => void;
+	/** Return the camera to its default framing for the current canvas. */
+	resetCamera: () => void;
+	/**
+	 * Map a screen position to the domain point on the embedded surface beneath
+	 * it, so the cursor can push boids around in 3D. Null when off the surface.
+	 */
+	pickDomainPosition: (ndcX: number, ndcY: number) => { x: number; y: number } | null;
+}
+
+// The shell is opaque, so the far side of the flock is hidden behind the near
+// wall - only the parameter grid drawn over it is blended. Kept strong enough
+// to actually read against the flock rather than hinting at it.
+const GRID_OPACITY = 0.55;
+
+// Seconds for the flat <-> embedded morph
+const MORPH_DURATION = 1.1;
+
+// Seconds to cross-fade from one topology's embedding to another. Shorter than
+// the flat morph - it reads as a shape change rather than an unfolding.
+const TOPOLOGY_MORPH_DURATION = 0.8;
+
+// Where the camera settles once the morph completes - offset from straight-on
+// so the shape reads as three-dimensional immediately.
+const REVEAL_AZIMUTH = -0.6;
+const REVEAL_ELEVATION = 0.36;
+
+// Turntable speed in radians per second
+const AUTO_ROTATE_SPEED = 0.35;
+
+// Breathing room around the framed shape
+const SHAPE_FRAMING_MARGIN = 1.06;
+
+// Smoothstep-style ease so the morph starts and ends gently.
+function easeInOut(t: number): number {
+	const c = Math.max(0, Math.min(1, t));
+	return c * c * (3 - 2 * c);
 }
 
 export function createSimulation(
@@ -96,7 +153,13 @@ export function createSimulation(
 	updateSpeciesParams(device, buffers.speciesParams, params.species);
 	updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
 	// Initialize metric-based interaction rules
-	updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
+	updateMetricRules(
+		device,
+		buffers.metricRules,
+		buffers.metricRuleCurves,
+		params.species,
+		sampleCurve
+	);
 
 	// Initialize curve samples buffer
 	updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
@@ -108,8 +171,10 @@ export function createSimulation(
 	let computeResources: ComputeResources = createComputePipelines(device, buffers, blockSumsBuffer);
 	let renderResources: RenderResources = createRenderPipelines(device, format, buffers);
 
-	// Animation state
+	// Animation state. `running` gates simulation stepping; `loopActive` gates the
+	// render loop, which keeps going while paused so the view stays interactive.
 	let running = false;
+	let loopActive = false;
 	let animationFrameId: number | null = null;
 	let readFromA = true;
 	let frameCount = 0;
@@ -122,8 +187,76 @@ export function createSimulation(
 	let needsRankInit = true;
 	let lastInfluenceEnabled = params.enableInfluence;
 
+	// Embedded 3D view state
+	const camera: OrbitCamera = createOrbitCamera(canvasWidth, canvasHeight);
+	let embedBlend = params.embedded3D ? 1 : 0;
+	// Drives the reveal: the camera swings from straight-on to REVEAL_* in step
+	// with the morph, unless the user grabs it first.
+	let revealProgress = params.embedded3D ? 1 : 0;
+	let userMovedCamera = false;
+
+	// Topology cross-fade state
+	let topologyPrev = params.boundaryMode;
+	let topologyCurrent = params.boundaryMode;
+	let topologyBlend = 1;
+
+	/** Camera framing for the flat rectangle - the state the morph starts from. */
+	function resetCameraToFit(): void {
+		camera.azimuth = 0;
+		camera.elevation = 0;
+		camera.distance = fitDistance(canvasWidth, canvasHeight, camera.fov);
+		camera.target[0] = 0;
+		camera.target[1] = 0;
+		camera.target[2] = 0;
+		resetPan(camera);
+		userMovedCamera = false;
+	}
+
+	/** Snapshot of the surface state, shared with the CPU-side picking mirror. */
+	function currentEmbedView(): EmbedView {
+		const extents = planeHalfExtents(canvasWidth, canvasHeight);
+		return {
+			topology: topologyCurrent,
+			prevTopology: topologyPrev,
+			topologyBlend: easeInOut(topologyBlend),
+			embedBlend: easeInOut(embedBlend),
+			planeHalfWidth: extents.halfWidth,
+			planeHalfHeight: extents.halfHeight
+		};
+	}
+
+	function applyReveal(): void {
+		if (userMovedCamera) return;
+		const t = easeInOut(revealProgress);
+		// Start framed on the flat rectangle (so the morph begins exactly where
+		// the 2D view left off) and pull back to frame the whole 3D shape.
+		//
+		// The radius is per-topology now that each surface is sized from the
+		// domain: a torus rolled from the sheet is less than half the radius of
+		// the sheet itself, so one shared number would leave it tiny on screen.
+		const view = currentEmbedView();
+		const radius =
+			view.topologyBlend >= 0.9999 || view.prevTopology === view.topology
+				? topologyBoundingRadius(view.topology, view)
+				: topologyBoundingRadius(view.prevTopology, view) +
+					(topologyBoundingRadius(view.topology, view) -
+						topologyBoundingRadius(view.prevTopology, view)) *
+						view.topologyBlend;
+
+		const flatDistance = fitDistance(canvasWidth, canvasHeight, camera.fov);
+		const shapeDistance = fitDistanceForRadius(
+			radius * SHAPE_FRAMING_MARGIN,
+			canvasWidth,
+			canvasHeight,
+			camera.fov
+		);
+		camera.azimuth = REVEAL_AZIMUTH * t;
+		camera.elevation = REVEAL_ELEVATION * t;
+		camera.distance = flatDistance + (shapeDistance - flatDistance) * t;
+	}
+
 	function frame(time: number): void {
-		if (!running) return;
+		if (!loopActive) return;
 
 		const deltaTime = lastTime > 0 ? (time - lastTime) / 1000 : 1 / 60;
 		lastTime = time;
@@ -145,7 +278,13 @@ export function createSimulation(
 
 		// Check for metric rules updates
 		if (get(metricRulesDirty)) {
-			updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
+			updateMetricRules(
+				device,
+				buffers.metricRules,
+				buffers.metricRuleCurves,
+				params.species,
+				sampleCurve
+			);
 			metricRulesDirty.set(false);
 		}
 
@@ -164,9 +303,59 @@ export function createSimulation(
 		const maxSpeciesTrailLength = Math.max(...params.species.map((s) => s.trailLength), 0);
 
 		// Update trail head only if trails are enabled - skip entirely when 0 for max performance
-		if (maxSpeciesTrailLength > 0) {
+		// Frozen while paused so the trail ring buffer holds its shape.
+		if (running && maxSpeciesTrailLength > 0) {
 			trailHead = (trailHead + 1) % MAX_TRAIL_LENGTH;
 		}
+
+		// Advance the flat <-> embedded morph and the accompanying camera reveal
+		const morphTarget = params.embedded3D ? 1 : 0;
+		const morphStep = Math.min(deltaTime, 0.1) / MORPH_DURATION;
+		if (embedBlend < morphTarget) {
+			embedBlend = Math.min(morphTarget, embedBlend + morphStep);
+			revealProgress = Math.min(1, revealProgress + morphStep);
+		} else if (embedBlend > morphTarget) {
+			embedBlend = Math.max(morphTarget, embedBlend - morphStep);
+			revealProgress = Math.max(0, revealProgress - morphStep);
+			// Leaving embedded mode returns the camera to straight-on so the flat
+			// view lands exactly where the 2D renderer would have drawn it.
+			userMovedCamera = false;
+		}
+		applyReveal();
+
+		// Turntable spin. Runs off wall-clock delta so it keeps turning while the
+		// simulation is paused, and counts as user camera control so the reveal
+		// animation does not fight it.
+		if (params.embedded3D && params.embedAutoRotate) {
+			userMovedCamera = true;
+			orbit(camera, -AUTO_ROTATE_SPEED * Math.min(deltaTime, 0.1), 0);
+		}
+
+		// Cross-fade the embedding when the topology changes. Only meaningful
+		// while embedded - flat mode has no shape to morph, so it snaps.
+		if (params.boundaryMode !== topologyCurrent) {
+			if (embedBlend > 0.0001) {
+				// A switch mid-transition completes the previous one first, so
+				// rapid cycling reads as successive morphs rather than a blur.
+				topologyPrev = topologyCurrent;
+				topologyBlend = 0;
+			} else {
+				topologyPrev = params.boundaryMode;
+				topologyBlend = 1;
+			}
+			topologyCurrent = params.boundaryMode;
+		}
+		if (topologyBlend < 1) {
+			topologyBlend = Math.min(
+				1,
+				topologyBlend + Math.min(deltaTime, 0.1) / TOPOLOGY_MORPH_DURATION
+			);
+		}
+
+		const easedBlend = easeInOut(embedBlend);
+		const planeExtents = planeHalfExtents(canvasWidth, canvasHeight);
+		const viewProj = viewProjectionMatrix(camera, canvasWidth, canvasHeight);
+		const eye = cameraEye(camera);
 
 		// Update uniform buffer
 		// Use maxSpeciesTrailLength so shader instance calculations match render instance count
@@ -186,7 +375,18 @@ export function createSimulation(
 			frameCount,
 			// Locally perfect hashing
 			reducedWidth: gridInfo.reducedWidth,
-			totalSlots: gridInfo.totalSlots
+			totalSlots: gridInfo.totalSlots,
+			// Embedded 3D view
+			embedBlend: easedBlend,
+			embedTopology: topologyCurrent,
+			topologyBlend: easeInOut(topologyBlend),
+			embedTopologyPrev: topologyPrev,
+			viewProj,
+			cameraEye: eye,
+			planeHalfWidth: planeExtents.halfWidth,
+			planeHalfHeight: planeExtents.halfHeight,
+			shellFade: easedBlend,
+			gridOpacity: GRID_OPACITY * easedBlend
 		});
 
 		// Create command encoder
@@ -212,54 +412,74 @@ export function createSimulation(
 
 		// Encode compute passes
 		// Use totalSlots for locally perfect hashing
-		encodeComputePasses(
-			encoder,
-			computeResources,
-			params.population,
-			gridInfo.totalSlots,
-			readFromA,
-			iterativeConfig
-		);
+		// Skipped while paused: the render below still runs, so the camera, the
+		// morph and the topology cross-fade stay live on a frozen flock.
+		if (running) {
+			encodeComputePasses(
+				encoder,
+				computeResources,
+				params.population,
+				gridInfo.totalSlots,
+				readFromA,
+				iterativeConfig
+			);
+		}
 
 		// Encode render pass
 		const textureView = context.getCurrentTexture().createView();
-		encodeRenderPass(
-			encoder,
-			textureView,
-			renderResources,
-			params.population,
-			maxSpeciesTrailLength,
-			readFromA
-		);
+		encodeRenderPass(device, encoder, textureView, renderResources, {
+			boidCount: params.population,
+			trailLength: maxSpeciesTrailLength,
+			readFromA,
+			canvasWidth,
+			canvasHeight,
+			embedBlend: easedBlend,
+			showShell: true,
+			showGrid: params.embedShowGrid
+		});
 
 		// Submit commands
 		device.queue.submit([encoder.finish()]);
 
-		// Swap buffers for next frame
-		readFromA = !readFromA;
-		frameCount++;
+		// Swap buffers for next frame. Held while paused so the render above keeps
+		// reading whichever buffer the last compute pass wrote.
+		if (running) {
+			readFromA = !readFromA;
+			frameCount++;
+		}
 
 		// Schedule next frame
 		animationFrameId = requestAnimationFrame(frame);
 	}
 
-	function start(): void {
-		if (running) return;
-		running = true;
+	/**
+	 * The render loop runs for the lifetime of the simulation, independent of
+	 * whether the simulation is stepping. Pausing must not freeze the camera -
+	 * you still want to orbit, pan and zoom around a stopped flock.
+	 */
+	function startLoop(): void {
+		if (loopActive) return;
+		loopActive = true;
 		lastTime = 0;
 		animationFrameId = requestAnimationFrame(frame);
 	}
 
+	function start(): void {
+		running = true;
+		startLoop();
+	}
+
 	function stop(): void {
 		running = false;
-		if (animationFrameId !== null) {
-			cancelAnimationFrame(animationFrameId);
-			animationFrameId = null;
-		}
 	}
 
 	function destroy(): void {
 		stop();
+		loopActive = false;
+		if (animationFrameId !== null) {
+			cancelAnimationFrame(animationFrameId);
+			animationFrameId = null;
+		}
 		destroyBuffers(buffers);
 		blockSumsBuffer.destroy();
 		destroyRenderResources();
@@ -300,6 +520,13 @@ export function createSimulation(
 		// Note: compute bind groups also need to be recreated for wall texture
 		// This is handled by recreating all compute resources
 		computeResources = createComputePipelines(device, buffers, blockSumsBuffer);
+
+		// Reframe the camera for the new aspect ratio, preserving the user's angle
+		// if they have already moved it.
+		if (!userMovedCamera) {
+			resetCameraToFit();
+			applyReveal();
+		}
 
 		// Clear trails on resize
 		clearTrails(device, buffers, params.population, params.trailLength);
@@ -342,7 +569,13 @@ export function createSimulation(
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
 		// Initialize metric-based interaction rules
-		updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
+		updateMetricRules(
+			device,
+			buffers.metricRules,
+			buffers.metricRuleCurves,
+			params.species,
+			sampleCurve
+		);
 
 		// Initialize curve samples buffer (critical - curves are always active)
 		updateCurveSamples(device, buffers.curveSamples, sampleAllCurves(params));
@@ -385,7 +618,13 @@ export function createSimulation(
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
 		// Update metric-based interaction rules
-		updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
+		updateMetricRules(
+			device,
+			buffers.metricRules,
+			buffers.metricRuleCurves,
+			params.species,
+			sampleCurve
+		);
 
 		// Reset state
 		readFromA = true;
@@ -412,8 +651,18 @@ export function createSimulation(
 		updateSpeciesParams(device, buffers.speciesParams, params.species);
 		updateInteractionMatrix(device, buffers.interactionMatrix, params.species);
 		// Update metric-based interaction rules
-		updateMetricRules(device, buffers.metricRules, buffers.metricRuleCurves, params.species, sampleCurve);
+		updateMetricRules(
+			device,
+			buffers.metricRules,
+			buffers.metricRuleCurves,
+			params.species,
+			sampleCurve
+		);
 	}
+
+	// Render immediately, even if the caller never presses play - a simulation
+	// that starts paused should still show its first frame and stay orbitable.
+	startLoop();
 
 	return {
 		start,
@@ -427,6 +676,34 @@ export function createSimulation(
 		resetBoids,
 		isRunning: () => running,
 		updateWalls: doUpdateWalls,
-		updateSpecies: doUpdateSpecies
+		updateSpecies: doUpdateSpecies,
+		orbitCamera: (deltaAzimuth: number, deltaElevation: number) => {
+			// Taking the camera cancels the scripted reveal for the rest of the session
+			userMovedCamera = true;
+			orbit(camera, deltaAzimuth, deltaElevation);
+		},
+		zoomCamera: (factor: number) => {
+			userMovedCamera = true;
+			zoom(camera, factor);
+		},
+		panCamera: (deltaX: number, deltaY: number) => {
+			userMovedCamera = true;
+			pan(camera, deltaX, deltaY);
+		},
+		resetCamera: () => {
+			resetCameraToFit();
+			revealProgress = embedBlend;
+			applyReveal();
+		},
+		pickDomainPosition: (ndcX: number, ndcY: number) => {
+			const view = currentEmbedView();
+			if (view.embedBlend <= 0) return null;
+			const aspect = canvasWidth / Math.max(canvasHeight, 1);
+			const ray = rayThrough(camera, ndcX, ndcY, aspect);
+			const hit = pickSurfaceUV(ray.origin, ray.dir, ray.tanHalfFov, view);
+			if (!hit) return null;
+			// Parametric v runs opposite to domain y (see domainToParam in embed.wgsl)
+			return { x: hit.u * canvasWidth, y: (1 - hit.v) * canvasHeight };
+		}
 	};
 }

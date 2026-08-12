@@ -219,16 +219,32 @@ fn vs_main(
     
     // Handle boundary wrapping - clamp p2 to edge if segment crosses boundary
     if (isWrapped(p1, p2)) {
-        p2 = handleWrap(p1, p2);
-        // If still wrapped after handling (shouldn't happen), skip
-        if (isWrapped(p1, p2)) {
-            output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-            output.color = vec3<f32>(0.0);
-            output.alpha = 0.0;
-            return output;
+        // Embedded mode continues the segment past the edge instead of clamping
+        // it, so the ribbon flows across the seam as it does on the real
+        // surface. Clamping here would truncate every trail within a
+        // trail-length-wide band of the seam, which reads as a visible join.
+        if (isEmbedded()) {
+            let unwrapped = unwrapAcrossSeam(p1, p2);
+            if (!unwrapped.valid) {
+                output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                output.color = vec3<f32>(0.0);
+                output.alpha = 0.0;
+                return output;
+            }
+            p2 = unwrapped.pos;
+        } else {
+            p2 = handleWrap(p1, p2);
+            // If still wrapped after handling (shouldn't happen), skip
+            if (isWrapped(p1, p2)) {
+                output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                output.color = vec3<f32>(0.0);
+                output.alpha = 0.0;
+                return output;
+            }
         }
     }
-    
+
+
     // Each segment is a quad (2 triangles, 6 vertices)
     // vertexIndex: 0-5 for the quad
     let quadVertex = vertexIndex % 6u;
@@ -289,21 +305,38 @@ fn vs_main(
         alpha2 = 1.0 - ageRatio - 1.0 / f32(speciesTrailLen - 1u);
     }
     
+    // Track the endpoint, side and heading separately as well as the flat
+    // position: embedded mode rebuilds the ribbon in the surface tangent plane
+    // rather than offsetting in domain space, so it needs them apart.
+    var basePos = p1;          // centreline endpoint this vertex belongs to
+    var basePerp = perp1;      // ribbon perpendicular at that endpoint
+    var side = 1.0;            // which edge of the ribbon
+    var halfWidth = width1;
+
     switch (quadVertex) {
-        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; }
-        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
-        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
-        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; }
-        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; }
-        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; }
+        case 0u: { worldPos = p1 + perp1 * width1; alpha = alpha1; basePos = p1; basePerp = perp1; side =  1.0; halfWidth = width1; }
+        case 1u: { worldPos = p1 - perp1 * width1; alpha = alpha1; basePos = p1; basePerp = perp1; side = -1.0; halfWidth = width1; }
+        case 2u: { worldPos = p2 + perp2 * width2; alpha = alpha2; basePos = p2; basePerp = perp2; side =  1.0; halfWidth = width2; }
+        case 3u: { worldPos = p2 + perp2 * width2; alpha = alpha2; basePos = p2; basePerp = perp2; side =  1.0; halfWidth = width2; }
+        case 4u: { worldPos = p1 - perp1 * width1; alpha = alpha1; basePos = p1; basePerp = perp1; side = -1.0; halfWidth = width1; }
+        case 5u: { worldPos = p2 - perp2 * width2; alpha = alpha2; basePos = p2; basePerp = perp2; side = -1.0; halfWidth = width2; }
         default: { worldPos = p1; alpha = 0.0; }
     }
     
-    // Convert to clip space
-    let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;
-    let clipY = 1.0 - (worldPos.y / uniforms.canvasHeight) * 2.0;
-    
-    output.position = vec4<f32>(clipX, clipY, 0.0, 1.0);
+    if (isEmbedded()) {
+        // Build the ribbon in the surface tangent plane, the same way boids are
+        // built. Offsetting in domain space and then mapping the corners made
+        // the trail width follow the local stretch, so trails fattened and
+        // thinned across the surface while the boids they trail from stayed one
+        // size - the ribbon read as stretched skin rather than a wake.
+        output.position = projectRibbonEdge(basePos, basePerp * side, halfWidth);
+    } else {
+        // Convert to clip space
+        let clipX = (worldPos.x / uniforms.canvasWidth) * 2.0 - 1.0;
+        let clipY = 1.0 - (worldPos.y / uniforms.canvasHeight) * 2.0;
+
+        output.position = vec4<f32>(clipX, clipY, 0.0, 1.0);
+    }
     
     // Color based on historical velocity for gradient trail effect
     // historicalVel was computed earlier from trail buffer (or current vel for newest segment)
