@@ -2035,7 +2035,12 @@
 		<div class="recording-dot"></div>
 	{:else}
 		<!-- Conical flask (Erlenmeyer) icon -->
-		<HugeiconsIcon icon={IconLab} class="flask-icon h-5 w-5 text-zinc-400" size={14} strokeWidth={1.8} />
+		<HugeiconsIcon
+			icon={IconLab}
+			class="flask-icon text-zinc-400 {flaskAutoAnimate ? 'flask-auto-animate' : ''}"
+			size={20}
+			strokeWidth={1.8}
+		/>
 	{/if}
 </button>
 
@@ -3483,7 +3488,7 @@
 	}
 
 	/* Flask icon tilt animation on hover */
-	.flask-icon {
+	:global(.flask-icon) {
 		transition:
 			transform 0.3s ease,
 			color 0.2s ease;
@@ -3494,8 +3499,8 @@
 		transition: fill 0.3s ease;
 	}
 
-	.gear-btn:hover .flask-icon,
-	.flask-icon.flask-auto-animate {
+	.gear-btn:hover :global(.flask-icon),
+	:global(.flask-icon.flask-auto-animate) {
 		color: #e4e4e7;
 		animation: flask-tilt 0.6s ease-in-out;
 	}
