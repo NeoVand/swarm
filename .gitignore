@@ -12,6 +12,12 @@ node_modules
 .DS_Store
 Thumbs.db
 
+# Screen recordings - source footage for the README GIF, hundreds of MB each.
+# The GIF built from them lives in static/; the recordings themselves do not
+# belong in git history, where they could never be removed.
+*.mov
+*.mp4
+
 # Env
 .env
 .env.*
