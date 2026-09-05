@@ -1,6 +1,8 @@
 // Main simulation loop orchestration
 
 import type { GPUContext, SimulationBuffers, SimulationParams, CursorState } from './types';
+import { ColorMode, MetricSource, InteractionBehavior } from './types';
+import type { SceneCamera } from '$lib/scenes/format';
 import {
 	createBuffers,
 	destroyBuffers,
@@ -80,6 +82,8 @@ export interface Simulation {
 	panCamera: (deltaX: number, deltaY: number) => void;
 	/** Return the camera to its default framing for the current canvas. */
 	resetCamera: () => void;
+	getCameraState: () => SceneCamera;
+	restoreCameraState: (state?: SceneCamera) => void;
 	/**
 	 * Map a screen position to the domain point on the embedded surface beneath
 	 * it, so the cursor can push boids around in 3D. Null when off the surface.
@@ -166,6 +170,11 @@ export function createSimulation(
 
 	// Initialize wall data
 	initWallData(canvasWidth, canvasHeight);
+	const initialWalls = getWallData();
+	if (initialWalls) {
+		const wallSize = getWallTextureDimensions();
+		updateWallTexture(device, buffers.wallTexture, initialWalls, wallSize.width, wallSize.height);
+	}
 
 	// Create pipelines
 	let computeResources: ComputeResources = createComputePipelines(device, buffers, blockSumsBuffer);
@@ -185,7 +194,7 @@ export function createSimulation(
 
 	// Spectral/Flow metrics state
 	let needsRankInit = true;
-	let lastInfluenceEnabled = params.enableInfluence;
+	let lastInfluenceEnabled = false;
 
 	// Embedded 3D view state
 	const camera: OrbitCamera = createOrbitCamera(canvasWidth, canvasHeight);
@@ -393,20 +402,34 @@ export function createSimulation(
 		const encoder = device.createCommandEncoder();
 
 		// Check if spectral/flow metrics need reinitialization
-		if (params.enableInfluence && !lastInfluenceEnabled) {
+		const influenceEnabled =
+			params.enableInfluence &&
+			([params.colorMode, params.saturationSource, params.brightnessSource].some(
+				(mode) => mode >= ColorMode.Influence && mode <= ColorMode.FlowDivergence
+			) ||
+				params.species.some((species) =>
+					species.interactions.some(
+						(rule) =>
+							rule.type === 'metric' &&
+							rule.metricSource === MetricSource.Spectral &&
+							rule.behavior !== InteractionBehavior.Ignore &&
+							rule.strength > 0
+					)
+				));
+		if (influenceEnabled && !lastInfluenceEnabled) {
 			needsRankInit = true;
 		}
-		lastInfluenceEnabled = params.enableInfluence;
+		lastInfluenceEnabled = influenceEnabled;
 
 		// Prepare iterative metrics config
 		const iterativeConfig: IterativeMetricsConfig = {
-			enableInfluence: params.enableInfluence,
+			enableInfluence: influenceEnabled,
 			influenceIterations: params.influenceIterations,
 			needsRankInit
 		};
 
 		// Clear init flag after first use
-		if (needsRankInit && params.enableInfluence) {
+		if (running && needsRankInit && influenceEnabled) {
 			needsRankInit = false;
 		}
 
@@ -430,7 +453,7 @@ export function createSimulation(
 		encodeRenderPass(device, encoder, textureView, renderResources, {
 			boidCount: params.population,
 			trailLength: maxSpeciesTrailLength,
-			readFromA,
+			readFromA: running ? readFromA : !readFromA,
 			canvasWidth,
 			canvasHeight,
 			embedBlend: easedBlend,
@@ -507,6 +530,7 @@ export function createSimulation(
 
 		// Reinitialize wall data for new dimensions
 		initWallData(canvasWidth, canvasHeight);
+		doUpdateWalls();
 
 		// Recreate bind groups that reference wall texture
 		renderResources.bindGroups.wall = recreateWallBindGroup(
@@ -694,6 +718,29 @@ export function createSimulation(
 			resetCameraToFit();
 			revealProgress = embedBlend;
 			applyReveal();
+		},
+		getCameraState: () => ({
+			azimuth: camera.azimuth,
+			elevation: camera.elevation,
+			distance: camera.distance,
+			panX: camera.panX,
+			panY: camera.panY
+		}),
+		restoreCameraState: (state) => {
+			if (!state) {
+				resetCameraToFit();
+				revealProgress = embedBlend;
+				applyReveal();
+				return;
+			}
+			Object.assign(camera, state);
+			userMovedCamera = true;
+			// Saved framing belongs to the saved surface, not an intermediate morph.
+			embedBlend = params.embedded3D ? 1 : 0;
+			revealProgress = embedBlend;
+			topologyCurrent = params.boundaryMode;
+			topologyPrev = params.boundaryMode;
+			topologyBlend = 1;
 		},
 		pickDomainPosition: (ndcX: number, ndcY: number) => {
 			const view = currentEmbedView();

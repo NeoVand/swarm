@@ -468,7 +468,8 @@ export function updateUniforms(device: GPUDevice, buffer: GPUBuffer, data: Unifo
 	// Topology cross-fade (bytes 288..304), padded to a 16-byte block
 	f32View[offset++] = data.topologyBlend;
 	u32View[offset++] = data.embedTopologyPrev;
-	f32View[offset++] = 0;
+	// Preserve the old even iteration count, now applied locally in the rank shader.
+	u32View[offset++] = Math.max(0, Math.ceil(data.params.influenceIterations / 2) * 2);
 	f32View[offset++] = 0;
 
 	device.queue.writeBuffer(buffer, 0, uniformArray);
@@ -633,6 +634,7 @@ export function updateInteractionMatrix(
 		if (s.id >= MAX_SPECIES) continue;
 
 		for (const rule of s.interactions) {
+			if (rule.type === 'metric' || rule.targetSpecies === undefined) continue;
 			if (rule.targetSpecies === -1) {
 				// Apply to all other species
 				for (let targetId = 0; targetId < MAX_SPECIES; targetId++) {
@@ -696,7 +698,7 @@ export function updateMetricRules(
 
 			if (rule && rule.type === 'metric') {
 				// vec4[0]: [source, role, behavior, strength]
-				rulesData[rulesOffset + 0] = rule.metricSource ?? MetricSource.Density;
+				rulesData[rulesOffset + 0] = rule.metricSource ?? MetricSource.LocalDensity;
 				rulesData[rulesOffset + 1] = rule.metricRole ?? MetricRole.Neighbor;
 				rulesData[rulesOffset + 2] = rule.behavior;
 				rulesData[rulesOffset + 3] = rule.strength;

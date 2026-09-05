@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check types and scene persistence
+        run: npm run check && npm test
+
       - name: Build project
         run: npm run build
         env:

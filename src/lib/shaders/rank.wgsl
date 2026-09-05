@@ -1,5 +1,5 @@
-// Spectral structure shader - computes approximate Fiedler vector (2nd eigenvector of graph Laplacian)
-// Creates beautiful structural colorization that reveals graph partitions and clusters
+// Local structure and flow metrics with temporal smoothing.
+// Each boid's target depends on positions/velocities, never on neighbours' ranks.
 // Note: This shader requires common.wgsl to be prepended at load time
 
 // Spectral modes (unique to this shader)
@@ -22,9 +22,32 @@ const SPECTRAL_FLOW_DIVERGENCE: u32 = 5u;
 @group(1) @binding(0) var<storage, read> speciesIds: array<u32>;
 @group(1) @binding(1) var<storage, read> metrics: array<vec4<f32>>;
 
-// Bind group 2: Rank ping-pong buffers
-@group(2) @binding(0) var<storage, read> ranksIn: array<f32>;
-@group(2) @binding(1) var<storage, read_write> ranksOut: array<f32>;
+// Each invocation owns one rank, so local smoothing can update it in place.
+@group(2) @binding(0) var<storage, read_write> ranks: array<f32>;
+
+const SMOOTHING: f32 = 0.85;
+
+// Preserve the former sequence of f32 blends without rebuilding the same
+// neighbourhood for every step. The CPU retains the old even-step rounding.
+fn smoothScalar(previous: f32, desiredValue: f32) -> f32 {
+    var value = previous;
+    for (var i = 0u; i < uniforms.influenceIterations; i++) {
+        value = SMOOTHING * value + (1.0 - SMOOTHING) * desiredValue;
+    }
+    return value;
+}
+
+fn smoothAngle(previous: f32, angle: f32) -> f32 {
+    var value = previous;
+    let desiredVector = vec2<f32>(cos(angle), sin(angle));
+    for (var i = 0u; i < uniforms.influenceIterations; i++) {
+        let previousAngle = (value - 0.5) * 6.283185;
+        let previousVector = vec2<f32>(cos(previousAngle), sin(previousAngle));
+        let blended = SMOOTHING * previousVector + (1.0 - SMOOTHING) * desiredVector;
+        value = atan2(blended.y, blended.x) / 6.283185 + 0.5;
+    }
+    return value;
+}
 
 // Smooth kernel for neighbor weighting
 fn smoothKernel(dist: f32, radius: f32) -> f32 {
@@ -103,7 +126,7 @@ fn init_main(@builtin(global_invocation_id) id: vec3<u32>) {
     let pos = positions[boidIndex];
     let cx = pos.x / uniforms.canvasWidth - 0.5;
     let cy = pos.y / uniforms.canvasHeight - 0.5;
-    ranksOut[boidIndex] = atan2(cy, cx) / 6.283185 + 0.5;
+    ranks[boidIndex] = atan2(cy, cx) / 6.283185 + 0.5;
 }
 
 // Local cluster structure - computes various structural metrics relative to neighborhood
@@ -195,10 +218,7 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     
     var result: f32;
-    let prevVal = ranksIn[boidIndex];
-    
-    // Smoothing factor - higher = more smoothing (less jitter but slower response)
-    let smoothing = 0.85;  // 85% previous, 15% new
+    let prevVal = ranks[boidIndex];
     
     if (totalWeight > 1e-6 && neighborCount >= 3u) {
         // Compute center of mass and average velocity
@@ -210,30 +230,23 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
         let distFromCenter = length(relativePos);
         
         // For flow modes
-        let avgFlowDir = normalize(avgVelocity + vec2<f32>(0.0001, 0.0001));
         let myVelDir = normalize(myVel + vec2<f32>(0.0001, 0.0001));
         
         switch (uniforms.spectralMode) {
             case SPECTRAL_ANGULAR: {
                 // Angular position relative to local center (0-1 range)
                 let angle = atan2(relativePos.y, relativePos.x);
-                // Circular smoothing
-                let prevAngle = (prevVal - 0.5) * 6.283185;
-                let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
-                let newVec = vec2<f32>(cos(angle), sin(angle));
-                let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
-                let smoothedAngle = atan2(avgVec.y, avgVec.x);
-                result = smoothedAngle / 6.283185 + 0.5;
+                result = smoothAngle(prevVal, angle);
             }
             case SPECTRAL_RADIAL: {
                 // Distance from local center normalized by perception
                 let normalizedDist = clamp(distFromCenter / (perception * 0.5), 0.0, 1.0);
-                result = smoothing * prevVal + (1.0 - smoothing) * normalizedDist;
+                result = smoothScalar(prevVal, normalizedDist);
             }
             case SPECTRAL_ASYMMETRY: {
                 // How far the center of mass is from us
                 let asymmetry = clamp(distFromCenter / (perception * 0.3), 0.0, 1.0);
-                result = smoothing * prevVal + (1.0 - smoothing) * asymmetry;
+                result = smoothScalar(prevVal, asymmetry);
             }
             case SPECTRAL_FLOW_ANGULAR: {
                 // Angle of velocity relative to radial direction from center
@@ -245,22 +258,11 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                     let tangential = myVelDir.x * radialDir.y - myVelDir.y * radialDir.x;
                     let radial = dot(myVelDir, radialDir);
                     let flowAngle = atan2(tangential, radial);
-                    // Circular smoothing
-                    let prevAngle = (prevVal - 0.5) * 6.283185;
-                    let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
-                    let newVec = vec2<f32>(cos(flowAngle), sin(flowAngle));
-                    let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
-                    let smoothedAngle = atan2(avgVec.y, avgVec.x);
-                    result = smoothedAngle / 6.283185 + 0.5;
+                    result = smoothAngle(prevVal, flowAngle);
                 } else {
                     // Near center - use velocity direction directly
                     let velAngle = atan2(myVel.y, myVel.x);
-                    let prevAngle = (prevVal - 0.5) * 6.283185;
-                    let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
-                    let newVec = vec2<f32>(cos(velAngle), sin(velAngle));
-                    let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
-                    let smoothedAngle = atan2(avgVec.y, avgVec.x);
-                    result = smoothedAngle / 6.283185 + 0.5;
+                    result = smoothAngle(prevVal, velAngle);
                 }
             }
             case SPECTRAL_FLOW_RADIAL: {
@@ -273,9 +275,9 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                     // Scale by speed for better sensitivity
                     let normalizedRadial = clamp(-radialVel / (uniforms.maxSpeed * 0.5), -1.0, 1.0);
                     let newVal = normalizedRadial * 0.5 + 0.5;
-                    result = smoothing * prevVal + (1.0 - smoothing) * newVal;
+                    result = smoothScalar(prevVal, newVal);
                 } else {
-                    result = smoothing * prevVal + (1.0 - smoothing) * 0.5;
+                    result = smoothScalar(prevVal, 0.5);
                 }
             }
             case SPECTRAL_FLOW_DIVERGENCE: {
@@ -295,13 +297,13 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                         let t = min(speedRatio, 1.5);
                         newVal = 0.5 + (t - 1.0) * 1.0;
                     }
-                    result = smoothing * prevVal + (1.0 - smoothing) * newVal;
+                    result = smoothScalar(prevVal, newVal);
                 } else if (mySpeed > 0.01) {
                     // Neighbors slow but I'm moving - bright
-                    result = smoothing * prevVal + (1.0 - smoothing) * 1.0;
+                    result = smoothScalar(prevVal, 1.0);
                 } else {
                     // Both slow - dark
-                    result = smoothing * prevVal + (1.0 - smoothing) * 0.0;
+                    result = smoothScalar(prevVal, 0.0);
                 }
             }
             default: {
@@ -316,12 +318,7 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
         switch (uniforms.spectralMode) {
             case SPECTRAL_ANGULAR: {
                 let newAngle = atan2(cy, cx);
-                let prevAngle = (prevVal - 0.5) * 6.283185;
-                let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
-                let newVec = vec2<f32>(cos(newAngle), sin(newAngle));
-                let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
-                let smoothedAngle = atan2(avgVec.y, avgVec.x);
-                result = smoothedAngle / 6.283185 + 0.5;
+                result = smoothAngle(prevVal, newAngle);
             }
             case SPECTRAL_RADIAL: {
                 result = clamp(sqrt(cx * cx + cy * cy) * 2.0, 0.0, 1.0);
@@ -335,25 +332,20 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
                 let tangential = myVel.x * posDir.y - myVel.y * posDir.x;
                 let radial = dot(myVel, posDir);
                 let flowAngle = atan2(tangential, radial);
-                let prevAngle = (prevVal - 0.5) * 6.283185;
-                let prevVec = vec2<f32>(cos(prevAngle), sin(prevAngle));
-                let newVec = vec2<f32>(cos(flowAngle), sin(flowAngle));
-                let avgVec = smoothing * prevVec + (1.0 - smoothing) * newVec;
-                let smoothedAngle = atan2(avgVec.y, avgVec.x);
-                result = smoothedAngle / 6.283185 + 0.5;
+                result = smoothAngle(prevVal, flowAngle);
             }
             case SPECTRAL_FLOW_RADIAL: {
                 // Radial velocity relative to canvas center (inverted)
                 let posDir = normalize(vec2<f32>(cx, cy) + vec2<f32>(0.0001, 0.0001));
                 let radialVel = dot(myVel, posDir);
                 let normalizedRadial = clamp(-radialVel / (uniforms.maxSpeed * 0.5), -1.0, 1.0);
-                result = smoothing * prevVal + (1.0 - smoothing) * (normalizedRadial * 0.5 + 0.5);
+                result = smoothScalar(prevVal, normalizedRadial * 0.5 + 0.5);
             }
             case SPECTRAL_FLOW_DIVERGENCE: {
                 // Isolated boids: use speed relative to max, cubed for sensitivity
                 let speedRatio = mySpeed / uniforms.maxSpeed;
                 let newVal = speedRatio * speedRatio * speedRatio; // Cubed: more sensitive
-                result = smoothing * prevVal + (1.0 - smoothing) * clamp(newVal, 0.0, 1.0);
+                result = smoothScalar(prevVal, clamp(newVal, 0.0, 1.0));
             }
             default: {
                 result = 0.5;
@@ -361,5 +353,5 @@ fn iter_main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
     
-    ranksOut[boidIndex] = result;
+    ranks[boidIndex] = result;
 }

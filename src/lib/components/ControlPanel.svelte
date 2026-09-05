@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { scale, slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { onMount, onDestroy } from 'svelte';
-	import { driver } from 'driver.js';
+	import { onMount, onDestroy, tick, type Component } from 'svelte';
+	import { driver, type DriveStep, type Driver } from 'driver.js';
 	import 'driver.js/dist/driver.css';
 	import { base } from '$app/paths';
+	import { isSceneLibraryOpen } from '$lib/stores/scenes';
 	import PaletteIcon from './PaletteIcon.svelte';
 	import TopologySelector from './TopologySelector.svelte';
 	import SpeciesSelector from './SpeciesSelector.svelte';
@@ -79,6 +80,7 @@
 		clearWalls,
 		setSpeciesPopulation,
 		updateSpeciesFlocking,
+		updateSpecies,
 		getActiveSpecies,
 		setSpeciesHue,
 		setSpeciesColor,
@@ -119,72 +121,115 @@
 	let recording = $derived($isRecording);
 	let canvas = $derived($canvasElement);
 	let currentWallTool = $derived($wallTool);
+	let isLibraryOpen = $derived($isSceneLibraryOpen);
+	let SceneLibrary = $state<Component<{ onclose: () => void }> | null>(null);
+	let libraryError = $state('');
+	let libraryTrigger: HTMLButtonElement | undefined;
+	let libraryLoading = false;
+
+	onMount(() => {
+		return isSceneLibraryOpen.subscribe((open) => {
+			if (open) {
+				isPanelOpen.set(true);
+				void loadSceneLibrary();
+			}
+		});
+	});
+
+	async function openSceneLibrary(): Promise<void> {
+		isSceneLibraryOpen.set(true);
+		isPanelOpen.set(true);
+		await loadSceneLibrary();
+	}
+
+	async function loadSceneLibrary(): Promise<void> {
+		if (SceneLibrary || libraryLoading) return;
+		libraryLoading = true;
+		libraryError = '';
+		try {
+			SceneLibrary ??= (await import('./SceneLibrary.svelte')).default;
+		} catch {
+			libraryError = 'Scenes could not be opened. Please try again.';
+		} finally {
+			libraryLoading = false;
+		}
+	}
+
+	async function closeSceneLibrary(): Promise<void> {
+		isSceneLibraryOpen.set(false);
+		await tick();
+		libraryTrigger?.focus();
+	}
+
+	function rememberLibraryTrigger(node: HTMLButtonElement) {
+		libraryTrigger = node;
+		return () => {
+			libraryTrigger = undefined;
+		};
+	}
 
 	// Flask icon auto-animation state
-	let flaskHasBeenTouched = $state(false);
+	let flaskHasBeenTouched = false;
 	let flaskAutoAnimate = $state(false);
 	let flaskAnimationInterval: ReturnType<typeof setInterval> | null = null;
 	let flaskInitialTimeout: ReturnType<typeof setTimeout> | null = null;
+	let flaskResetTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Helper to trigger the flask animation
 	function triggerFlaskAnimation() {
 		if (!flaskHasBeenTouched && !isOpen) {
 			flaskAutoAnimate = true;
 			// Reset after animation completes (0.6s)
-			setTimeout(() => {
+			flaskResetTimeout = setTimeout(() => {
 				flaskAutoAnimate = false;
 			}, 600);
 		}
 	}
 
-	// Start auto-animation interval on mount
-	$effect(() => {
-		if (!flaskHasBeenTouched && !isOpen) {
-			// Clear any existing timers
-			if (flaskAnimationInterval) clearInterval(flaskAnimationInterval);
-			if (flaskInitialTimeout) clearTimeout(flaskInitialTimeout);
+	function clearFlaskTimers() {
+		if (flaskAnimationInterval) clearInterval(flaskAnimationInterval);
+		if (flaskInitialTimeout) clearTimeout(flaskInitialTimeout);
+		if (flaskResetTimeout) clearTimeout(flaskResetTimeout);
+		flaskAnimationInterval = null;
+		flaskInitialTimeout = null;
+		flaskResetTimeout = null;
+		flaskAutoAnimate = false;
+	}
 
-			// Play animation 2 seconds after app loads
-			flaskInitialTimeout = setTimeout(() => {
-				triggerFlaskAnimation();
-			}, 2000);
-
-			// Then set up 30-second interval
-			flaskAnimationInterval = setInterval(() => {
-				triggerFlaskAnimation();
-			}, 30000);
-		}
-
-		// Cleanup on destroy or when touched
+	onMount(() => {
+		const unsubscribe = isPanelOpen.subscribe((open) => {
+			clearFlaskTimers();
+			if (!flaskHasBeenTouched && !open) {
+				flaskInitialTimeout = setTimeout(triggerFlaskAnimation, 2000);
+				flaskAnimationInterval = setInterval(triggerFlaskAnimation, 30000);
+			}
+		});
 		return () => {
-			if (flaskAnimationInterval) {
-				clearInterval(flaskAnimationInterval);
-				flaskAnimationInterval = null;
-			}
-			if (flaskInitialTimeout) {
-				clearTimeout(flaskInitialTimeout);
-				flaskInitialTimeout = null;
-			}
+			unsubscribe();
+			clearFlaskTimers();
 		};
 	});
 
 	// Stop auto-animation when user interacts
 	function onFlaskInteraction() {
 		flaskHasBeenTouched = true;
-		if (flaskAnimationInterval) {
-			clearInterval(flaskAnimationInterval);
-			flaskAnimationInterval = null;
-		}
+		clearFlaskTimers();
 	}
 
 	let paletteDropdownOpen = $state(false);
-	let paletteDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let colorizeDropdownOpen = $state(false);
-	let colorizeDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let saturationDropdownOpen = $state(false);
-	let saturationDropdownRef = $state<HTMLDivElement | undefined>(undefined);
 	let brightnessDropdownOpen = $state(false);
-	let brightnessDropdownRef = $state<HTMLDivElement | undefined>(undefined);
+	type DropdownKind = 'palette' | 'colorize' | 'saturation' | 'brightness';
+	const dropdownElements: Partial<Record<DropdownKind, HTMLDivElement>> = {};
+	function rememberDropdown(kind: DropdownKind) {
+		return (node: HTMLDivElement) => {
+			dropdownElements[kind] = node;
+			return () => {
+				delete dropdownElements[kind];
+			};
+		};
+	}
 	// Curve editor visibility state
 	let showHueCurve = $state(false);
 	let showSaturationCurve = $state(false);
@@ -203,9 +248,6 @@
 			currentParams.brightnessSource === ColorMode.Species
 	);
 
-	let alphaDropdownOpen = $state(false);
-	let alphaDropdownRef = $state<HTMLDivElement | undefined>(undefined);
-
 	// Population preview (for live display while dragging slider)
 	let populationPreview = $state<number | null>(null);
 
@@ -217,6 +259,7 @@
 	function handleHeaderMouseDown(e: MouseEvent) {
 		// Only start drag on left mouse button
 		if (e.button !== 0) return;
+		if (e.target instanceof Element && e.target.closest('button, input, a')) return;
 
 		const panel = (e.currentTarget as HTMLElement).closest('.panel') as HTMLElement;
 		if (!panel) return;
@@ -256,18 +299,6 @@
 	function handleMouseUp() {
 		isDragging = false;
 	}
-
-	// Set up global mouse listeners for dragging
-	$effect(() => {
-		if (isDragging) {
-			window.addEventListener('mousemove', handleMouseMove);
-			window.addEventListener('mouseup', handleMouseUp);
-			return () => {
-				window.removeEventListener('mousemove', handleMouseMove);
-				window.removeEventListener('mouseup', handleMouseUp);
-			};
-		}
-	});
 
 	// Remember last cursor response for toggle behavior (default to Repel)
 	let lastCursorResponse = $state<typeof CursorResponse.Attract | typeof CursorResponse.Repel>(
@@ -569,6 +600,14 @@
 
 	function resetFlockingSection(e: Event): void {
 		e.stopPropagation();
+		if (activeSpecies) {
+			updateSpecies(activeSpecies.id, {
+				alignment: DEFAULT_PARAMS.alignment,
+				cohesion: DEFAULT_PARAMS.cohesion,
+				separation: DEFAULT_PARAMS.separation,
+				perception: DEFAULT_PARAMS.perception
+			});
+		}
 		setAlignment(DEFAULT_PARAMS.alignment);
 		setCohesion(DEFAULT_PARAMS.cohesion);
 		setSeparation(DEFAULT_PARAMS.separation);
@@ -685,49 +724,33 @@
 	function handleClickOutside(event: MouseEvent) {
 		if (
 			paletteDropdownOpen &&
-			paletteDropdownRef &&
-			!paletteDropdownRef.contains(event.target as Node)
+			dropdownElements.palette &&
+			!dropdownElements.palette.contains(event.target as Node)
 		) {
 			paletteDropdownOpen = false;
 		}
 		if (
 			colorizeDropdownOpen &&
-			colorizeDropdownRef &&
-			!colorizeDropdownRef.contains(event.target as Node)
+			dropdownElements.colorize &&
+			!dropdownElements.colorize.contains(event.target as Node)
 		) {
 			colorizeDropdownOpen = false;
 		}
 		if (
 			saturationDropdownOpen &&
-			saturationDropdownRef &&
-			!saturationDropdownRef.contains(event.target as Node)
+			dropdownElements.saturation &&
+			!dropdownElements.saturation.contains(event.target as Node)
 		) {
 			saturationDropdownOpen = false;
 		}
 		if (
 			brightnessDropdownOpen &&
-			brightnessDropdownRef &&
-			!brightnessDropdownRef.contains(event.target as Node)
+			dropdownElements.brightness &&
+			!dropdownElements.brightness.contains(event.target as Node)
 		) {
 			brightnessDropdownOpen = false;
 		}
-		if (alphaDropdownOpen && alphaDropdownRef && !alphaDropdownRef.contains(event.target as Node)) {
-			alphaDropdownOpen = false;
-		}
 	}
-
-	$effect(() => {
-		if (
-			paletteDropdownOpen ||
-			colorizeDropdownOpen ||
-			saturationDropdownOpen ||
-			brightnessDropdownOpen ||
-			alphaDropdownOpen
-		) {
-			document.addEventListener('click', handleClickOutside);
-			return () => document.removeEventListener('click', handleClickOutside);
-		}
-	});
 
 	function togglePanel(): void {
 		isPanelOpen.update((v) => !v);
@@ -735,15 +758,20 @@
 
 	// Keyboard shortcuts
 	function handleKeyboard(event: KeyboardEvent) {
-		// Ignore if user is typing in an input field
-		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+		if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+		if (event.key === 'Escape' && isLibraryOpen) {
+			event.preventDefault();
+			void closeSceneLibrary();
 			return;
 		}
-
-		// Blur any focused element to prevent ugly focus outlines when using shortcuts
-		if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) {
-			document.activeElement.blur();
-		}
+		// Native controls keep their keyboard behavior, including the scene editor.
+		if (
+			event.target instanceof Element &&
+			event.target.closest(
+				'input, textarea, select, button, a, [contenteditable="true"], [data-scene-library]'
+			)
+		)
+			return;
 
 		// Helper to cycle through array values
 		function cycleValue<T>(current: T, options: T[]): T {
@@ -789,16 +817,15 @@
 				}
 				break;
 
-			case 'tab':
-				if (!event.shiftKey) {
-					event.preventDefault();
-					togglePanel();
-				}
-				break;
-
 			case 'enter':
 				event.preventDefault();
 				togglePanel();
+				break;
+
+			case 'l':
+				event.preventDefault();
+				isPanelOpen.set(true);
+				void openSceneLibrary();
 				break;
 
 			case 'h':
@@ -1048,7 +1075,15 @@
 
 	onMount(() => {
 		window.addEventListener('keydown', handleKeyboard);
-		return () => window.removeEventListener('keydown', handleKeyboard);
+		window.addEventListener('mousemove', handleMouseMove);
+		window.addEventListener('mouseup', handleMouseUp);
+		document.addEventListener('click', handleClickOutside);
+		return () => {
+			window.removeEventListener('keydown', handleKeyboard);
+			window.removeEventListener('mousemove', handleMouseMove);
+			window.removeEventListener('mouseup', handleMouseUp);
+			document.removeEventListener('click', handleClickOutside);
+		};
 	});
 
 	// Detect if device is touch-only (mobile/tablet without keyboard)
@@ -1074,15 +1109,16 @@
 
 	// Driver.js tour configuration
 	function startTour(): void {
+		isSceneLibraryOpen.set(false);
 		startTourAtStep(0);
 	}
 
 	// Show welcome card on first load (without opening panel)
-	let hasShownWelcome = $state(false);
-
-	function showWelcomeOnLoad(): void {
+	function showWelcomeOnLoad(): () => void {
+		let activeWelcome: Driver | undefined;
 		// Small delay to let the app settle
-		setTimeout(() => {
+		const welcomeTimeout = setTimeout(() => {
+			if (window.location.hash.startsWith('#scene=') || isLibraryOpen) return;
 			const isTouch = isTouchDevice();
 
 			const welcomeDriver = driver({
@@ -1219,17 +1255,17 @@
 				]
 			});
 
+			activeWelcome = welcomeDriver;
 			welcomeDriver.drive();
-			hasShownWelcome = true;
 		}, 1000);
+		return () => {
+			clearTimeout(welcomeTimeout);
+			activeWelcome?.destroy();
+		};
 	}
 
 	// Auto-show welcome on mount
-	$effect(() => {
-		if (!hasShownWelcome && typeof window !== 'undefined') {
-			showWelcomeOnLoad();
-		}
-	});
+	onMount(showWelcomeOnLoad);
 
 	function startTourAtStep(startStep: number): void {
 		// Ensure panel is open before starting tour
@@ -1242,8 +1278,7 @@
 			const isTouch = isTouchDevice();
 
 			// Build tour steps dynamically based on device type
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const tourSteps: any[] = [
+			const tourSteps: DriveStep[] = [
 				// Step 0: Welcome
 				{
 					popover: {
@@ -2061,25 +2096,19 @@
 			role="button"
 			tabindex="-1"
 		>
-			<div
-				class="flex items-center gap-2"
-				onclick={(e) => {
-					if (e.shiftKey) {
-						e.stopPropagation();
-						const json = JSON.stringify(currentParams, null, 2);
-						const blob = new Blob([json], { type: 'application/json' });
-						const url = URL.createObjectURL(blob);
-						const a = document.createElement('a');
-						a.href = url;
-						a.download = `swarm-settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-						a.click();
-						URL.revokeObjectURL(url);
-					}
-				}}
+			<button
+				{@attach rememberLibraryTrigger}
+				class="scene-trigger"
+				class:active={isLibraryOpen}
+				onclick={() => (isLibraryOpen ? closeSceneLibrary() : openSceneLibrary())}
+				aria-label={isLibraryOpen ? 'Back to controls' : 'Open scenes'}
+				aria-expanded={isLibraryOpen}
+				title={isLibraryOpen ? 'Back to controls' : 'Explore and save scenes (L)'}
 			>
-				<img src="{base}/favicon.svg" alt="Swarm" class="h-5 w-5" />
+				<img src="{base}/favicon.svg" alt="" class="h-4 w-4" />
 				<span class="brand-title">Swarm</span>
-			</div>
+				<HugeiconsIcon icon={IconChevronDown} class="scene-chevron" size={10} strokeWidth={1.8} />
+			</button>
 			<div id="header-controls" class="flex items-center gap-0.5">
 				<!-- Play/Pause Button -->
 				<button
@@ -2138,7 +2167,12 @@
 				>
 					{#if recording}
 						<!-- Stop icon (square) -->
-						<HugeiconsIcon icon={IconStopRecording} class="h-3.5 w-3.5" size={12} strokeWidth={1.8} />
+						<HugeiconsIcon
+							icon={IconStopRecording}
+							class="h-3.5 w-3.5"
+							size={12}
+							strokeWidth={1.8}
+						/>
 					{:else if isPlaying}
 						<!-- Video camera icon -->
 						<HugeiconsIcon icon={IconRecord} class="h-3.5 w-3.5" size={14} strokeWidth={1.8} />
@@ -2174,1065 +2208,780 @@
 		<div class="header-divider"></div>
 
 		<!-- Content -->
-		<div class="content-scroll max-h-[calc(100vh-100px)]">
-			<!-- Boids -->
-			<div id="section-boids">
-				<button class="section-header" onclick={() => toggleSection('boids')}>
-					<div class="section-title">
-						<HugeiconsIcon icon={IconBoids} class="section-icon icon-purple" size={14} strokeWidth={1.8} />
-						<span class="section-label">Boids</span>
+		<div class="content-scroll max-h-[calc(100dvh-100px)]" class:scene-content={isLibraryOpen}>
+			{#if isLibraryOpen}
+				{#if SceneLibrary}
+					<SceneLibrary onclose={closeSceneLibrary} />
+				{:else}
+					<div class="scene-loading" role="status">
+						{libraryError || 'Opening scenes…'}
+						{#if libraryError}<button onclick={openSceneLibrary}>Try again</button>{/if}
 					</div>
-					<!-- Quick species selector - only when collapsed and multiple species -->
-					{#if openSection !== 'boids' && currentParams.species.length > 1}
-						<div class="quick-species-selector">
-							{#each currentParams.species as species (species.id)}
+				{/if}
+			{:else}
+				<!-- Boids -->
+				<div id="section-boids">
+					<button class="section-header" onclick={() => toggleSection('boids')}>
+						<div class="section-title">
+							<HugeiconsIcon
+								icon={IconBoids}
+								class="section-icon icon-purple"
+								size={14}
+								strokeWidth={1.8}
+							/>
+							<span class="section-label">Boids</span>
+						</div>
+						<!-- Quick species selector - only when collapsed and multiple species -->
+						{#if openSection !== 'boids' && currentParams.species.length > 1}
+							<div class="quick-species-selector">
+								{#each currentParams.species as species (species.id)}
+									<span
+										class="quick-species-btn"
+										class:selected={species.id === currentParams.activeSpeciesId}
+										role="button"
+										tabindex="0"
+										onclick={(e) => {
+											e.stopPropagation();
+											setActiveSpecies(species.id);
+										}}
+										onkeydown={(e) => {
+											if (e.key === 'Enter' || e.key === ' ') {
+												e.stopPropagation();
+												setActiveSpecies(species.id);
+											}
+										}}
+										title={species.name}
+										style="--species-color: hsl({species.hue}, {species.saturation ??
+											70}%, {species.lightness ?? 55}%)"
+									>
+										<svg viewBox="0 0 20 20" class="quick-species-icon">
+											<path
+												d={getShapePath(species.headShape, 10, 10, 6)}
+												fill="var(--species-color)"
+											/>
+										</svg>
+										{#if species.id === currentParams.activeSpeciesId}
+											<span class="quick-species-ring"></span>
+										{/if}
+									</span>
+								{/each}
+							</div>
+						{/if}
+						<div class="section-actions">
+							{#if openSection === 'boids'}
 								<span
-									class="quick-species-btn"
-									class:selected={species.id === currentParams.activeSpeciesId}
+									class="section-action-btn"
 									role="button"
 									tabindex="0"
 									onclick={(e) => {
 										e.stopPropagation();
-										setActiveSpecies(species.id);
+										startTourAtSection('boids');
 									}}
-									onkeydown={(e) => {
-										if (e.key === 'Enter' || e.key === ' ') {
-											e.stopPropagation();
-											setActiveSpecies(species.id);
-										}
-									}}
-									title={species.name}
-									style="--species-color: hsl({species.hue}, {species.saturation ??
-										70}%, {species.lightness ?? 55}%)"
+									onkeydown={(e) => handleKeydown(e, () => startTourAtSection('boids'))}
+									title="Help"
 								>
-									<svg viewBox="0 0 20 20" class="quick-species-icon">
-										<path
-											d={getShapePath(species.headShape, 10, 10, 6)}
-											fill="var(--species-color)"
-										/>
-									</svg>
-									{#if species.id === currentParams.activeSpeciesId}
-										<span class="quick-species-ring"></span>
-									{/if}
+									<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
 								</span>
-							{/each}
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={resetBoidsSection}
+									onkeydown={(e) => handleKeydown(e, resetBoidsSection)}
+									title="Reset"
+								>
+									<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
+								</span>
+							{/if}
+							<HugeiconsIcon
+								icon={IconChevronDown}
+								class="section-chevron"
+								size={14}
+								strokeWidth={1.8}
+							/>
+						</div>
+					</button>
+					{#if openSection === 'boids'}
+						<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+							<SpeciesSelector />
+							<div class="row">
+								<span class="label">Population</span>
+								<input
+									type="range"
+									min="100"
+									max="20000"
+									step="100"
+									value={activeSpecies?.population ?? 7000}
+									oninput={(e) => (populationPreview = parseInt(e.currentTarget.value))}
+									onchange={(e) => {
+										if (activeSpecies) {
+											setSpeciesPopulation(activeSpecies.id, parseInt(e.currentTarget.value));
+										}
+										populationPreview = null;
+									}}
+									class="slider"
+									aria-label="Population"
+								/>
+								<span class="value"
+									>{((populationPreview ?? activeSpecies?.population ?? 7000) / 1000).toFixed(
+										1
+									)}k</span
+								>
+							</div>
+							<div class="row">
+								<span class="label">Size</span>
+								<input
+									type="range"
+									min="0.2"
+									max="3"
+									step="0.1"
+									value={activeSpecies?.size ?? 1.5}
+									oninput={(e) =>
+										activeSpecies &&
+										setSpeciesSize(activeSpecies.id, parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Boid Size"
+								/>
+								<span class="value">{(activeSpecies?.size ?? 1.5).toFixed(1)}</span>
+							</div>
+							<div class="row">
+								<span class="label">Trail</span>
+								<input
+									type="range"
+									min="0"
+									max="50"
+									step="1"
+									value={activeSpecies?.trailLength ?? 20}
+									oninput={(e) =>
+										activeSpecies &&
+										setSpeciesTrailLength(activeSpecies.id, parseInt(e.currentTarget.value))}
+									class="slider"
+									aria-label="Trail"
+								/>
+								<span class="value">{activeSpecies?.trailLength ?? 20}</span>
+							</div>
+							<div class="row">
+								<span class="label">Rebels</span>
+								<input
+									type="range"
+									min="0"
+									max="0.2"
+									step="0.01"
+									value={activeSpecies?.rebels ?? 0.02}
+									oninput={(e) =>
+										activeSpecies &&
+										setSpeciesRebels(activeSpecies.id, parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Rebels"
+								/>
+								<span class="value">{((activeSpecies?.rebels ?? 0.02) * 100).toFixed(0)}%</span>
+							</div>
 						</div>
 					{/if}
-					<div class="section-actions">
-						{#if openSection === 'boids'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('boids');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('boids'))}
-								title="Help"
-							>
-								<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetBoidsSection}
-								onkeydown={(e) => handleKeydown(e, resetBoidsSection)}
-								title="Reset"
-							>
-								<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
-							</span>
-						{/if}
-						<HugeiconsIcon icon={IconChevronDown} class="section-chevron" size={14} strokeWidth={1.8} />
-					</div>
-				</button>
-				{#if openSection === 'boids'}
-					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<SpeciesSelector />
-						<div class="row">
-							<span class="label">Population</span>
-							<input
-								type="range"
-								min="100"
-								max="20000"
-								step="100"
-								value={activeSpecies?.population ?? 7000}
-								oninput={(e) => (populationPreview = parseInt(e.currentTarget.value))}
-								onchange={(e) => {
-									if (activeSpecies) {
-										setSpeciesPopulation(activeSpecies.id, parseInt(e.currentTarget.value));
-									}
-									populationPreview = null;
-								}}
-								class="slider"
-								aria-label="Population"
-							/>
-							<span class="value"
-								>{((populationPreview ?? activeSpecies?.population ?? 7000) / 1000).toFixed(
-									1
-								)}k</span
-							>
-						</div>
-						<div class="row">
-							<span class="label">Size</span>
-							<input
-								type="range"
-								min="0.2"
-								max="3"
-								step="0.1"
-								value={activeSpecies?.size ?? 1.5}
-								oninput={(e) =>
-									activeSpecies &&
-									setSpeciesSize(activeSpecies.id, parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Boid Size"
-							/>
-							<span class="value">{(activeSpecies?.size ?? 1.5).toFixed(1)}</span>
-						</div>
-						<div class="row">
-							<span class="label">Trail</span>
-							<input
-								type="range"
-								min="0"
-								max="50"
-								step="1"
-								value={activeSpecies?.trailLength ?? 20}
-								oninput={(e) =>
-									activeSpecies &&
-									setSpeciesTrailLength(activeSpecies.id, parseInt(e.currentTarget.value))}
-								class="slider"
-								aria-label="Trail"
-							/>
-							<span class="value">{activeSpecies?.trailLength ?? 20}</span>
-						</div>
-						<div class="row">
-							<span class="label">Rebels</span>
-							<input
-								type="range"
-								min="0"
-								max="0.2"
-								step="0.01"
-								value={activeSpecies?.rebels ?? 0.02}
-								oninput={(e) =>
-									activeSpecies &&
-									setSpeciesRebels(activeSpecies.id, parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Rebels"
-							/>
-							<span class="value">{((activeSpecies?.rebels ?? 0.02) * 100).toFixed(0)}%</span>
-						</div>
-					</div>
-				{/if}
-			</div>
+				</div>
 
-			<div class="section-divider"></div>
-			<!-- Color Section -->
-			<div id="section-color">
-				<button class="section-header" onclick={() => toggleSection('color')}>
-					<div class="section-title">
-						<!-- Lucide: palette with rainbow gradient -->
-						<HugeiconsIcon
-							icon={IconColor}
-							class="section-icon icon-orange"
-							size={14}
-							strokeWidth={1.8}
-						/>
-						<span class="section-label">Color</span>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'color'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('color');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('color'))}
-								title="Help"
-							>
-								<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetColorSection}
-								onkeydown={(e) => handleKeydown(e, resetColorSection)}
-								title="Reset"
-							>
-								<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
-							</span>
-						{/if}
-						<HugeiconsIcon icon={IconChevronDown} class="section-chevron" size={14} strokeWidth={1.8} />
-					</div>
-				</button>
-				{#if openSection === 'color'}
-					<div class="section-content" transition:slide={{ duration: 200, easing: cubicOut }}>
-						<div class="row">
-							<span class="label">Hue</span>
-							<div class="relative min-w-0 flex-1" bind:this={colorizeDropdownRef}>
-								<button
-									class="sel flex w-full items-center gap-2 text-left"
-									onclick={() => (colorizeDropdownOpen = !colorizeDropdownOpen)}
-									aria-label="Hue Mode"
-									aria-expanded={colorizeDropdownOpen}
+				<div class="section-divider"></div>
+				<!-- Color Section -->
+				<div id="section-color">
+					<button class="section-header" onclick={() => toggleSection('color')}>
+						<div class="section-title">
+							<!-- Lucide: palette with rainbow gradient -->
+							<HugeiconsIcon
+								icon={IconColor}
+								class="section-icon icon-orange"
+								size={14}
+								strokeWidth={1.8}
+							/>
+							<span class="section-label">Color</span>
+						</div>
+						<div class="section-actions">
+							{#if openSection === 'color'}
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										startTourAtSection('color');
+									}}
+									onkeydown={(e) => handleKeydown(e, () => startTourAtSection('color'))}
+									title="Help"
 								>
-									<HugeiconsIcon icon={colorModeIcon(currentParams.colorMode)} size={16} strokeWidth={1.8} color="rgb(161 161 170)" />
-									<span class="flex-1 truncate"
-										>{colorOptions.find((o) => o.value === currentParams.colorMode)?.label}</span
+									<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
+								</span>
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={resetColorSection}
+									onkeydown={(e) => handleKeydown(e, resetColorSection)}
+									title="Reset"
+								>
+									<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
+								</span>
+							{/if}
+							<HugeiconsIcon
+								icon={IconChevronDown}
+								class="section-chevron"
+								size={14}
+								strokeWidth={1.8}
+							/>
+						</div>
+					</button>
+					{#if openSection === 'color'}
+						<div class="section-content" transition:slide={{ duration: 200, easing: cubicOut }}>
+							<div class="row">
+								<span class="label">Hue</span>
+								<div class="relative min-w-0 flex-1" {@attach rememberDropdown('colorize')}>
+									<button
+										class="sel flex w-full items-center gap-2 text-left"
+										onclick={() => (colorizeDropdownOpen = !colorizeDropdownOpen)}
+										aria-label="Hue Mode"
+										aria-expanded={colorizeDropdownOpen}
 									>
-									<svg
-										class="h-3 w-3 opacity-50 transition-transform"
-										class:rotate-180={colorizeDropdownOpen}
-										viewBox="0 0 20 20"
-										fill="currentColor"
-									>
-										<path
-											fill-rule="evenodd"
-											d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-											clip-rule="evenodd"
+										<HugeiconsIcon
+											icon={colorModeIcon(currentParams.colorMode)}
+											size={16}
+											strokeWidth={1.8}
+											color="rgb(161 161 170)"
 										/>
-									</svg>
-								</button>
-								{#if colorizeDropdownOpen}
-									<div
-										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
-										transition:slide={{ duration: 150, easing: cubicOut }}
-									>
-										{#each colorOptions as opt (opt.value)}
-											<button
-												class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
-												class:active={currentParams.colorMode === opt.value}
-												onclick={() => selectColorize(opt.value)}
-											>
-												<HugeiconsIcon icon={colorModeIcon(opt.value)} size={16} strokeWidth={1.8} color="rgb(161 161 170)" />
-												<span>{opt.label}</span>
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</div>
-							<!-- Palette/Color button -->
-							<div class="relative" bind:this={paletteDropdownRef}>
-								<button
-									class="palette-toggle"
-									onclick={() => (paletteDropdownOpen = !paletteDropdownOpen)}
-									title={currentParams.colorMode === ColorMode.Species
-										? 'Species color'
-										: 'Color palette'}
-								>
-									{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
+										<span class="flex-1 truncate"
+											>{colorOptions.find((o) => o.value === currentParams.colorMode)?.label}</span
+										>
+										<svg
+											class="h-3 w-3 opacity-50 transition-transform"
+											class:rotate-180={colorizeDropdownOpen}
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									</button>
+									{#if colorizeDropdownOpen}
 										<div
-											class="color-swatch"
-											style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
-										></div>
-									{:else}
-										<PaletteIcon spectrum={currentParams.colorSpectrum} size={20} />
+											class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
+											transition:slide={{ duration: 150, easing: cubicOut }}
+										>
+											{#each colorOptions as opt (opt.value)}
+												<button
+													class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
+													class:active={currentParams.colorMode === opt.value}
+													onclick={() => selectColorize(opt.value)}
+												>
+													<HugeiconsIcon
+														icon={colorModeIcon(opt.value)}
+														size={16}
+														strokeWidth={1.8}
+														color="rgb(161 161 170)"
+													/>
+													<span>{opt.label}</span>
+												</button>
+											{/each}
+										</div>
 									{/if}
-								</button>
-								{#if paletteDropdownOpen}
-									<div
-										class="palette-dropdown"
-										transition:slide={{ duration: 150, easing: cubicOut }}
+								</div>
+								<!-- Palette/Color button -->
+								<div class="relative" {@attach rememberDropdown('palette')}>
+									<button
+										class="palette-toggle"
+										onclick={() => (paletteDropdownOpen = !paletteDropdownOpen)}
+										title={currentParams.colorMode === ColorMode.Species
+											? 'Species color'
+											: 'Color palette'}
 									>
 										{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
-											<!-- Species color picker -->
-											<div class="species-color-picker">
-												<div
-													class="sl-picker-mini"
-													role="slider"
-													aria-label="Saturation and Lightness"
-													aria-valuenow={activeSpecies.saturation}
-													tabindex={0}
-													style="background: linear-gradient(to bottom, white, hsl({activeSpecies.hue}, 100%, 50%), black)"
-													onmousedown={(e) => {
-														const rect = e.currentTarget.getBoundingClientRect();
-														const updateSL = (clientX: number, clientY: number) => {
-															const x = Math.max(
-																0,
-																Math.min(1, (clientX - rect.left) / rect.width)
-															);
-															const y = Math.max(
-																0,
-																Math.min(1, (clientY - rect.top) / rect.height)
-															);
-															const saturation = Math.round(x * 100);
-															const lightness = Math.round((1 - y) * 100);
-															setSpeciesColor(
-																activeSpecies.id,
-																activeSpecies.hue,
-																saturation,
-																lightness
-															);
-														};
-														updateSL(e.clientX, e.clientY);
-														const moveHandler = (me: MouseEvent) =>
-															updateSL(me.clientX, me.clientY);
-														const upHandler = () => {
-															window.removeEventListener('mousemove', moveHandler);
-															window.removeEventListener('mouseup', upHandler);
-														};
-														window.addEventListener('mousemove', moveHandler);
-														window.addEventListener('mouseup', upHandler);
-													}}
-												>
-													<div
-														class="sl-handle"
-														style="left: {activeSpecies.saturation}%; top: {100 -
-															activeSpecies.lightness}%"
-													></div>
-												</div>
-												<input
-													type="range"
-													class="hue-slider-mini"
-													min="0"
-													max="360"
-													step="1"
-													value={activeSpecies.hue}
-													oninput={(e) =>
-														setSpeciesHue(activeSpecies.id, parseInt(e.currentTarget.value))}
-													style="background: linear-gradient(to right, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))"
-												/>
-											</div>
+											<div
+												class="color-swatch"
+												style="background: hsl({activeSpecies.hue}, {activeSpecies.saturation}%, {activeSpecies.lightness}%)"
+											></div>
 										{:else}
-											<!-- Palette gradient options as horizontal bars -->
-											<div class="palette-options-grid">
-												<button
-													class="palette-bar-option"
-													class:active={currentParams.colorSpectrum === ColorSpectrum.Rainbow}
-													onclick={() => selectPalette(ColorSpectrum.Rainbow)}
-													title="Rainbow"
-													style="background: linear-gradient(to right, hsl(0,85%,60%), hsl(60,85%,60%), hsl(120,85%,50%), hsl(180,85%,55%), hsl(240,85%,60%), hsl(300,85%,60%))"
-												></button>
-												<button
-													class="palette-bar-option"
-													class:active={currentParams.colorSpectrum === ColorSpectrum.Bands}
-													onclick={() => selectPalette(ColorSpectrum.Bands)}
-													title="Bands"
-													style="background: linear-gradient(to right, rgb(230,51,77) 0%, rgb(230,51,77) 16%, rgb(242,153,26) 16%, rgb(242,153,26) 33%, rgb(242,230,51) 33%, rgb(242,230,51) 50%, rgb(51,204,102) 50%, rgb(51,204,102) 66%, rgb(51,153,230) 66%, rgb(51,153,230) 83%, rgb(153,77,204) 83%, rgb(153,77,204) 100%)"
-												></button>
-												<button
-													class="palette-bar-option"
-													class:active={currentParams.colorSpectrum === ColorSpectrum.Ocean}
-													onclick={() => selectPalette(ColorSpectrum.Ocean)}
-													title="Ocean"
-													style="background: linear-gradient(to right, rgb(64,89,166), rgb(51,140,153), rgb(77,166,128), rgb(217,179,77), rgb(204,115,102), rgb(140,89,140))"
-												></button>
-												<button
-													class="palette-bar-option"
-													class:active={currentParams.colorSpectrum === ColorSpectrum.Chrome}
-													onclick={() => selectPalette(ColorSpectrum.Chrome)}
-													title="Chrome"
-													style="background: linear-gradient(to right, rgb(51,102,230), rgb(77,204,230), rgb(242,242,230), rgb(242,153,51), rgb(230,51,51))"
-												></button>
-												<button
-													class="palette-bar-option"
-													class:active={currentParams.colorSpectrum === ColorSpectrum.Mono}
-													onclick={() => selectPalette(ColorSpectrum.Mono)}
-													title="Mono"
-													style="background: linear-gradient(to right, rgb(102,97,92), rgb(179,170,161), rgb(255,242,230))"
-												></button>
-											</div>
+											<PaletteIcon spectrum={currentParams.colorSpectrum} size={20} />
 										{/if}
-									</div>
-								{/if}
-							</div>
-							<button
-								class="curve-toggle"
-								class:active={showHueCurve && !hueCurveDisabled}
-								onclick={() => !hueCurveDisabled && (showHueCurve = !showHueCurve)}
-								disabled={hueCurveDisabled}
-								title={hueCurveDisabled ? 'Curve not available for this mode' : 'Edit hue curve'}
-							>
-								<HugeiconsIcon icon={IconChevronDown} size={14} strokeWidth={1.8} color="rgb(113 113 122)" />
-							</button>
-						</div>
-						{#if showHueCurve && !hueCurveDisabled}
-							<CurveEditor
-								label="Hue"
-								type="hue"
-								spectrum={currentParams.colorSpectrum}
-								colorMode={currentParams.colorMode}
-								speciesHue={activeSpecies?.hue ?? 0}
-								points={currentParams.hueCurvePoints}
-								onPointsChange={handleHueCurvePointsChange}
-							/>
-							<div class="strength-row">
-								<span class="strength-label">Intensity</span>
-								<input
-									type="range"
-									class="slider strength-slider"
-									min="0.1"
-									max="3"
-									step="0.05"
-									value={currentParams.hueStrength}
-									oninput={(e) => setHueStrength(parseFloat(e.currentTarget.value))}
-								/>
-								<span class="strength-value">{currentParams.hueStrength.toFixed(1)}x</span>
-							</div>
-						{/if}
-						<!-- Saturation source row -->
-						<div class="row">
-							<span class="label">Saturation</span>
-							<div class="relative min-w-0 flex-1" bind:this={saturationDropdownRef}>
+									</button>
+									{#if paletteDropdownOpen}
+										<div
+											class="palette-dropdown"
+											transition:slide={{ duration: 150, easing: cubicOut }}
+										>
+											{#if currentParams.colorMode === ColorMode.Species && activeSpecies}
+												<!-- Species color picker -->
+												<div class="species-color-picker">
+													<div
+														class="sl-picker-mini"
+														role="slider"
+														aria-label="Saturation and Lightness"
+														aria-valuenow={activeSpecies.saturation}
+														tabindex={0}
+														style="background: linear-gradient(to bottom, white, hsl({activeSpecies.hue}, 100%, 50%), black)"
+														onmousedown={(e) => {
+															const rect = e.currentTarget.getBoundingClientRect();
+															const updateSL = (clientX: number, clientY: number) => {
+																const x = Math.max(
+																	0,
+																	Math.min(1, (clientX - rect.left) / rect.width)
+																);
+																const y = Math.max(
+																	0,
+																	Math.min(1, (clientY - rect.top) / rect.height)
+																);
+																const saturation = Math.round(x * 100);
+																const lightness = Math.round((1 - y) * 100);
+																setSpeciesColor(
+																	activeSpecies.id,
+																	activeSpecies.hue,
+																	saturation,
+																	lightness
+																);
+															};
+															updateSL(e.clientX, e.clientY);
+															const moveHandler = (me: MouseEvent) =>
+																updateSL(me.clientX, me.clientY);
+															const upHandler = () => {
+																window.removeEventListener('mousemove', moveHandler);
+																window.removeEventListener('mouseup', upHandler);
+															};
+															window.addEventListener('mousemove', moveHandler);
+															window.addEventListener('mouseup', upHandler);
+														}}
+													>
+														<div
+															class="sl-handle"
+															style="left: {activeSpecies.saturation}%; top: {100 -
+																activeSpecies.lightness}%"
+														></div>
+													</div>
+													<input
+														type="range"
+														class="hue-slider-mini"
+														min="0"
+														max="360"
+														step="1"
+														value={activeSpecies.hue}
+														oninput={(e) =>
+															setSpeciesHue(activeSpecies.id, parseInt(e.currentTarget.value))}
+														style="background: linear-gradient(to right, hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%), hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%))"
+													/>
+												</div>
+											{:else}
+												<!-- Palette gradient options as horizontal bars -->
+												<div class="palette-options-grid">
+													<button
+														class="palette-bar-option"
+														class:active={currentParams.colorSpectrum === ColorSpectrum.Rainbow}
+														onclick={() => selectPalette(ColorSpectrum.Rainbow)}
+														title="Rainbow"
+														style="background: linear-gradient(to right, hsl(0,85%,60%), hsl(60,85%,60%), hsl(120,85%,50%), hsl(180,85%,55%), hsl(240,85%,60%), hsl(300,85%,60%))"
+													></button>
+													<button
+														class="palette-bar-option"
+														class:active={currentParams.colorSpectrum === ColorSpectrum.Bands}
+														onclick={() => selectPalette(ColorSpectrum.Bands)}
+														title="Bands"
+														style="background: linear-gradient(to right, rgb(230,51,77) 0%, rgb(230,51,77) 16%, rgb(242,153,26) 16%, rgb(242,153,26) 33%, rgb(242,230,51) 33%, rgb(242,230,51) 50%, rgb(51,204,102) 50%, rgb(51,204,102) 66%, rgb(51,153,230) 66%, rgb(51,153,230) 83%, rgb(153,77,204) 83%, rgb(153,77,204) 100%)"
+													></button>
+													<button
+														class="palette-bar-option"
+														class:active={currentParams.colorSpectrum === ColorSpectrum.Ocean}
+														onclick={() => selectPalette(ColorSpectrum.Ocean)}
+														title="Ocean"
+														style="background: linear-gradient(to right, rgb(64,89,166), rgb(51,140,153), rgb(77,166,128), rgb(217,179,77), rgb(204,115,102), rgb(140,89,140))"
+													></button>
+													<button
+														class="palette-bar-option"
+														class:active={currentParams.colorSpectrum === ColorSpectrum.Chrome}
+														onclick={() => selectPalette(ColorSpectrum.Chrome)}
+														title="Chrome"
+														style="background: linear-gradient(to right, rgb(51,102,230), rgb(77,204,230), rgb(242,242,230), rgb(242,153,51), rgb(230,51,51))"
+													></button>
+													<button
+														class="palette-bar-option"
+														class:active={currentParams.colorSpectrum === ColorSpectrum.Mono}
+														onclick={() => selectPalette(ColorSpectrum.Mono)}
+														title="Mono"
+														style="background: linear-gradient(to right, rgb(102,97,92), rgb(179,170,161), rgb(255,242,230))"
+													></button>
+												</div>
+											{/if}
+										</div>
+									{/if}
+								</div>
 								<button
-									class="sel flex w-full items-center gap-2 text-left"
-									onclick={() => (saturationDropdownOpen = !saturationDropdownOpen)}
-									aria-label="Saturation Source"
-									aria-expanded={saturationDropdownOpen}
+									class="curve-toggle"
+									class:active={showHueCurve && !hueCurveDisabled}
+									onclick={() => !hueCurveDisabled && (showHueCurve = !showHueCurve)}
+									disabled={hueCurveDisabled}
+									title={hueCurveDisabled ? 'Curve not available for this mode' : 'Edit hue curve'}
 								>
-									<HugeiconsIcon icon={colorModeIcon(currentParams.saturationSource)} size={16} strokeWidth={1.8} color="rgb(161 161 170)" />
-									<span class="flex-1 truncate"
-										>{saturationOptions.find((o) => o.value === currentParams.saturationSource)
-											?.label ?? 'Full'}</span
-									>
-									<svg
-										class="h-3 w-3 opacity-50 transition-transform"
-										class:rotate-180={saturationDropdownOpen}
-										viewBox="0 0 20 20"
-										fill="currentColor"
-									>
-										<path
-											fill-rule="evenodd"
-											d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-											clip-rule="evenodd"
-										/>
-									</svg>
-								</button>
-								{#if saturationDropdownOpen}
-									<div
-										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
-										transition:slide={{ duration: 150, easing: cubicOut }}
-									>
-										{#each saturationOptions as opt (opt.value)}
-											<button
-												class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
-												class:active={currentParams.saturationSource === opt.value}
-												onclick={() => selectSaturationSource(opt.value)}
-											>
-												<HugeiconsIcon icon={colorModeIcon(opt.value)} size={16} strokeWidth={1.8} color="rgb(161 161 170)" />
-												<span>{opt.label}</span>
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</div>
-							<button
-								class="curve-toggle"
-								class:active={showSaturationCurve && !satCurveDisabled}
-								onclick={() => !satCurveDisabled && (showSaturationCurve = !showSaturationCurve)}
-								disabled={satCurveDisabled}
-								title={satCurveDisabled
-									? 'Curve not available for this mode'
-									: 'Edit saturation curve'}
-							>
-								<HugeiconsIcon icon={IconChevronDown} size={14} strokeWidth={1.8} color="rgb(113 113 122)" />
-							</button>
-						</div>
-						{#if showSaturationCurve && !satCurveDisabled}
-							<CurveEditor
-								label="Saturation"
-								type="saturation"
-								points={currentParams.saturationCurvePoints}
-								onPointsChange={handleSaturationCurvePointsChange}
-							/>
-							<div class="strength-row">
-								<span class="strength-label">Intensity</span>
-								<input
-									type="range"
-									class="slider strength-slider"
-									min="0.1"
-									max="3"
-									step="0.05"
-									value={currentParams.saturationStrength}
-									oninput={(e) => setSaturationStrength(parseFloat(e.currentTarget.value))}
-								/>
-								<span class="strength-value">{currentParams.saturationStrength.toFixed(1)}x</span>
-							</div>
-						{/if}
-						<!-- Brightness source row -->
-						<div class="row">
-							<span class="label">Brightness</span>
-							<div class="relative min-w-0 flex-1" bind:this={brightnessDropdownRef}>
-								<button
-									class="sel flex w-full items-center gap-2 text-left"
-									onclick={() => (brightnessDropdownOpen = !brightnessDropdownOpen)}
-									aria-label="Brightness Source"
-									aria-expanded={brightnessDropdownOpen}
-								>
-									<HugeiconsIcon icon={colorModeIcon(currentParams.brightnessSource)} size={16} strokeWidth={1.8} color="rgb(161 161 170)" />
-									<span class="flex-1 truncate"
-										>{brightnessOptions.find((o) => o.value === currentParams.brightnessSource)
-											?.label ?? 'Default'}</span
-									>
-									<svg
-										class="h-3 w-3 opacity-50 transition-transform"
-										class:rotate-180={brightnessDropdownOpen}
-										viewBox="0 0 20 20"
-										fill="currentColor"
-									>
-										<path
-											fill-rule="evenodd"
-											d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-											clip-rule="evenodd"
-										/>
-									</svg>
-								</button>
-								{#if brightnessDropdownOpen}
-									<div
-										class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
-										transition:slide={{ duration: 150, easing: cubicOut }}
-									>
-										{#each brightnessOptions as opt (opt.value)}
-											<button
-												class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
-												class:active={currentParams.brightnessSource === opt.value}
-												onclick={() => selectBrightnessSource(opt.value)}
-											>
-												<HugeiconsIcon icon={colorModeIcon(opt.value)} size={16} strokeWidth={1.8} color="rgb(161 161 170)" />
-												<span>{opt.label}</span>
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</div>
-							<button
-								class="curve-toggle"
-								class:active={showBrightnessCurve && !brightCurveDisabled}
-								onclick={() => !brightCurveDisabled && (showBrightnessCurve = !showBrightnessCurve)}
-								disabled={brightCurveDisabled}
-								title={brightCurveDisabled
-									? 'Curve not available for this mode'
-									: 'Edit brightness curve'}
-							>
-								<HugeiconsIcon icon={IconChevronDown} size={14} strokeWidth={1.8} color="rgb(113 113 122)" />
-							</button>
-						</div>
-						{#if showBrightnessCurve && !brightCurveDisabled}
-							<CurveEditor
-								label="Brightness"
-								type="brightness"
-								points={currentParams.brightnessCurvePoints}
-								onPointsChange={handleBrightnessCurvePointsChange}
-							/>
-							<div class="strength-row">
-								<span class="strength-label">Intensity</span>
-								<input
-									type="range"
-									class="slider strength-slider"
-									min="0.1"
-									max="3"
-									step="0.05"
-									value={currentParams.brightnessStrength}
-									oninput={(e) => setBrightnessStrength(parseFloat(e.currentTarget.value))}
-								/>
-								<span class="strength-value">{currentParams.brightnessStrength.toFixed(1)}x</span>
-							</div>
-						{/if}
-					</div>
-				{/if}
-			</div>
-
-			<div class="section-divider"></div>
-			<!-- Forces - Cursor Controls -->
-			<div id="section-forces">
-				<button class="section-header" onclick={() => toggleSection('forces')}>
-					<div class="section-title">
-						<HugeiconsIcon icon={IconForces} class="section-icon icon-red" size={14} strokeWidth={1.8} />
-						<span class="section-label">Forces</span>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'forces'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('forces');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('forces'))}
-								title="Help"
-							>
-								<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetForcesSection}
-								onkeydown={(e) => handleKeydown(e, resetForcesSection)}
-								title="Reset"
-							>
-								<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
-							</span>
-						{/if}
-						<HugeiconsIcon icon={IconChevronDown} class="section-chevron" size={14} strokeWidth={1.8} />
-					</div>
-				</button>
-				{#if openSection === 'forces'}
-					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<div class="row">
-							<span class="label">Force</span>
-							<!-- Force buttons: Attract, Repel, Vortex - controls per-species response -->
-							<div class="cursor-toggle cursor-toggle-4">
-								<!-- Sliding indicator for attract/repel (hidden when species ignores cursor) -->
-								{#if activeSpecies?.cursorResponse !== CursorResponse.Ignore}
-									<div
-										class="cursor-toggle-indicator"
-										style="left: calc(4px + {cursorModeIndex} * 44px)"
-									></div>
-								{/if}
-
-								<button
-									class="cursor-toggle-btn power-btn"
-									class:active={activeSpecies?.cursorResponse !== CursorResponse.Ignore ||
-										activeSpecies?.cursorVortex}
-									onclick={() => handleCursorModeToggle(CursorMode.Off)}
-									aria-label="Toggle Cursor"
-									title="Toggle interaction on/off for this species"
-								>
-									<HugeiconsIcon icon={IconPower} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-								<button
-									class="cursor-toggle-btn attract"
-									class:active={activeSpecies?.cursorResponse === CursorResponse.Attract}
-									onclick={() => handleCursorModeToggle(CursorMode.Attract)}
-									aria-label="Attract"
-									title="Attract this species (click again to turn off)"
-								>
-									<ForceAnimation
-										type="attract"
-										active={activeSpecies?.cursorResponse === CursorResponse.Attract}
-										size={32}
-									/>
-								</button>
-								<button
-									class="cursor-toggle-btn repel"
-									class:active={activeSpecies?.cursorResponse === CursorResponse.Repel}
-									onclick={() => handleCursorModeToggle(CursorMode.Repel)}
-									aria-label="Repel"
-									title="Repel this species (click again to turn off)"
-								>
-									<ForceAnimation
-										type="repel"
-										active={activeSpecies?.cursorResponse === CursorResponse.Repel}
-										size={32}
-									/>
-								</button>
-								<button
-									class="cursor-toggle-btn vortex"
-									class:active={activeSpecies?.cursorVortex !== VortexDirection.Off}
-									class:counter-clockwise={activeSpecies?.cursorVortex ===
-										VortexDirection.CounterClockwise}
-									onclick={() => activeSpecies && cycleSpeciesCursorVortex(activeSpecies.id)}
-									aria-label="Vortex"
-									title="Cycle rotation: Off → Clockwise → Counter-clockwise → Off"
-								>
-									<ForceAnimation
-										type="vortex"
-										active={activeSpecies?.cursorVortex !== VortexDirection.Off}
-										vortexDirection={activeSpecies?.cursorVortex ?? VortexDirection.Off}
-										size={32}
+									<HugeiconsIcon
+										icon={IconChevronDown}
+										size={14}
+										strokeWidth={1.8}
+										color="rgb(113 113 122)"
 									/>
 								</button>
 							</div>
-						</div>
-						<div class="row">
-							<span class="label">Shape</span>
-							<div class="shape-toggle shape-toggle-2">
-								<button
-									class="shape-btn"
-									class:active={currentParams.cursorShape === CursorShape.Ring}
-									onclick={() => setCursorShape(CursorShape.Ring)}
-									aria-label="Ring"
-									title="Ring"
-								>
-									<svg
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										class="h-5 w-5"
+							{#if showHueCurve && !hueCurveDisabled}
+								<CurveEditor
+									label="Hue"
+									type="hue"
+									spectrum={currentParams.colorSpectrum}
+									colorMode={currentParams.colorMode}
+									speciesHue={activeSpecies?.hue ?? 0}
+									points={currentParams.hueCurvePoints}
+									onPointsChange={handleHueCurvePointsChange}
+								/>
+								<div class="strength-row">
+									<span class="strength-label">Intensity</span>
+									<input
+										type="range"
+										class="slider strength-slider"
+										min="0.1"
+										max="3"
+										step="0.05"
+										value={currentParams.hueStrength}
+										oninput={(e) => setHueStrength(parseFloat(e.currentTarget.value))}
+									/>
+									<span class="strength-value">{currentParams.hueStrength.toFixed(1)}x</span>
+								</div>
+							{/if}
+							<!-- Saturation source row -->
+							<div class="row">
+								<span class="label">Saturation</span>
+								<div class="relative min-w-0 flex-1" {@attach rememberDropdown('saturation')}>
+									<button
+										class="sel flex w-full items-center gap-2 text-left"
+										onclick={() => (saturationDropdownOpen = !saturationDropdownOpen)}
+										aria-label="Saturation Source"
+										aria-expanded={saturationDropdownOpen}
 									>
-										<circle cx="12" cy="12" r="7" />
-									</svg>
-								</button>
-								<button
-									class="shape-btn"
-									class:active={currentParams.cursorShape === CursorShape.Disk}
-									onclick={() => setCursorShape(CursorShape.Disk)}
-									aria-label="Disk"
-									title="Disk"
-								>
-									<svg viewBox="0 0 24 24" class="h-5 w-5">
-										<circle cx="12" cy="12" r="7" fill="currentColor" opacity="0.4" />
-										<circle
-											cx="12"
-											cy="12"
-											r="7"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
+										<HugeiconsIcon
+											icon={colorModeIcon(currentParams.saturationSource)}
+											size={16}
+											strokeWidth={1.8}
+											color="rgb(161 161 170)"
 										/>
-									</svg>
+										<span class="flex-1 truncate"
+											>{saturationOptions.find((o) => o.value === currentParams.saturationSource)
+												?.label ?? 'Full'}</span
+										>
+										<svg
+											class="h-3 w-3 opacity-50 transition-transform"
+											class:rotate-180={saturationDropdownOpen}
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									</button>
+									{#if saturationDropdownOpen}
+										<div
+											class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
+											transition:slide={{ duration: 150, easing: cubicOut }}
+										>
+											{#each saturationOptions as opt (opt.value)}
+												<button
+													class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
+													class:active={currentParams.saturationSource === opt.value}
+													onclick={() => selectSaturationSource(opt.value)}
+												>
+													<HugeiconsIcon
+														icon={colorModeIcon(opt.value)}
+														size={16}
+														strokeWidth={1.8}
+														color="rgb(161 161 170)"
+													/>
+													<span>{opt.label}</span>
+												</button>
+											{/each}
+										</div>
+									{/if}
+								</div>
+								<button
+									class="curve-toggle"
+									class:active={showSaturationCurve && !satCurveDisabled}
+									onclick={() => !satCurveDisabled && (showSaturationCurve = !showSaturationCurve)}
+									disabled={satCurveDisabled}
+									title={satCurveDisabled
+										? 'Curve not available for this mode'
+										: 'Edit saturation curve'}
+								>
+									<HugeiconsIcon
+										icon={IconChevronDown}
+										size={14}
+										strokeWidth={1.8}
+										color="rgb(113 113 122)"
+									/>
 								</button>
 							</div>
-						</div>
-						<div class="row">
-							<span class="label">Size</span>
-							<input
-								type="range"
-								min="10"
-								max="150"
-								step="5"
-								value={currentParams.cursorRadius}
-								oninput={(e) => setCursorRadius(parseInt(e.currentTarget.value))}
-								class="slider"
-								aria-label="Cursor Size"
-							/>
-							<span class="value">{currentParams.cursorRadius}</span>
-						</div>
-						<div class="row">
-							<span class="label">Power</span>
-							<input
-								type="range"
-								min="0"
-								max="1"
-								step="0.05"
-								value={activeSpecies?.cursorForce ?? 0.5}
-								oninput={(e) =>
-									activeSpecies &&
-									setSpeciesCursorForce(activeSpecies.id, parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Cursor Force"
-							/>
-							<span class="value">{(activeSpecies?.cursorForce ?? 0.5).toFixed(2)}</span>
-						</div>
-					</div>
-				{/if}
-			</div>
-
-			<div class="section-divider"></div>
-			<!-- Interactions - Species Rules -->
-			<div id="section-interactions">
-				<button class="section-header" onclick={() => toggleSection('interactions')}>
-					<div class="section-title">
-						<HugeiconsIcon icon={IconInteractions} class="section-icon icon-indigo" size={14} strokeWidth={1.8} />
-						<span class="section-label">Interactions</span>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'interactions'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('interactions');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('interactions'))}
-								title="Help"
-							>
-								<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
-							</span>
-						{/if}
-						<HugeiconsIcon icon={IconChevronDown} class="section-chevron" size={14} strokeWidth={1.8} />
-					</div>
-				</button>
-				{#if openSection === 'interactions'}
-					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<InteractionsPanel />
-					</div>
-				{/if}
-			</div>
-
-			<div class="section-divider"></div>
-			<!-- Flocking -->
-			<div id="section-flocking">
-				<button class="section-header" onclick={() => toggleSection('flocking')}>
-					<div class="section-title">
-						<HugeiconsIcon icon={IconFlocking} class="section-icon icon-pink" size={14} strokeWidth={1.8} />
-						<span class="section-label">Flocking</span>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'flocking'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('flocking');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('flocking'))}
-								title="Help"
-							>
-								<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetFlockingSection}
-								onkeydown={(e) => handleKeydown(e, resetFlockingSection)}
-								title="Reset"
-							>
-								<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
-							</span>
-						{/if}
-						<HugeiconsIcon icon={IconChevronDown} class="section-chevron" size={14} strokeWidth={1.8} />
-					</div>
-				</button>
-				{#if openSection === 'flocking'}
-					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<div class="row">
-							<span class="label">Align</span>
-							<input
-								type="range"
-								min="0"
-								max="3"
-								step="0.1"
-								value={activeSpecies?.alignment ?? currentParams.alignment}
-								oninput={(e) => {
-									const val = parseFloat(e.currentTarget.value);
-									if (activeSpecies) {
-										updateSpeciesFlocking(activeSpecies.id, 'alignment', val);
-									}
-									setAlignment(val);
-								}}
-								class="slider"
-								aria-label="Alignment"
-							/>
-							<span class="value"
-								>{(activeSpecies?.alignment ?? currentParams.alignment).toFixed(1)}</span
-							>
-						</div>
-						<div class="row">
-							<span class="label">Cohesion</span>
-							<input
-								type="range"
-								min="0"
-								max="3"
-								step="0.1"
-								value={activeSpecies?.cohesion ?? currentParams.cohesion}
-								oninput={(e) => {
-									const val = parseFloat(e.currentTarget.value);
-									if (activeSpecies) {
-										updateSpeciesFlocking(activeSpecies.id, 'cohesion', val);
-									}
-									setCohesion(val);
-								}}
-								class="slider"
-								aria-label="Cohesion"
-							/>
-							<span class="value"
-								>{(activeSpecies?.cohesion ?? currentParams.cohesion).toFixed(1)}</span
-							>
-						</div>
-						<div class="row">
-							<span class="label">Separate</span>
-							<input
-								type="range"
-								min="0"
-								max="4"
-								step="0.1"
-								value={activeSpecies?.separation ?? currentParams.separation}
-								oninput={(e) => {
-									const val = parseFloat(e.currentTarget.value);
-									if (activeSpecies) {
-										updateSpeciesFlocking(activeSpecies.id, 'separation', val);
-									}
-									setSeparation(val);
-								}}
-								class="slider"
-								aria-label="Separation"
-							/>
-							<span class="value"
-								>{(activeSpecies?.separation ?? currentParams.separation).toFixed(1)}</span
-							>
-						</div>
-						<div class="row">
-							<span class="label">Range</span>
-							<input
-								type="range"
-								min="20"
-								max="150"
-								step="5"
-								value={activeSpecies?.perception ?? currentParams.perception}
-								oninput={(e) => {
-									const val = parseInt(e.currentTarget.value);
-									if (activeSpecies) {
-										updateSpeciesFlocking(activeSpecies.id, 'perception', val);
-									}
-									setPerception(val);
-								}}
-								class="slider"
-								aria-label="Perception"
-							/>
-							<span class="value">{activeSpecies?.perception ?? currentParams.perception}</span>
-						</div>
-					</div>
-				{/if}
-			</div>
-
-			<div class="section-divider"></div>
-			<!-- World - 3D Topology Selector -->
-			<div id="section-world">
-				<button class="section-header" onclick={() => toggleSection('world')}>
-					<div class="section-title">
-						<HugeiconsIcon icon={IconWorld} class="section-icon icon-sky" size={14} strokeWidth={1.8} />
-						<span class="section-label"
-							>World <span class="section-value"
-								>({TOPOLOGY_NAMES[currentParams.boundaryMode] ?? 'Plane'})</span
-							></span
-						>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'world'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('world');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('world'))}
-								title="Help"
-							>
-								<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetWorldSection}
-								onkeydown={(e) => handleKeydown(e, resetWorldSection)}
-								title="Reset"
-							>
-								<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
-							</span>
-						{/if}
-						<HugeiconsIcon icon={IconChevronDown} class="section-chevron" size={14} strokeWidth={1.8} />
-					</div>
-				</button>
-				{#if openSection === 'world'}
-					<div
-						class="section-content topology-section"
-						transition:slide={{ duration: 150, easing: cubicOut }}
-					>
-						<TopologySelector currentMode={currentParams.boundaryMode} />
-
-						<div class="row">
-							<span class="label">Embed</span>
-							<div class="cursor-toggle cursor-toggle-4">
-								<!-- Lift the flat domain onto the surface its topology describes -->
+							{#if showSaturationCurve && !satCurveDisabled}
+								<CurveEditor
+									label="Saturation"
+									type="saturation"
+									points={currentParams.saturationCurvePoints}
+									onPointsChange={handleSaturationCurvePointsChange}
+								/>
+								<div class="strength-row">
+									<span class="strength-label">Intensity</span>
+									<input
+										type="range"
+										class="slider strength-slider"
+										min="0.1"
+										max="3"
+										step="0.05"
+										value={currentParams.saturationStrength}
+										oninput={(e) => setSaturationStrength(parseFloat(e.currentTarget.value))}
+									/>
+									<span class="strength-value">{currentParams.saturationStrength.toFixed(1)}x</span>
+								</div>
+							{/if}
+							<!-- Brightness source row -->
+							<div class="row">
+								<span class="label">Brightness</span>
+								<div class="relative min-w-0 flex-1" {@attach rememberDropdown('brightness')}>
+									<button
+										class="sel flex w-full items-center gap-2 text-left"
+										onclick={() => (brightnessDropdownOpen = !brightnessDropdownOpen)}
+										aria-label="Brightness Source"
+										aria-expanded={brightnessDropdownOpen}
+									>
+										<HugeiconsIcon
+											icon={colorModeIcon(currentParams.brightnessSource)}
+											size={16}
+											strokeWidth={1.8}
+											color="rgb(161 161 170)"
+										/>
+										<span class="flex-1 truncate"
+											>{brightnessOptions.find((o) => o.value === currentParams.brightnessSource)
+												?.label ?? 'Default'}</span
+										>
+										<svg
+											class="h-3 w-3 opacity-50 transition-transform"
+											class:rotate-180={brightnessDropdownOpen}
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fill-rule="evenodd"
+												d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+												clip-rule="evenodd"
+											/>
+										</svg>
+									</button>
+									{#if brightnessDropdownOpen}
+										<div
+											class="dropdown-menu absolute top-full right-0 left-0 z-50 mt-1 max-h-[140px] overflow-y-auto rounded-md"
+											transition:slide={{ duration: 150, easing: cubicOut }}
+										>
+											{#each brightnessOptions as opt (opt.value)}
+												<button
+													class="dropdown-item flex h-[28px] w-full items-center gap-2 px-[10px] text-left text-[10px]"
+													class:active={currentParams.brightnessSource === opt.value}
+													onclick={() => selectBrightnessSource(opt.value)}
+												>
+													<HugeiconsIcon
+														icon={colorModeIcon(opt.value)}
+														size={16}
+														strokeWidth={1.8}
+														color="rgb(161 161 170)"
+													/>
+													<span>{opt.label}</span>
+												</button>
+											{/each}
+										</div>
+									{/if}
+								</div>
 								<button
-									class="cursor-toggle-btn power-btn"
-									class:active={currentParams.embedded3D}
-									onclick={() => toggleEmbedded3D()}
-									aria-label="Toggle embedded 3D view"
-									title="Show this topology as its actual 3D surface"
-								>
-									<HugeiconsIcon icon={IconPower} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-								<!-- Parameter grid on the surface -->
-								<button
-									class="cursor-toggle-btn"
-									class:active={currentParams.embedShowGrid && currentParams.embedded3D}
-									disabled={!currentParams.embedded3D}
-									onclick={() => toggleEmbedGrid()}
-									aria-label="Toggle grid"
-									title="Parameter grid on the surface"
-								>
-									<HugeiconsIcon icon={IconGrid} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-								<!-- Turntable spin. Deliberately not a circular arrow - that reads as a
-								     second reset button sitting next to the real one. -->
-								<button
-									class="cursor-toggle-btn"
-									class:active={currentParams.embedAutoRotate && currentParams.embedded3D}
-									disabled={!currentParams.embedded3D}
-									onclick={() => toggleEmbedAutoRotate()}
-									aria-label="Toggle auto-rotate"
-									title="Slowly spin the view"
-								>
-									<HugeiconsIcon icon={IconAutoRotate} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-								<!-- Recenter the orbit camera -->
-								<button
-									class="cursor-toggle-btn"
-									disabled={!currentParams.embedded3D}
-									onclick={() => resetEmbedCamera()}
-									aria-label="Reset view"
-									title="Reset camera angle, pan and zoom"
-								>
-									<HugeiconsIcon icon={IconReset} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-							</div>
-						</div>
-
-						<div class="row">
-							<span class="label">Walls</span>
-							<div class="cursor-toggle cursor-toggle-4">
-								<!-- Power button for wall drawing on/off -->
-								<button
-									class="cursor-toggle-btn power-btn"
-									class:active={currentWallTool !== WallTool.None}
+									class="curve-toggle"
+									class:active={showBrightnessCurve && !brightCurveDisabled}
 									onclick={() =>
-										setWallTool(
-											currentWallTool === WallTool.None ? WallTool.Pencil : WallTool.None
-										)}
-									aria-label="Toggle wall drawing"
-									title="Toggle wall drawing on/off"
+										!brightCurveDisabled && (showBrightnessCurve = !showBrightnessCurve)}
+									disabled={brightCurveDisabled}
+									title={brightCurveDisabled
+										? 'Curve not available for this mode'
+										: 'Edit brightness curve'}
 								>
-									<HugeiconsIcon icon={IconPower} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-								<!-- Pencil -->
-								<button
-									class="cursor-toggle-btn"
-									class:active={currentWallTool === WallTool.Pencil}
-									onclick={() => setWallTool(WallTool.Pencil)}
-									aria-label="Pencil"
-									title="Draw walls"
-								>
-									<HugeiconsIcon icon={IconPencil} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-								<!-- Eraser -->
-								<button
-									class="cursor-toggle-btn"
-									class:active={currentWallTool === WallTool.Eraser}
-									onclick={() => setWallTool(WallTool.Eraser)}
-									aria-label="Eraser"
-									title="Erase walls"
-								>
-									<HugeiconsIcon icon={IconEraser} class="h-5 w-5" size={14} strokeWidth={1.8} />
-								</button>
-								<!-- Clear all walls -->
-								<button
-									class="cursor-toggle-btn clear-btn"
-									onclick={() => clearWalls()}
-									aria-label="Clear walls"
-									title="Clear all walls"
-								>
-									<HugeiconsIcon icon={IconDelete} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									<HugeiconsIcon
+										icon={IconChevronDown}
+										size={14}
+										strokeWidth={1.8}
+										color="rgb(113 113 122)"
+									/>
 								</button>
 							</div>
+							{#if showBrightnessCurve && !brightCurveDisabled}
+								<CurveEditor
+									label="Brightness"
+									type="brightness"
+									points={currentParams.brightnessCurvePoints}
+									onPointsChange={handleBrightnessCurvePointsChange}
+								/>
+								<div class="strength-row">
+									<span class="strength-label">Intensity</span>
+									<input
+										type="range"
+										class="slider strength-slider"
+										min="0.1"
+										max="3"
+										step="0.05"
+										value={currentParams.brightnessStrength}
+										oninput={(e) => setBrightnessStrength(parseFloat(e.currentTarget.value))}
+									/>
+									<span class="strength-value">{currentParams.brightnessStrength.toFixed(1)}x</span>
+								</div>
+							{/if}
 						</div>
-						{#if currentWallTool !== WallTool.None}
+					{/if}
+				</div>
+
+				<div class="section-divider"></div>
+				<!-- Forces - Cursor Controls -->
+				<div id="section-forces">
+					<button class="section-header" onclick={() => toggleSection('forces')}>
+						<div class="section-title">
+							<HugeiconsIcon
+								icon={IconForces}
+								class="section-icon icon-red"
+								size={14}
+								strokeWidth={1.8}
+							/>
+							<span class="section-label">Forces</span>
+						</div>
+						<div class="section-actions">
+							{#if openSection === 'forces'}
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										startTourAtSection('forces');
+									}}
+									onkeydown={(e) => handleKeydown(e, () => startTourAtSection('forces'))}
+									title="Help"
+								>
+									<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
+								</span>
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={resetForcesSection}
+									onkeydown={(e) => handleKeydown(e, resetForcesSection)}
+									title="Reset"
+								>
+									<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
+								</span>
+							{/if}
+							<HugeiconsIcon
+								icon={IconChevronDown}
+								class="section-chevron"
+								size={14}
+								strokeWidth={1.8}
+							/>
+						</div>
+					</button>
+					{#if openSection === 'forces'}
+						<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+							<div class="row">
+								<span class="label">Force</span>
+								<!-- Force buttons: Attract, Repel, Vortex - controls per-species response -->
+								<div class="cursor-toggle cursor-toggle-4">
+									<!-- Sliding indicator for attract/repel (hidden when species ignores cursor) -->
+									{#if activeSpecies?.cursorResponse !== CursorResponse.Ignore}
+										<div
+											class="cursor-toggle-indicator"
+											style="left: calc(4px + {cursorModeIndex} * 44px)"
+										></div>
+									{/if}
+
+									<button
+										class="cursor-toggle-btn power-btn"
+										class:active={activeSpecies?.cursorResponse !== CursorResponse.Ignore ||
+											activeSpecies?.cursorVortex}
+										onclick={() => handleCursorModeToggle(CursorMode.Off)}
+										aria-label="Toggle Cursor"
+										title="Toggle interaction on/off for this species"
+									>
+										<HugeiconsIcon icon={IconPower} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+									<button
+										class="cursor-toggle-btn attract"
+										class:active={activeSpecies?.cursorResponse === CursorResponse.Attract}
+										onclick={() => handleCursorModeToggle(CursorMode.Attract)}
+										aria-label="Attract"
+										title="Attract this species (click again to turn off)"
+									>
+										<ForceAnimation
+											type="attract"
+											active={activeSpecies?.cursorResponse === CursorResponse.Attract}
+											size={32}
+										/>
+									</button>
+									<button
+										class="cursor-toggle-btn repel"
+										class:active={activeSpecies?.cursorResponse === CursorResponse.Repel}
+										onclick={() => handleCursorModeToggle(CursorMode.Repel)}
+										aria-label="Repel"
+										title="Repel this species (click again to turn off)"
+									>
+										<ForceAnimation
+											type="repel"
+											active={activeSpecies?.cursorResponse === CursorResponse.Repel}
+											size={32}
+										/>
+									</button>
+									<button
+										class="cursor-toggle-btn vortex"
+										class:active={activeSpecies?.cursorVortex !== VortexDirection.Off}
+										class:counter-clockwise={activeSpecies?.cursorVortex ===
+											VortexDirection.CounterClockwise}
+										onclick={() => activeSpecies && cycleSpeciesCursorVortex(activeSpecies.id)}
+										aria-label="Vortex"
+										title="Cycle rotation: Off → Clockwise → Counter-clockwise → Off"
+									>
+										<ForceAnimation
+											type="vortex"
+											active={activeSpecies?.cursorVortex !== VortexDirection.Off}
+											vortexDirection={activeSpecies?.cursorVortex ?? VortexDirection.Off}
+											size={32}
+										/>
+									</button>
+								</div>
+							</div>
 							<div class="row">
 								<span class="label">Shape</span>
 								<div class="shape-toggle shape-toggle-2">
 									<button
 										class="shape-btn"
-										class:active={currentParams.wallBrushShape === WallBrushShape.Solid}
-										onclick={() => setWallBrushShape(WallBrushShape.Solid)}
-										aria-label="Solid"
-										title="Solid"
+										class:active={currentParams.cursorShape === CursorShape.Ring}
+										onclick={() => setCursorShape(CursorShape.Ring)}
+										aria-label="Ring"
+										title="Ring"
+									>
+										<svg
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											class="h-5 w-5"
+										>
+											<circle cx="12" cy="12" r="7" />
+										</svg>
+									</button>
+									<button
+										class="shape-btn"
+										class:active={currentParams.cursorShape === CursorShape.Disk}
+										onclick={() => setCursorShape(CursorShape.Disk)}
+										aria-label="Disk"
+										title="Disk"
 									>
 										<svg viewBox="0 0 24 24" class="h-5 w-5">
 											<circle cx="12" cy="12" r="7" fill="currentColor" opacity="0.4" />
@@ -3246,23 +2995,6 @@
 											/>
 										</svg>
 									</button>
-									<button
-										class="shape-btn"
-										class:active={currentParams.wallBrushShape === WallBrushShape.Ring}
-										onclick={() => setWallBrushShape(WallBrushShape.Ring)}
-										aria-label="Ring"
-										title="Ring (auto-hollows on release)"
-									>
-										<svg
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											class="h-5 w-5"
-										>
-											<circle cx="12" cy="12" r="7" />
-										</svg>
-									</button>
 								</div>
 							</div>
 							<div class="row">
@@ -3270,142 +3002,607 @@
 								<input
 									type="range"
 									min="10"
-									max="100"
+									max="150"
 									step="5"
-									value={currentParams.wallBrushSize}
-									oninput={(e) => setWallBrushSize(parseInt(e.currentTarget.value))}
+									value={currentParams.cursorRadius}
+									oninput={(e) => setCursorRadius(parseInt(e.currentTarget.value))}
 									class="slider"
-									aria-label="Brush Size"
+									aria-label="Cursor Size"
 								/>
-								<span class="value">{currentParams.wallBrushSize}</span>
+								<span class="value">{currentParams.cursorRadius}</span>
 							</div>
-						{/if}
-					</div>
-				{/if}
-			</div>
+							<div class="row">
+								<span class="label">Power</span>
+								<input
+									type="range"
+									min="0"
+									max="1"
+									step="0.05"
+									value={activeSpecies?.cursorForce ?? 0.5}
+									oninput={(e) =>
+										activeSpecies &&
+										setSpeciesCursorForce(activeSpecies.id, parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Cursor Force"
+								/>
+								<span class="value">{(activeSpecies?.cursorForce ?? 0.5).toFixed(2)}</span>
+							</div>
+						</div>
+					{/if}
+				</div>
 
-			<div class="section-divider"></div>
-			<!-- Dynamics -->
-			<div id="section-dynamics">
-				<button class="section-header" onclick={() => toggleSection('dynamics')}>
-					<div class="section-title">
-						<HugeiconsIcon icon={IconDynamics} class="section-icon icon-amber" size={14} strokeWidth={1.8} />
-						<span class="section-label">Dynamics</span>
-					</div>
-					<div class="section-actions">
-						{#if openSection === 'dynamics'}
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={(e) => {
-									e.stopPropagation();
-									startTourAtSection('dynamics');
-								}}
-								onkeydown={(e) => handleKeydown(e, () => startTourAtSection('dynamics'))}
-								title="Help"
+				<div class="section-divider"></div>
+				<!-- Interactions - Species Rules -->
+				<div id="section-interactions">
+					<button class="section-header" onclick={() => toggleSection('interactions')}>
+						<div class="section-title">
+							<HugeiconsIcon
+								icon={IconInteractions}
+								class="section-icon icon-indigo"
+								size={14}
+								strokeWidth={1.8}
+							/>
+							<span class="section-label">Interactions</span>
+						</div>
+						<div class="section-actions">
+							{#if openSection === 'interactions'}
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										startTourAtSection('interactions');
+									}}
+									onkeydown={(e) => handleKeydown(e, () => startTourAtSection('interactions'))}
+									title="Help"
+								>
+									<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
+								</span>
+							{/if}
+							<HugeiconsIcon
+								icon={IconChevronDown}
+								class="section-chevron"
+								size={14}
+								strokeWidth={1.8}
+							/>
+						</div>
+					</button>
+					{#if openSection === 'interactions'}
+						<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+							<InteractionsPanel />
+						</div>
+					{/if}
+				</div>
+
+				<div class="section-divider"></div>
+				<!-- Flocking -->
+				<div id="section-flocking">
+					<button class="section-header" onclick={() => toggleSection('flocking')}>
+						<div class="section-title">
+							<HugeiconsIcon
+								icon={IconFlocking}
+								class="section-icon icon-pink"
+								size={14}
+								strokeWidth={1.8}
+							/>
+							<span class="section-label">Flocking</span>
+						</div>
+						<div class="section-actions">
+							{#if openSection === 'flocking'}
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										startTourAtSection('flocking');
+									}}
+									onkeydown={(e) => handleKeydown(e, () => startTourAtSection('flocking'))}
+									title="Help"
+								>
+									<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
+								</span>
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={resetFlockingSection}
+									onkeydown={(e) => handleKeydown(e, resetFlockingSection)}
+									title="Reset"
+								>
+									<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
+								</span>
+							{/if}
+							<HugeiconsIcon
+								icon={IconChevronDown}
+								class="section-chevron"
+								size={14}
+								strokeWidth={1.8}
+							/>
+						</div>
+					</button>
+					{#if openSection === 'flocking'}
+						<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+							<div class="row">
+								<span class="label">Align</span>
+								<input
+									type="range"
+									min="0"
+									max="3"
+									step="0.1"
+									value={activeSpecies?.alignment ?? currentParams.alignment}
+									oninput={(e) => {
+										const val = parseFloat(e.currentTarget.value);
+										if (activeSpecies) {
+											updateSpeciesFlocking(activeSpecies.id, 'alignment', val);
+										}
+										setAlignment(val);
+									}}
+									class="slider"
+									aria-label="Alignment"
+								/>
+								<span class="value"
+									>{(activeSpecies?.alignment ?? currentParams.alignment).toFixed(1)}</span
+								>
+							</div>
+							<div class="row">
+								<span class="label">Cohesion</span>
+								<input
+									type="range"
+									min="0"
+									max="3"
+									step="0.1"
+									value={activeSpecies?.cohesion ?? currentParams.cohesion}
+									oninput={(e) => {
+										const val = parseFloat(e.currentTarget.value);
+										if (activeSpecies) {
+											updateSpeciesFlocking(activeSpecies.id, 'cohesion', val);
+										}
+										setCohesion(val);
+									}}
+									class="slider"
+									aria-label="Cohesion"
+								/>
+								<span class="value"
+									>{(activeSpecies?.cohesion ?? currentParams.cohesion).toFixed(1)}</span
+								>
+							</div>
+							<div class="row">
+								<span class="label">Separate</span>
+								<input
+									type="range"
+									min="0"
+									max="4"
+									step="0.1"
+									value={activeSpecies?.separation ?? currentParams.separation}
+									oninput={(e) => {
+										const val = parseFloat(e.currentTarget.value);
+										if (activeSpecies) {
+											updateSpeciesFlocking(activeSpecies.id, 'separation', val);
+										}
+										setSeparation(val);
+									}}
+									class="slider"
+									aria-label="Separation"
+								/>
+								<span class="value"
+									>{(activeSpecies?.separation ?? currentParams.separation).toFixed(1)}</span
+								>
+							</div>
+							<div class="row">
+								<span class="label">Range</span>
+								<input
+									type="range"
+									min="20"
+									max="150"
+									step="5"
+									value={activeSpecies?.perception ?? currentParams.perception}
+									oninput={(e) => {
+										const val = parseInt(e.currentTarget.value);
+										if (activeSpecies) {
+											updateSpeciesFlocking(activeSpecies.id, 'perception', val);
+										}
+										setPerception(val);
+									}}
+									class="slider"
+									aria-label="Perception"
+								/>
+								<span class="value">{activeSpecies?.perception ?? currentParams.perception}</span>
+							</div>
+						</div>
+					{/if}
+				</div>
+
+				<div class="section-divider"></div>
+				<!-- World - 3D Topology Selector -->
+				<div id="section-world">
+					<button class="section-header" onclick={() => toggleSection('world')}>
+						<div class="section-title">
+							<HugeiconsIcon
+								icon={IconWorld}
+								class="section-icon icon-sky"
+								size={14}
+								strokeWidth={1.8}
+							/>
+							<span class="section-label"
+								>World <span class="section-value"
+									>({TOPOLOGY_NAMES[currentParams.boundaryMode] ?? 'Plane'})</span
+								></span
 							>
-								<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
-							</span>
-							<span
-								class="section-action-btn"
-								role="button"
-								tabindex="0"
-								onclick={resetDynamicsSection}
-								onkeydown={(e) => handleKeydown(e, resetDynamicsSection)}
-								title="Reset"
-							>
-								<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
-							</span>
-						{/if}
-						<HugeiconsIcon icon={IconChevronDown} class="section-chevron" size={14} strokeWidth={1.8} />
-					</div>
-				</button>
-				{#if openSection === 'dynamics'}
-					<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
-						<div class="row">
-							<span class="label">Speed</span>
-							<input
-								type="range"
-								min="1"
-								max="15"
-								step="0.5"
-								value={currentParams.maxSpeed}
-								oninput={(e) => setMaxSpeed(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Speed"
-							/>
-							<span class="value">{currentParams.maxSpeed.toFixed(1)}</span>
 						</div>
-						<div class="row">
-							<span class="label">Force</span>
-							<input
-								type="range"
-								min="0.01"
-								max="0.5"
-								step="0.01"
-								value={currentParams.maxForce}
-								oninput={(e) => setMaxForce(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Force"
+						<div class="section-actions">
+							{#if openSection === 'world'}
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										startTourAtSection('world');
+									}}
+									onkeydown={(e) => handleKeydown(e, () => startTourAtSection('world'))}
+									title="Help"
+								>
+									<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
+								</span>
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={resetWorldSection}
+									onkeydown={(e) => handleKeydown(e, resetWorldSection)}
+									title="Reset"
+								>
+									<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
+								</span>
+							{/if}
+							<HugeiconsIcon
+								icon={IconChevronDown}
+								class="section-chevron"
+								size={14}
+								strokeWidth={1.8}
 							/>
-							<span class="value">{currentParams.maxForce.toFixed(2)}</span>
 						</div>
-						<div class="row">
-							<span class="label">Noise</span>
-							<input
-								type="range"
-								min="0"
-								max="1"
-								step="0.05"
-								value={currentParams.noise}
-								oninput={(e) => setNoise(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Noise"
+					</button>
+					{#if openSection === 'world'}
+						<div
+							class="section-content topology-section"
+							transition:slide={{ duration: 150, easing: cubicOut }}
+						>
+							<TopologySelector currentMode={currentParams.boundaryMode} />
+
+							<div class="row">
+								<span class="label">Embed</span>
+								<div class="cursor-toggle cursor-toggle-4">
+									<!-- Lift the flat domain onto the surface its topology describes -->
+									<button
+										class="cursor-toggle-btn power-btn"
+										class:active={currentParams.embedded3D}
+										onclick={() => toggleEmbedded3D()}
+										aria-label="Toggle embedded 3D view"
+										title="Show this topology as its actual 3D surface"
+									>
+										<HugeiconsIcon icon={IconPower} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+									<!-- Parameter grid on the surface -->
+									<button
+										class="cursor-toggle-btn"
+										class:active={currentParams.embedShowGrid && currentParams.embedded3D}
+										disabled={!currentParams.embedded3D}
+										onclick={() => toggleEmbedGrid()}
+										aria-label="Toggle grid"
+										title="Parameter grid on the surface"
+									>
+										<HugeiconsIcon icon={IconGrid} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+									<!-- Turntable spin. Deliberately not a circular arrow - that reads as a
+								     second reset button sitting next to the real one. -->
+									<button
+										class="cursor-toggle-btn"
+										class:active={currentParams.embedAutoRotate && currentParams.embedded3D}
+										disabled={!currentParams.embedded3D}
+										onclick={() => toggleEmbedAutoRotate()}
+										aria-label="Toggle auto-rotate"
+										title="Slowly spin the view"
+									>
+										<HugeiconsIcon
+											icon={IconAutoRotate}
+											class="h-5 w-5"
+											size={14}
+											strokeWidth={1.8}
+										/>
+									</button>
+									<!-- Recenter the orbit camera -->
+									<button
+										class="cursor-toggle-btn"
+										disabled={!currentParams.embedded3D}
+										onclick={() => resetEmbedCamera()}
+										aria-label="Reset view"
+										title="Reset camera angle, pan and zoom"
+									>
+										<HugeiconsIcon icon={IconReset} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+								</div>
+							</div>
+
+							<div class="row">
+								<span class="label">Walls</span>
+								<div class="cursor-toggle cursor-toggle-4">
+									<!-- Power button for wall drawing on/off -->
+									<button
+										class="cursor-toggle-btn power-btn"
+										class:active={currentWallTool !== WallTool.None}
+										onclick={() =>
+											setWallTool(
+												currentWallTool === WallTool.None ? WallTool.Pencil : WallTool.None
+											)}
+										aria-label="Toggle wall drawing"
+										title="Toggle wall drawing on/off"
+									>
+										<HugeiconsIcon icon={IconPower} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+									<!-- Pencil -->
+									<button
+										class="cursor-toggle-btn"
+										class:active={currentWallTool === WallTool.Pencil}
+										onclick={() => setWallTool(WallTool.Pencil)}
+										aria-label="Pencil"
+										title="Draw walls"
+									>
+										<HugeiconsIcon icon={IconPencil} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+									<!-- Eraser -->
+									<button
+										class="cursor-toggle-btn"
+										class:active={currentWallTool === WallTool.Eraser}
+										onclick={() => setWallTool(WallTool.Eraser)}
+										aria-label="Eraser"
+										title="Erase walls"
+									>
+										<HugeiconsIcon icon={IconEraser} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+									<!-- Clear all walls -->
+									<button
+										class="cursor-toggle-btn clear-btn"
+										onclick={() => clearWalls()}
+										aria-label="Clear walls"
+										title="Clear all walls"
+									>
+										<HugeiconsIcon icon={IconDelete} class="h-5 w-5" size={14} strokeWidth={1.8} />
+									</button>
+								</div>
+							</div>
+							{#if currentWallTool !== WallTool.None}
+								<div class="row">
+									<span class="label">Shape</span>
+									<div class="shape-toggle shape-toggle-2">
+										<button
+											class="shape-btn"
+											class:active={currentParams.wallBrushShape === WallBrushShape.Solid}
+											onclick={() => setWallBrushShape(WallBrushShape.Solid)}
+											aria-label="Solid"
+											title="Solid"
+										>
+											<svg viewBox="0 0 24 24" class="h-5 w-5">
+												<circle cx="12" cy="12" r="7" fill="currentColor" opacity="0.4" />
+												<circle
+													cx="12"
+													cy="12"
+													r="7"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2"
+												/>
+											</svg>
+										</button>
+										<button
+											class="shape-btn"
+											class:active={currentParams.wallBrushShape === WallBrushShape.Ring}
+											onclick={() => setWallBrushShape(WallBrushShape.Ring)}
+											aria-label="Ring"
+											title="Ring (auto-hollows on release)"
+										>
+											<svg
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+												class="h-5 w-5"
+											>
+												<circle cx="12" cy="12" r="7" />
+											</svg>
+										</button>
+									</div>
+								</div>
+								<div class="row">
+									<span class="label">Size</span>
+									<input
+										type="range"
+										min="10"
+										max="100"
+										step="5"
+										value={currentParams.wallBrushSize}
+										oninput={(e) => setWallBrushSize(parseInt(e.currentTarget.value))}
+										class="slider"
+										aria-label="Brush Size"
+									/>
+									<span class="value">{currentParams.wallBrushSize}</span>
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+
+				<div class="section-divider"></div>
+				<!-- Dynamics -->
+				<div id="section-dynamics">
+					<button class="section-header" onclick={() => toggleSection('dynamics')}>
+						<div class="section-title">
+							<HugeiconsIcon
+								icon={IconDynamics}
+								class="section-icon icon-amber"
+								size={14}
+								strokeWidth={1.8}
 							/>
-							<span class="value">{currentParams.noise.toFixed(2)}</span>
+							<span class="section-label">Dynamics</span>
 						</div>
-						<div class="row">
-							<span class="label">Time</span>
-							<input
-								type="range"
-								min="0.25"
-								max="2"
-								step="0.05"
-								value={currentParams.timeScale}
-								oninput={(e) => setTimeScale(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Time Scale"
+						<div class="section-actions">
+							{#if openSection === 'dynamics'}
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={(e) => {
+										e.stopPropagation();
+										startTourAtSection('dynamics');
+									}}
+									onkeydown={(e) => handleKeydown(e, () => startTourAtSection('dynamics'))}
+									title="Help"
+								>
+									<HugeiconsIcon icon={IconHelp} size={14} strokeWidth={1.8} />
+								</span>
+								<span
+									class="section-action-btn"
+									role="button"
+									tabindex="0"
+									onclick={resetDynamicsSection}
+									onkeydown={(e) => handleKeydown(e, resetDynamicsSection)}
+									title="Reset"
+								>
+									<HugeiconsIcon icon={IconReset} size={14} strokeWidth={1.8} />
+								</span>
+							{/if}
+							<HugeiconsIcon
+								icon={IconChevronDown}
+								class="section-chevron"
+								size={14}
+								strokeWidth={1.8}
 							/>
-							<span class="value">{currentParams.timeScale.toFixed(2)}×</span>
 						</div>
-						<div class="row">
-							<span class="label">Collision</span>
-							<input
-								type="range"
-								min="0"
-								max="1"
-								step="0.05"
-								value={currentParams.globalCollision}
-								oninput={(e) => setGlobalCollision(parseFloat(e.currentTarget.value))}
-								class="slider"
-								aria-label="Global Collision"
-							/>
-							<span class="value">{currentParams.globalCollision.toFixed(2)}</span>
+					</button>
+					{#if openSection === 'dynamics'}
+						<div class="section-content" transition:slide={{ duration: 150, easing: cubicOut }}>
+							<div class="row">
+								<span class="label">Speed</span>
+								<input
+									type="range"
+									min="1"
+									max="15"
+									step="0.5"
+									value={currentParams.maxSpeed}
+									oninput={(e) => setMaxSpeed(parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Speed"
+								/>
+								<span class="value">{currentParams.maxSpeed.toFixed(1)}</span>
+							</div>
+							<div class="row">
+								<span class="label">Force</span>
+								<input
+									type="range"
+									min="0.01"
+									max="0.5"
+									step="0.01"
+									value={currentParams.maxForce}
+									oninput={(e) => setMaxForce(parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Force"
+								/>
+								<span class="value">{currentParams.maxForce.toFixed(2)}</span>
+							</div>
+							<div class="row">
+								<span class="label">Noise</span>
+								<input
+									type="range"
+									min="0"
+									max="1"
+									step="0.05"
+									value={currentParams.noise}
+									oninput={(e) => setNoise(parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Noise"
+								/>
+								<span class="value">{currentParams.noise.toFixed(2)}</span>
+							</div>
+							<div class="row">
+								<span class="label">Time</span>
+								<input
+									type="range"
+									min="0.25"
+									max="2"
+									step="0.05"
+									value={currentParams.timeScale}
+									oninput={(e) => setTimeScale(parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Time Scale"
+								/>
+								<span class="value">{currentParams.timeScale.toFixed(2)}×</span>
+							</div>
+							<div class="row">
+								<span class="label">Collision</span>
+								<input
+									type="range"
+									min="0"
+									max="1"
+									step="0.05"
+									value={currentParams.globalCollision}
+									oninput={(e) => setGlobalCollision(parseFloat(e.currentTarget.value))}
+									class="slider"
+									aria-label="Global Collision"
+								/>
+								<span class="value">{currentParams.globalCollision.toFixed(2)}</span>
+							</div>
 						</div>
-					</div>
-				{/if}
-			</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}
 
 <style>
-	/* Remove focus outlines - shortcuts should not highlight buttons */
-	button:focus,
-	input:focus,
-	[role='button']:focus {
-		outline: none;
+	button:focus-visible,
+	input:focus-visible,
+	[role='button']:focus-visible {
+		outline: 1px solid rgba(125, 211, 252, 0.8);
+		outline-offset: 3px;
+	}
+
+	.scene-trigger {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		border: 0;
+		border-radius: 5px;
+		padding: 3px 0;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.scene-trigger:hover,
+	.scene-trigger.active {
+		color: var(--text-primary);
+	}
+	.scene-trigger :global(.scene-chevron) {
+		opacity: 0.5;
+		transition: transform 160ms ease;
+	}
+	.scene-trigger.active :global(.scene-chevron) {
+		transform: rotate(180deg);
+	}
+	.content-scroll.scene-content {
+		padding: 0;
+	}
+	.scene-loading {
+		padding: 24px 12px;
+		font-size: 11px;
+		color: var(--text-muted);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.scene-trigger :global(.scene-chevron) {
+			transition: none;
+		}
 	}
 
 	.panel {
@@ -3495,19 +3692,10 @@
 		transform-origin: 50% 85%; /* Pivot near the bottom of the flask */
 	}
 
-	.flask-liquid {
-		transition: fill 0.3s ease;
-	}
-
 	.gear-btn:hover :global(.flask-icon),
 	:global(.flask-icon.flask-auto-animate) {
 		color: #e4e4e7;
 		animation: flask-tilt 0.6s ease-in-out;
-	}
-
-	.gear-btn:hover .flask-liquid,
-	.flask-auto-animate .flask-liquid {
-		fill: rgba(34, 211, 238, 0.75); /* Bright cyan blue */
 	}
 
 	@keyframes flask-tilt {
@@ -3735,7 +3923,7 @@
 		color: rgb(161 161 170);
 		background: rgba(255, 255, 255, 0.05);
 	}
-	.section-action-btn svg {
+	.section-action-btn :global(svg) {
 		width: 12px;
 		height: 12px;
 	}
@@ -3944,7 +4132,7 @@
 		margin-left: 4px;
 	}
 
-	.curve-toggle svg {
+	.curve-toggle :global(svg) {
 		width: 14px;
 		height: 14px;
 		stroke: rgb(161 161 170);
@@ -3958,7 +4146,7 @@
 		background: rgba(68, 170, 255, 0.2);
 	}
 
-	.curve-toggle.active svg {
+	.curve-toggle.active :global(svg) {
 		stroke: rgb(68, 170, 255);
 	}
 

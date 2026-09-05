@@ -23,10 +23,7 @@ import {
 	HeadShape,
 	InteractionBehavior,
 	SpectralMode,
-	MetricSource,
-	MetricRole,
 	MAX_SPECIES,
-	MAX_METRIC_RULES_PER_SPECIES,
 	WALL_TEXTURE_SCALE,
 	createDefaultSpecies
 } from '$lib/webgpu/types';
@@ -94,15 +91,61 @@ let wallTextureHeight = 0;
 // Stroke tracking for hollow brush
 let strokeSnapshot: Uint8Array | null = null;
 
+export interface WallSnapshot {
+	width: number;
+	height: number;
+	data: Uint8Array;
+}
+
+function resampleWalls(snapshot: WallSnapshot, width: number, height: number): Uint8Array {
+	const data = new Uint8Array(width * height);
+	for (let y = 0; y < height; y++) {
+		const sourceY = Math.min(snapshot.height - 1, Math.floor((y * snapshot.height) / height));
+		for (let x = 0; x < width; x++) {
+			const sourceX = Math.min(snapshot.width - 1, Math.floor((x * snapshot.width) / width));
+			data[y * width + x] = snapshot.data[sourceY * snapshot.width + sourceX];
+		}
+	}
+	return data;
+}
+
+/** Copy the painted environment; scene editing must never share its live pixels. */
+export function exportWallSnapshot(): WallSnapshot | null {
+	return wallDataArray
+		? { width: wallTextureWidth, height: wallTextureHeight, data: wallDataArray.slice() }
+		: null;
+}
+
+/** Keep the world at the current viewport resolution when opening a saved scene. */
+export function restoreWallSnapshot(snapshot: WallSnapshot | null): void {
+	strokeSnapshot = null;
+	if (snapshot) {
+		if (wallTextureWidth === 0 || wallTextureHeight === 0) {
+			wallTextureWidth = snapshot.width;
+			wallTextureHeight = snapshot.height;
+		}
+		wallDataArray = resampleWalls(snapshot, wallTextureWidth, wallTextureHeight);
+	} else {
+		wallDataArray?.fill(0);
+	}
+	wallsDirty.set(true);
+}
+
 export function initWallData(canvasWidth: number, canvasHeight: number): Uint8Array {
 	const newWidth = Math.ceil(canvasWidth / WALL_TEXTURE_SCALE);
 	const newHeight = Math.ceil(canvasHeight / WALL_TEXTURE_SCALE);
 
 	// Only recreate if dimensions changed
 	if (wallDataArray === null || newWidth !== wallTextureWidth || newHeight !== wallTextureHeight) {
+		const previous = wallDataArray
+			? { width: wallTextureWidth, height: wallTextureHeight, data: wallDataArray }
+			: null;
 		wallTextureWidth = newWidth;
 		wallTextureHeight = newHeight;
-		wallDataArray = new Uint8Array(newWidth * newHeight);
+		wallDataArray = previous
+			? resampleWalls(previous, newWidth, newHeight)
+			: new Uint8Array(newWidth * newHeight);
+		strokeSnapshot = null;
 	}
 
 	return wallDataArray;
@@ -333,7 +376,25 @@ export function setSensitivity(value: number): void {
 }
 
 export function setPopulation(value: number): void {
-	params.update((p) => ({ ...p, population: value }));
+	if (!Number.isFinite(value)) return;
+	params.update((p) => {
+		const population = Math.max(p.species.length, Math.min(100000, Math.round(value)));
+		const total = p.species.reduce((sum, species) => sum + species.population, 0);
+		const shares = p.species.map(
+			(species) => ((population - p.species.length) * species.population) / Math.max(total, 1)
+		);
+		const counts = shares.map((share) => 1 + Math.floor(share));
+		const remainder = population - counts.reduce((sum, count) => sum + count, 0);
+		const order = shares
+			.map((share, index) => ({ index, fraction: share % 1 }))
+			.sort((a, b) => b.fraction - a.fraction);
+		for (let i = 0; i < remainder; i++) counts[order[i % order.length].index]++;
+		return {
+			...p,
+			population,
+			species: p.species.map((species, index) => ({ ...species, population: counts[index] }))
+		};
+	});
 	needsBufferReallocation.set(true);
 }
 
@@ -397,7 +458,7 @@ export function addSpecies(): void {
 		if (newId >= MAX_SPECIES) return p;
 
 		// Calculate population for new species (split from total or add small amount)
-		const newPopulation = Math.min(500, Math.floor(p.population * 0.1));
+		const newPopulation = Math.max(1, Math.min(500, Math.floor(p.population * 0.1)));
 
 		const newSpecies = createDefaultSpecies(newId, newPopulation);
 		const newTotalPopulation = p.population + newPopulation;
@@ -421,7 +482,14 @@ export function removeSpecies(id: number): void {
 		const species = p.species.find((s) => s.id === id);
 		if (!species) return p;
 
-		const newSpecies = p.species.filter((s) => s.id !== id);
+		const newSpecies = p.species
+			.filter((s) => s.id !== id)
+			.map((s) => ({
+				...s,
+				interactions: s.interactions.filter(
+					(rule) => rule.type === 'metric' || rule.targetSpecies !== id
+				)
+			}));
 		const newTotalPopulation = p.population - species.population;
 
 		// If we're removing the active species, switch to first available
@@ -430,7 +498,7 @@ export function removeSpecies(id: number): void {
 		return {
 			...p,
 			species: newSpecies,
-			population: Math.max(500, newTotalPopulation),
+			population: newTotalPopulation,
 			activeSpeciesId: newActiveId
 		};
 	});

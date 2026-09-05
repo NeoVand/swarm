@@ -26,8 +26,7 @@ export interface ComputeBindGroups {
 	rank0A: GPUBindGroup; // Spatial hash data (read from posA)
 	rank0B: GPUBindGroup; // Spatial hash data (read from posB)
 	rank1: GPUBindGroup; // Species + metrics
-	rank2A: GPUBindGroup; // Ranks: read A, write B
-	rank2B: GPUBindGroup; // Ranks: read B, write A
+	rank2: GPUBindGroup; // Each invocation updates only its own rank in place
 	writeMetrics: GPUBindGroup; // Final copy to metrics.zw
 }
 
@@ -60,7 +59,9 @@ export function createComputePipelines(
 	const prefixSumModule = device.createShaderModule({ code: prefixSumShader });
 	const scatterModule = device.createShaderModule({ code: scatterShader });
 	// Concatenate common.wgsl (Uniforms, boundary config) with simulate shader
-	const simulateModule = device.createShaderModule({ code: commonShader + embedShader + simulateShader });
+	const simulateModule = device.createShaderModule({
+		code: commonShader + embedShader + simulateShader
+	});
 
 	// === Clear Pipeline (clears both cellCounts and cellOffsets in one pass) ===
 	const clearBindGroupLayout = device.createBindGroupLayout({
@@ -304,12 +305,9 @@ export function createComputePipelines(
 		]
 	});
 
-	// Bind group 2: Rank ping-pong
+	// Bind group 2: Local temporal smoothing needs only each boid's own previous rank.
 	const rankBindGroupLayout2 = device.createBindGroupLayout({
-		entries: [
-			{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // ranksIn
-			{ binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } } // ranksOut
-		]
+		entries: [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }]
 	});
 
 	const rankInitPipeline = device.createComputePipeline({
@@ -360,21 +358,10 @@ export function createComputePipelines(
 		]
 	});
 
-	// Rank bind group 2: ping-pong buffers
-	const rankBindGroup2A = device.createBindGroup({
+	// Rank bind group 2: in-place values, also consumed by writeMetrics.
+	const rankBindGroup2 = device.createBindGroup({
 		layout: rankBindGroupLayout2,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.rankA } },
-			{ binding: 1, resource: { buffer: buffers.rankB } }
-		]
-	});
-
-	const rankBindGroup2B = device.createBindGroup({
-		layout: rankBindGroupLayout2,
-		entries: [
-			{ binding: 0, resource: { buffer: buffers.rankB } },
-			{ binding: 1, resource: { buffer: buffers.rankA } }
-		]
+		entries: [{ binding: 0, resource: { buffer: buffers.rankA } }]
 	});
 
 	// === Write Metrics Pipeline ===
@@ -427,8 +414,7 @@ export function createComputePipelines(
 			rank0A: rankBindGroup0A,
 			rank0B: rankBindGroup0B,
 			rank1: rankBindGroup1,
-			rank2A: rankBindGroup2A,
-			rank2B: rankBindGroup2B,
+			rank2: rankBindGroup2,
 			writeMetrics: writeMetricsBindGroup
 		},
 		blockSumsBuffer
@@ -528,33 +514,25 @@ export function encodeComputePasses(
 
 		// Pass 6: Spectral/Flow influence (uses velocities for flow modes)
 		if (iterativeConfig.enableInfluence) {
-			// Initialize if needed - use rank2B so it writes to buffer A
+			// Initialize the retained per-boid values if needed.
 			if (iterativeConfig.needsRankInit) {
 				const pass = encoder.beginComputePass();
 				pass.setPipeline(resources.pipelines.rankInit);
 				pass.setBindGroup(0, rankBindGroup0);
 				pass.setBindGroup(1, resources.bindGroups.rank1);
-				pass.setBindGroup(2, resources.bindGroups.rank2B); // Write to A
+				pass.setBindGroup(2, resources.bindGroups.rank2);
 				pass.dispatchWorkgroups(boidWorkgroups);
 				pass.end();
 			}
 
-			// Ensure even iteration count so final result ends up in buffer A
-			const rankIters =
-				iterativeConfig.influenceIterations % 2 === 0
-					? iterativeConfig.influenceIterations
-					: iterativeConfig.influenceIterations + 1;
-
-			// Run iterations with ping-pong
-			for (let i = 0; i < rankIters; i++) {
+			// Neighbourhood statistics are constant during these smoothing steps.
+			// Compute them once; the shader repeats only the local scalar/angle blend.
+			if (iterativeConfig.influenceIterations > 0) {
 				const pass = encoder.beginComputePass();
 				pass.setPipeline(resources.pipelines.rankIter);
 				pass.setBindGroup(0, rankBindGroup0);
 				pass.setBindGroup(1, resources.bindGroups.rank1);
-				pass.setBindGroup(
-					2,
-					i % 2 === 0 ? resources.bindGroups.rank2A : resources.bindGroups.rank2B
-				);
+				pass.setBindGroup(2, resources.bindGroups.rank2);
 				pass.dispatchWorkgroups(boidWorkgroups);
 				pass.end();
 			}

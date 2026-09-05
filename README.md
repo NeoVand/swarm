@@ -25,6 +25,15 @@ A high-performance boids flocking simulation running entirely on the GPU using W
 - **Multiple Algorithms** — 5 neighbor-finding strategies with tunable parameters
 - **Rich Visualization** — 8 color modes including species coloring, speed, direction, density, and more
 - **Media Capture** — Record videos or take screenshots directly from the app
+- **Scene Collection** — Six composed starting scenes, a personal library, share links, and portable scene files
+
+## Scenes
+
+Click **Swarm** in the floating panel, or press **L**, to open the scene collection. **Explore** offers six starting points, from a silver murmuration to intertwined currents on a Klein bottle. Loading a scene keeps the simulation's play/pause state; **Undo scene load** returns to your previous setup.
+
+Name the current scene to keep it in **Saved**, with a thumbnail of the canvas. Scenes preserve species, interactions, curves, painted walls, and camera framing. Particles start fresh when a scene loads. Saved scenes stay in this browser; the card's menu offers rename, export, copy link, and deletion with undo.
+
+**Import scene** accepts scene JSON files and the earlier settings-only exports. **Export current** works without browser storage. Share links contain the scene directly, so no account or server is needed; detailed wall drawings can be exchanged as files. Painted walls rescale when the viewport changes.
 
 ## The Boids Algorithm
 
@@ -152,27 +161,29 @@ Caveats worth knowing, mathematical rather than bugs:
 
 ## Keyboard Shortcuts
 
-| Key     | Action                                  |
-| ------- | --------------------------------------- |
-| `Space` | Play/Pause simulation                   |
-| `R`     | Reset boids                             |
-| `N`     | Cycle through species                   |
-| `1-4`   | Cursor modes (Off/Attract/Repel/Vortex) |
-| `5-8`   | Wall tools (Toggle/Pencil/Eraser/Clear) |
-| `Q/W`   | Decrease/Increase alignment             |
-| `E/D`   | Decrease/Increase cohesion              |
-| `Z/X`   | Decrease/Increase separation            |
-| `C`     | Cycle color mode                        |
-| `P`     | Cycle palette                           |
-| `B`     | Cycle boundary topology                 |
-| `M`     | Toggle embedded 3D view                 |
-| `A`     | Cycle algorithm                         |
-| `+/-`   | Adjust population                       |
-| `[/]`   | Adjust trail length                     |
-| `↑/↓`   | Adjust speed                            |
-| `←/→`   | Adjust boid size                        |
-| `Tab`   | Toggle sidebar                          |
-| `H`     | Start tour                              |
+| Key     | Action                                      |
+| ------- | ------------------------------------------- |
+| `Space` | Play/Pause simulation                       |
+| `R`     | Reset boids                                 |
+| `N`     | Cycle through species                       |
+| `1-4`   | Cursor modes (Off/Attract/Repel/Vortex)     |
+| `5-8`   | Wall tools (Toggle/Pencil/Eraser/Clear)     |
+| `Q/W`   | Decrease/Increase alignment                 |
+| `E/D`   | Decrease/Increase cohesion                  |
+| `Z/X`   | Decrease/Increase separation                |
+| `C`     | Cycle color mode                            |
+| `P`     | Cycle palette                               |
+| `B`     | Cycle boundary topology                     |
+| `M`     | Toggle embedded 3D view                     |
+| `A`     | Cycle algorithm                             |
+| `+/-`   | Adjust population                           |
+| `[/]`   | Adjust trail length                         |
+| `↑/↓`   | Adjust speed                                |
+| `←/→`   | Adjust boid size                            |
+| `Enter` | Toggle sidebar (when no control is focused) |
+| `L`     | Open scene collection                       |
+| `Tab`   | Move keyboard focus between controls        |
+| `H`     | Start tour                                  |
 
 ## Tech Stack
 
@@ -189,7 +200,11 @@ npm install      # Install dependencies
 npm run dev      # Start dev server
 npm run build    # Build for production
 npm run preview  # Preview production build
+npm run check    # Check TypeScript and Svelte
+npm test         # Scene persistence and GPU buffer regression tests
 ```
+
+The GPU comparison harness runs the original and optimized influence shaders on the same device. Run `node tests/rank-gpu-server.mjs e38f450971362d4533fc33ebfd02351fc635c131` and open the local URL it prints. It checks scalar and angular smoothing across modes, iteration counts, surfaces, and neighbor configurations.
 
 ## Browser Support
 

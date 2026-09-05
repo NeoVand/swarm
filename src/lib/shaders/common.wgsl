@@ -61,7 +61,7 @@ struct Uniforms {
     // Topology switches cross-fade between two embeddings rather than snapping.
     topologyBlend: f32,
     embedTopologyPrev: u32,
-    _embedPad0: f32,
+    influenceIterations: u32, // local smoothing steps; reuses the former padding
     _embedPad1: f32,
 }
 

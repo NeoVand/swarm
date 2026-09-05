@@ -155,7 +155,7 @@ fn vs_main(
     let speciesTrailLen = u32(getSpeciesTrailLength(speciesId));
     
     // If this segment is beyond this species' trail length, skip it
-    if (segmentIndex >= speciesTrailLen - 1u) {
+    if (speciesTrailLen < 2u || segmentIndex >= speciesTrailLen - 1u) {
         output.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
         output.color = vec3<f32>(0.0);
         output.alpha = 0.0;

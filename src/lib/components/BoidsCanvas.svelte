@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
+	import { get } from 'svelte/store';
 	import { initWebGPU, resizeCanvas, destroyWebGPU } from '$lib/webgpu/context';
 	import { createSimulation, type Simulation } from '$lib/webgpu/simulation';
+	import {
+		initializeScenes,
+		loadSceneFromHash,
+		registerSceneCameraHandlers
+	} from '$lib/stores/scenes';
 	import type { GPUContext, SimulationParams, CursorState } from '$lib/webgpu/types';
 	import {
 		CursorMode,
@@ -36,16 +42,17 @@
 	let container: HTMLDivElement;
 	let gpuContext: GPUContext | null = null;
 	let simulation: Simulation | null = null;
+	let unregisterSceneCamera: (() => void) | undefined;
 
 	// Track cursor CSS position (not DPR scaled)
-	let cursorCssX = 0;
-	let cursorCssY = 0;
+	let cursorCssX = $state(0);
+	let cursorCssY = $state(0);
 
 	// Subscribe to stores
-	let currentParams: SimulationParams;
-	let currentCursor: CursorState;
-	let currentWallTool: WallTool = WallTool.None;
-	let isPaintingWall = false;
+	let currentParams = $state.raw<SimulationParams>(get(params));
+	let currentCursor = $state.raw<CursorState>(get(cursor));
+	let currentWallTool = $state<WallTool>(WallTool.None);
+	let isPaintingWall = $state(false);
 
 	const unsubParams = params.subscribe((p) => {
 		currentParams = p;
@@ -68,13 +75,19 @@
 	});
 
 	// Reactive cursor state based on active species
-	$: activeSpeciesForCursor = currentParams?.species?.find(
-		(s) => s.id === currentParams?.activeSpeciesId
+	const activeSpeciesForCursor = $derived(
+		currentParams.species.find((s) => s.id === currentParams.activeSpeciesId)
 	);
-	$: speciesCursorResponse = activeSpeciesForCursor?.cursorResponse ?? CursorResponse.Ignore;
-	$: speciesVortexDirection = activeSpeciesForCursor?.cursorVortex ?? VortexDirection.Off;
-	$: hasVortexActive = speciesVortexDirection !== VortexDirection.Off;
-	$: hasCursorInteraction = speciesCursorResponse !== CursorResponse.Ignore || hasVortexActive;
+	const speciesCursorResponse = $derived(
+		activeSpeciesForCursor?.cursorResponse ?? CursorResponse.Ignore
+	);
+	const speciesVortexDirection = $derived(
+		activeSpeciesForCursor?.cursorVortex ?? VortexDirection.Off
+	);
+	const hasVortexActive = $derived(speciesVortexDirection !== VortexDirection.Off);
+	const hasCursorInteraction = $derived(
+		speciesCursorResponse !== CursorResponse.Ignore || hasVortexActive
+	);
 
 	const unsubCameraReset = needsCameraReset.subscribe((needs) => {
 		if (needs && simulation) {
@@ -153,8 +166,8 @@
 	// forces and wall painting are suspended until the view is flattened again.
 	// Left-drag orbits, right-drag pans, and simply hovering pushes boids around
 	// on the surface - the same thing the cursor does in the flat view.
-	let isOrbiting = false;
-	let isPanning = false;
+	let isOrbiting = $state(false);
+	let isPanning = $state(false);
 	let isPushing = false;
 	let lastOrbitX = 0;
 	let lastOrbitY = 0;
@@ -472,20 +485,25 @@
 
 	let resizeObserver: ResizeObserver | null = null;
 
-	onMount(() => {
+	function mountCanvas(element: HTMLCanvasElement) {
+		canvas = element;
+		container = element.parentElement as HTMLDivElement;
+		let disposed = false;
 		// Expose canvas element for screenshot/recording
 		canvasElement.set(canvas);
 
 		// Initialize WebGPU (async but we don't return the promise)
 		initWebGPU(canvas).then((ctx) => {
+			if (disposed) {
+				destroyWebGPU(ctx);
+				return;
+			}
 			gpuContext = ctx;
 
 			if (!gpuContext) {
 				isWebGPUAvailable.set(false);
 				return;
 			}
-
-			isWebGPUAvailable.set(true);
 
 			// Set initial dimensions
 			updateDimensions();
@@ -515,9 +533,17 @@
 			simulation = createSimulation(gpuContext, initParams!, (newFps) => {
 				fps.set(newFps);
 			});
+			unregisterSceneCamera = registerSceneCameraHandlers({
+				capture: () => simulation?.getCameraState(),
+				restore: (camera) => simulation?.restoreCameraState(camera)
+			});
 
 			// Ensure reallocation flag is clean after init
 			needsBufferReallocation.set(false);
+			isWebGPUAvailable.set(true);
+			initializeScenes();
+			loadSceneFromHash();
+			window.addEventListener('hashchange', loadSceneFromHash);
 
 			// Start simulation (respects current isRunning state)
 			let currentRunning = true;
@@ -544,6 +570,8 @@
 
 		// Return cleanup function
 		return () => {
+			disposed = true;
+			window.removeEventListener('hashchange', loadSceneFromHash);
 			resizeObserver?.disconnect();
 			if (window.visualViewport) {
 				window.visualViewport.removeEventListener('resize', updateDimensions);
@@ -551,7 +579,7 @@
 			window.removeEventListener('resize', updateDimensions);
 			window.removeEventListener('orientationchange', updateDimensions);
 		};
-	});
+	}
 
 	onDestroy(() => {
 		unsubParams();
@@ -564,6 +592,7 @@
 		unsubWallsDirty();
 		unsubSpeciesDirty();
 		unsubCameraReset();
+		unregisterSceneCamera?.();
 		canvasElement.set(null);
 		simulation?.destroy();
 		destroyWebGPU(gpuContext);
@@ -571,9 +600,9 @@
 	});
 </script>
 
-<div bind:this={container} class="fixed relative inset-0 overflow-hidden bg-[#0a0b0d]">
+<div class="fixed relative inset-0 overflow-hidden bg-[#0a0b0d]">
 	<canvas
-		bind:this={canvas}
+		{@attach mountCanvas}
 		class="block touch-none select-none {currentParams?.embedded3D
 			? isOrbiting
 				? 'cursor-grabbing'
